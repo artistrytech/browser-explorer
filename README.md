@@ -1,8 +1,12 @@
 # Explorer Browser
 
 Explorer(ファイル管理)を主画面に、テキスト編集(Monaco)と Git 管理を統合した
-ローカル Web アプリ。設計は [_docs/plan.md](_docs/plan.md) と
-[.docs/002.md](.docs/002.md)(追加改修)を参照。
+ローカル Web アプリ。
+
+## 設定
+
+初回セットアップ時は `config.json.sample` を `config.json` にコピーして作成し、
+必要に応じてポートやトークンを調整する。
 
 ## 起動
 
