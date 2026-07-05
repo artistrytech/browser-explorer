@@ -1,10 +1,15 @@
 import type {
   AppState,
+  ConflictFile,
+  ConflictVersions,
   Eol,
+  Favorite,
   FsEntry,
   GitBranch,
   GitCommit,
+  GitGraphCommit,
   GitStatus,
+  MergeState,
   ReadResult,
   VolumeInfo,
 } from '../types';
@@ -83,8 +88,18 @@ export const api = {
   isRepo: (path: string) =>
     get<{ isRepo: boolean; root?: string }>(`/api/git/is-repo?path=${q(path)}`),
   gitStatus: (repo: string) => get<GitStatus>(`/api/git/status?repo=${q(repo)}`),
-  gitLog: (repo: string, limit = 100) =>
-    get<{ commits: GitCommit[] }>(`/api/git/log?repo=${q(repo)}&limit=${limit}`),
+  gitLog: (repo: string, opts: { limit?: number; skip?: number; path?: string; follow?: boolean } = {}) =>
+    get<{ commits: GitCommit[] }>(
+      `/api/git/log?repo=${q(repo)}&limit=${opts.limit ?? 100}` +
+        `${opts.skip ? `&skip=${opts.skip}` : ''}` +
+        `${opts.path ? `&path=${q(opts.path)}` : ''}` +
+        `${opts.follow ? '&follow=true' : ''}`,
+    ),
+  gitGraph: (repo: string, opts: { all?: boolean; limit?: number; skip?: number } = {}) =>
+    get<{ commits: GitGraphCommit[] }>(
+      `/api/git/graph?repo=${q(repo)}&limit=${opts.limit ?? 200}` +
+        `${opts.skip ? `&skip=${opts.skip}` : ''}${opts.all ? '&all=true' : ''}`,
+    ),
   gitShow: (repo: string, hash: string) =>
     get<{ hash: string; author: string; date: string; message: string; patch: string }>(
       `/api/git/show?repo=${q(repo)}&hash=${q(hash)}`,
@@ -111,7 +126,44 @@ export const api = {
   gitStash: (repo: string, action: 'save' | 'pop' | 'list') =>
     post<{ ok: true; list?: unknown[] }>('/api/git/stash', { repo, action }),
   gitInit: (path: string) => post<{ ok: true }>('/api/git/init', { path }),
-  gitClone: (url: string, dir: string) => post<{ ok: true }>('/api/git/clone', { url, dir }),
+  gitClone: (body: { url: string; dir: string; branch?: string; depth?: number; recursive?: boolean }) =>
+    post<{ ok: true; id: string }>('/api/git/clone', body),
+
+  // --- git: 競合解消 (002.md §2) ---
+  gitMergeState: (repo: string) => get<MergeState>(`/api/git/merge-state?repo=${q(repo)}`),
+  gitConflicts: (repo: string, dir?: string) =>
+    get<{ files: ConflictFile[] }>(`/api/git/conflicts?repo=${q(repo)}${dir ? `&dir=${q(dir)}` : ''}`),
+  gitConflictVersions: (repo: string, path: string) =>
+    get<ConflictVersions>(`/api/git/conflict/versions?repo=${q(repo)}&path=${q(path)}`),
+  gitConflictResolve: (repo: string, path: string, content: string) =>
+    post<{ ok: true }>('/api/git/conflict/resolve', { repo, path, content }),
+  gitConflictTake: (repo: string, paths: string[], side: 'ours' | 'theirs') =>
+    post<{ ok: true }>('/api/git/conflict/take', { repo, paths, side }),
+  gitMergeContinue: (repo: string) => post<{ ok: true }>('/api/git/merge/continue', { repo }),
+  gitMergeAbort: (repo: string) => post<{ ok: true }>('/api/git/merge/abort', { repo }),
+
+  // --- git: グラフ上のコミット操作 (002.md §5.5) ---
+  gitCheckoutCommit: (repo: string, hash: string) =>
+    post<{ ok: true }>('/api/git/checkout-commit', { repo, hash }),
+  gitReset: (repo: string, hash: string, mode: 'soft' | 'mixed' | 'hard') =>
+    post<{ ok: true }>('/api/git/reset', { repo, hash, mode }),
+  gitCherryPick: (repo: string, hash: string) => post<{ ok: true }>('/api/git/cherry-pick', { repo, hash }),
+  gitTag: (repo: string, name: string, hash: string) =>
+    post<{ ok: true }>('/api/git/tag', { repo, name, hash }),
+
+  // --- os 連携 (002.md §4) ---
+  osPlatform: () => get<{ platform: string }>('/api/os/platform'),
+  osOpenFileManager: (path: string) => post<{ ok: true }>('/api/os/open-in-file-manager', { path }),
+  osOpenTerminal: (path: string) => post<{ ok: true }>('/api/os/open-in-terminal', { path }),
+
+  // --- クイックアクセス (002.md §7) ---
+  quickaccessList: () => get<{ favorites: Favorite[] }>('/api/quickaccess'),
+  quickaccessAdd: (path: string, label?: string) =>
+    post<{ ok: true; added: boolean; favorites: Favorite[] }>('/api/quickaccess', { path, label }),
+  quickaccessRemove: (path: string) =>
+    del<{ ok: true; removed: boolean; favorites: Favorite[] }>('/api/quickaccess', { path }),
+  quickaccessReorder: (paths: string[]) =>
+    post<{ ok: true; favorites: Favorite[] }>('/api/quickaccess/reorder', { paths }),
 
   // --- state ---
   getState: () => get<AppState>('/api/state'),

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useExplorer } from '../../stores/explorer';
 import { useSettings, isMod } from '../../stores/settings';
 import { useGit, OverlayCode } from '../../stores/git';
+import { useUi, osMenuLabels } from '../../stores/ui';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import {
   openEntry,
@@ -14,7 +15,11 @@ import {
   renameEntry,
   showProperties,
 } from '../../lib/fileOps';
-import { formatSize, formatDate, kindLabel, fileIcon } from '../../lib/paths';
+import { formatSize, formatDate, kindLabel, fileIcon, baseName } from '../../lib/paths';
+import { pinFolder, unpinFolder } from '../../lib/quickaccessOps';
+import { saveFocus, loadFocus } from '../../lib/focusMemory';
+import { openCloneDialog } from '../git/CloneDialog';
+import { openConflictResolver } from '../git/ConflictResolver';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
 import type { FsEntry, SortKey } from '../../types';
@@ -55,10 +60,23 @@ export function FileList() {
   } = useExplorer();
   const { settings, update } = useSettings();
   const repoRoot = useGit((s) => s.repoRoot);
+  const mergeState = useGit((s) => s.mergeState);
+  const platform = useUi((s) => s.platform);
   const openMenu = useContextMenu((s) => s.open);
   const containerRef = useRef<HTMLDivElement>(null);
   const [renameValue, setRenameValue] = useState('');
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+
+  /** 絶対パス → リポジトリルート相対 (repo 外は null) */
+  const relOf = (abs: string): string | null => {
+    if (!repoRoot) return null;
+    if (abs === repoRoot) return '';
+    return abs.startsWith(`${repoRoot}/`) ? abs.slice(repoRoot.length + 1) : null;
+  };
+
+  /** 指定フォルダ (repo 相対) 配下に競合ファイルがあるか (002.md §2.2) */
+  const conflictsUnder = (relDir: string): boolean =>
+    mergeState.conflicted.some((c) => relDir === '' || c === relDir || c.startsWith(`${relDir}/`));
 
   const displayed = useMemo(() => {
     const base = searchResults ?? entries;
@@ -87,6 +105,71 @@ export function FileList() {
       setRenameValue(e?.name ?? '');
     }
   }, [renaming]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- フォーカス/選択位置の保存 (002.md §6.3): 変更時にデバウンス書き込み ---
+  const focusStateRef = useRef({ path, selection, anchor });
+  focusStateRef.current = { path, selection, anchor };
+  const writeFocus = () => {
+    const { path: p, selection: sel, anchor: an } = focusStateRef.current;
+    const anchorName = an ? baseName(an) : null;
+    saveFocus(p, {
+      focused: anchorName,
+      focusedIndex: an ? displayed.findIndex((d) => d.path === an) : -1,
+      selected: sel.map(baseName),
+      scrollTop: containerRef.current?.scrollTop ?? 0,
+    });
+  };
+  const writeFocusRef = useRef(writeFocus);
+  writeFocusRef.current = writeFocus;
+
+  useEffect(() => {
+    if (loading) return;
+    const t = setTimeout(() => writeFocusRef.current(), 200);
+    return () => clearTimeout(t);
+  }, [selection, anchor, loading]);
+
+  // スクロール位置の保存 (§6.2)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    let t: ReturnType<typeof setTimeout>;
+    const onScroll = () => {
+      clearTimeout(t);
+      t = setTimeout(() => writeFocusRef.current(), 250);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      clearTimeout(t);
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, []);
+
+  // 離脱/リロード直前にも最新化 (§6.3)
+  useEffect(() => {
+    const flush = () => writeFocusRef.current();
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', flush);
+    };
+  }, []);
+
+  // --- 復元 (002.md §6.4): 一覧読み込み後にスクロール位置とフォーカス項目を適用 ---
+  const restoredForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || restoredForRef.current === path) return;
+    restoredForRef.current = path;
+    const rec = loadFocus(path);
+    if (!containerRef.current) return;
+    containerRef.current.scrollTop = rec?.scrollTop ?? 0;
+    const target = anchor ?? (rec?.focused ? entries.find((e) => e.name === rec.focused)?.path : null);
+    if (target) {
+      document
+        .querySelector(`[data-entry-path="${CSS.escape(target)}"]`)
+        ?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [path, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- 選択処理 ---
   const clickEntry = (e: React.MouseEvent, entry: FsEntry) => {
@@ -165,21 +248,62 @@ export function FileList() {
     }
   };
 
-  // --- コンテキストメニュー ---
+  // --- コンテキストメニュー (出し分けは 002.md §8) ---
+  const osLabels = osMenuLabels(platform);
+
+  /** フォルダ/空白共通の OS 連携項目 (002.md §4): 対象がファイルでない場合のみ */
+  const osMenuItems = (dirPath: string): MenuItem[] => [
+    { label: osLabels.fileManager, action: () => void api.osOpenFileManager(dirPath).catch(toastError) },
+    { label: osLabels.terminal, action: () => void api.osOpenTerminal(dirPath).catch(toastError) },
+  ];
+
+  /** Git 系の文脈依存項目 (ログを表示 / 競合を解消 / Git Clone…) */
+  const gitContextItems = (targetPath: string, isFile: boolean, isDir: boolean): MenuItem[] => {
+    const rel = relOf(targetPath);
+    const items: MenuItem[] = [];
+    if (rel !== null) {
+      // Git 管理下: パス絞り込みログ (002.md §1)
+      items.push({
+        label: 'Gitログ',
+        action: () => useGit.getState().showLogFor(rel, isFile),
+      });
+      // 進行中 かつ 配下に競合あり → 競合を解消 (002.md §2)
+      if (isDir && mergeState.inProgress && conflictsUnder(rel)) {
+        items.push({ label: '競合を解消…', action: () => openConflictResolver(rel) });
+      }
+    } else if (isDir) {
+      // Git 管理外のフォルダ → Git Clone… (002.md §3)
+      items.push({ label: 'Git Clone…', action: () => openCloneDialog(targetPath) });
+    }
+    return items;
+  };
+
   const entryMenu = (e: React.MouseEvent, entry: FsEntry) => {
     e.preventDefault();
+    // コンテナの backgroundMenu へバブリングさせない (背景メニューで上書きされるのを防ぐ)
+    e.stopPropagation();
+    // 左クリック同様、右クリックでも対象にフォーカスを当てる
+    // (選択済みの複数選択は維持しつつ anchor だけ対象へ移す)
     if (!selectedSet.has(entry.path)) setSelection([entry.path], entry.path);
+    else setSelection(selection, entry.path);
+    containerRef.current?.focus();
     const sel = selectedSet.has(entry.path) ? selection : [entry.path];
     const single = sel.length === 1;
+    const pinned = useSettings.getState().isPinned(entry.path);
     const items: MenuItem[] = [
       { label: '開く', action: () => displayed.filter((d) => sel.includes(d.path)).forEach(openEntry) },
       ...(entry.type !== 'dir'
         ? [{ label: 'エディタで開く', action: () => openEntry(entry) }]
         : [
-            {
-              label: 'クイックアクセスにピン留め',
-              action: () => useSettings.getState().addFavorite({ path: entry.path, label: entry.name }),
-            },
+            // ピン止め / 解除のトグル (002.md §7.2)。解除は確認フローへ
+            pinned
+              ? { label: 'ピン止めを解除', action: () => void unpinFolder(entry.path, entry.name) }
+              : {
+                  label: 'クイックアクセスにピン止め',
+                  action: () => void pinFolder(entry.path, entry.name),
+                },
+            { separator: true },
+            ...osMenuItems(entry.path),
           ]),
       { separator: true },
       { label: 'コピー', action: copySelection },
@@ -191,6 +315,8 @@ export function FileList() {
       { label: '完全に削除', action: () => void deleteSelection(true), danger: true },
       { separator: true },
     ];
+    const gitItems = gitContextItems(entry.path, entry.type === 'file', entry.type === 'dir');
+    if (gitItems.length > 0) items.push(...gitItems, { separator: true });
     if (repoRoot && entry.path.startsWith(repoRoot)) {
       const rel = sel.map((p) => p.slice(repoRoot.length + 1));
       items.push(
@@ -229,14 +355,28 @@ export function FileList() {
   const backgroundMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     setSelection([]);
-    openMenu(e.clientX, e.clientY, [
+    // 空白 = カレントフォルダを対象とする (002.md §4.1 / §8)
+    const currentPinned = useSettings.getState().isPinned(path);
+    const items: MenuItem[] = [
       { label: '新規フォルダ', action: () => void createFolder() },
       { label: '新規ファイル', action: () => void createFile() },
       { separator: true },
       { label: '貼り付け', action: () => void paste(), disabled: !clipboard },
       { separator: true },
-      { label: '最新の情報に更新', action: () => void useExplorer.getState().refresh() },
-    ]);
+      currentPinned
+        ? { label: 'ピン止めを解除', action: () => void unpinFolder(path, baseName(path)) }
+        : {
+            label: 'クイックアクセスにピン止め',
+            action: () => void pinFolder(path, baseName(path)),
+          },
+      { separator: true },
+      ...osMenuItems(path),
+      { separator: true },
+    ];
+    const gitItems = gitContextItems(path, false, true);
+    if (gitItems.length > 0) items.push(...gitItems, { separator: true });
+    items.push({ label: '最新の情報に更新', action: () => void useExplorer.getState().refresh() });
+    openMenu(e.clientX, e.clientY, items);
   };
 
   // --- ドラッグ & ドロップ (Ctrl でコピー、通常は移動) ---
@@ -357,7 +497,11 @@ export function FileList() {
           「{searchQuery}」の検索結果: {displayed.length} 件
         </div>
       )}
-      {loading && <div className="loading-bar">読み込み中…</div>}
+      {loading && (
+        <div className="loading-spinner" role="status" aria-label="読み込み中">
+          <div className="spinner-ring" />
+        </div>
+      )}
 
       {settings.viewMode === 'icons' ? (
         <div className="icon-grid">

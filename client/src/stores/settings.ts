@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
+import { useToast, toastError } from './toast';
 import type { Favorite, RecentItem, SortKey, ViewMode } from '../types';
 
 export interface Settings {
@@ -39,8 +40,9 @@ interface SettingsStore {
   load: () => Promise<void>;
   update: (partial: Partial<Settings>) => void;
   setFavorites: (favorites: Favorite[]) => void;
-  addFavorite: (fav: Favorite) => void;
-  removeFavorite: (path: string) => void;
+  addFavorite: (fav: Favorite) => Promise<void>;
+  removeFavorite: (path: string) => Promise<void>;
+  isPinned: (path: string) => boolean;
   setRepositories: (repos: string[]) => void;
   addRepository: (path: string) => void;
   addRecent: (path: string, kind: 'file' | 'dir') => void;
@@ -83,23 +85,39 @@ export const useSettings = create<SettingsStore>((set, get) => ({
     persist({ settings: { app: settings } });
   },
 
+  // 並べ替え (ドラッグ) は専用 API で永続化 (002.md §7.4)
   setFavorites: (favorites) => {
     set({ favorites });
-    persist({ favorites });
+    api
+      .quickaccessReorder(favorites.map((f) => f.path))
+      .then((r) => set({ favorites: r.favorites }))
+      .catch(toastError);
   },
 
-  addFavorite: (fav) => {
-    if (get().favorites.some((f) => f.path === fav.path)) return;
-    const favorites = [...get().favorites, fav];
-    set({ favorites });
-    persist({ favorites });
+  // ピン止め追加 (002.md §7.2)。重複はサーバー側で無視されトーストで通知
+  addFavorite: async (fav) => {
+    try {
+      const r = await api.quickaccessAdd(fav.path, fav.label);
+      set({ favorites: r.favorites });
+      useToast
+        .getState()
+        .show(r.added ? 'success' : 'info', r.added ? 'クイックアクセスにピン止めしました' : 'すでにピン止めされています');
+    } catch (e) {
+      toastError(e);
+    }
   },
 
-  removeFavorite: (path) => {
-    const favorites = get().favorites.filter((f) => f.path !== path);
-    set({ favorites });
-    persist({ favorites });
+  // ピン止め解除 (002.md §7.3)。確認ダイアログは呼び出し側 (unpinFavorite) で行う
+  removeFavorite: async (path) => {
+    try {
+      const r = await api.quickaccessRemove(path);
+      set({ favorites: r.favorites });
+    } catch (e) {
+      toastError(e);
+    }
   },
+
+  isPinned: (path) => get().favorites.some((f) => f.path === path),
 
   setRepositories: (repositories) => {
     set({ repositories });

@@ -3,17 +3,17 @@ import { api } from '../api/client';
 import { useExplorer } from '../stores/explorer';
 import { useSettings } from '../stores/settings';
 import { useGit } from '../stores/git';
-import { useUi } from '../stores/ui';
+import { switchView } from '../stores/ui';
 import { useContextMenu } from '../components/ContextMenu';
 import { baseName } from '../lib/paths';
+import { unpinFolder } from '../lib/quickaccessOps';
 import type { VolumeInfo } from '../types';
 
 export function Sidebar() {
   const { path, navigate } = useExplorer();
-  const { favorites, repositories, removeFavorite, setRepositories } = useSettings();
+  const { favorites, repositories, setRepositories } = useSettings();
   const repoRoot = useGit((s) => s.repoRoot);
   const status = useGit((s) => s.status);
-  const setView = useUi((s) => s.setView);
   const openMenu = useContextMenu((s) => s.open);
   const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
   const [home, setHome] = useState<string>('');
@@ -57,13 +57,35 @@ export function Sidebar() {
       <div className="side-section">
         <div className="side-heading">クイックアクセス</div>
         {home && item('home', 'Home', '🏠', home)}
-        {favorites.map((f) =>
-          item(f.path, f.label, '★', f.path, (e) => {
-            openMenu(e.clientX, e.clientY, [
-              { label: 'ピン留めを外す', action: () => removeFavorite(f.path) },
-            ]);
-          }),
-        )}
+        {favorites.map((f) => (
+          // ピン項目: ホバーで ✕ を表示。解除は確認ダイアログ必須 (002.md §7.3)
+          <div key={f.path} className="side-item-wrap">
+            <button
+              className={`side-item${path === f.path ? ' active' : ''}`}
+              onClick={() => void navigate(f.path)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                openMenu(e.clientX, e.clientY, [
+                  { label: 'ピン止めを解除', action: () => void unpinFolder(f.path, f.label) },
+                ]);
+              }}
+              title={f.path}
+            >
+              <span className="side-icon">★</span>
+              <span className="side-label">{f.label}</span>
+            </button>
+            <button
+              className="side-unpin"
+              title="ピン止めを解除"
+              onClick={(e) => {
+                e.stopPropagation();
+                void unpinFolder(f.path, f.label);
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
       </div>
 
       <div className="side-section">
@@ -79,7 +101,7 @@ export function Sidebar() {
             className={`side-item${repoRoot === r ? ' active' : ''}`}
             title={r}
             onClick={() => {
-              void navigate(r).then(() => setView('git'));
+              void navigate(r).then(() => switchView('git'));
             }}
             onContextMenu={(e) => {
               e.preventDefault();

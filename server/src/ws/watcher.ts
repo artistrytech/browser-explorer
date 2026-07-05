@@ -9,6 +9,16 @@ interface ClientState {
   watchedPath: string | null;
 }
 
+const sockets = new Set<WebSocket>();
+
+/** 接続中の全クライアントへイベントをプッシュする (clone 進捗等、§3.4) */
+export function broadcastEvent(event: string, data: unknown): void {
+  const msg = JSON.stringify({ event, data });
+  for (const ws of sockets) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+  }
+}
+
 /**
  * WS 監視: クライアントは { type: 'watch', path } を送って表示中フォルダを購読する。
  * 変更があれば { event: 'fs:change', data: { type, path } } をプッシュする。
@@ -28,6 +38,7 @@ export function attachWatcher(server: Server): void {
 
   wss.on('connection', (ws) => {
     clients.set(ws, { watcher: null, watchedPath: null });
+    sockets.add(ws);
 
     ws.on('message', async (raw) => {
       let msg: { type: string; path?: string };
@@ -65,6 +76,7 @@ export function attachWatcher(server: Server): void {
     });
 
     ws.on('close', async () => {
+      sockets.delete(ws);
       const state = clients.get(ws);
       await state?.watcher?.close().catch(() => {});
       clients.delete(ws);

@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import { useGit } from '../../stores/git';
+import { useGit, GitTab } from '../../stores/git';
 import { useExplorer } from '../../stores/explorer';
 import { useSettings } from '../../stores/settings';
 import { useToast, toastError } from '../../stores/toast';
 import { confirmDialog, promptDialog } from '../../stores/dialog';
 import { DiffView } from './DiffView';
+import { GitGraph } from './GitGraph';
+import { openCloneDialog } from './CloneDialog';
+import { openConflictResolver } from './ConflictResolver';
 import type { GitBranch, GitCommit, GitFileStatus } from '../../types';
-
-type GitTab = 'changes' | 'log' | 'branches';
 
 function statusLabel(f: GitFileStatus, staged: boolean): string {
   const c = staged ? f.index : f.workingDir;
@@ -19,10 +20,11 @@ function statusLabel(f: GitFileStatus, staged: boolean): string {
 }
 
 export function GitPanel() {
-  const { repoRoot, status, refreshStatus } = useGit();
+  const { repoRoot, status, refreshStatus, mergeState, logFilter, setLogFilter } = useGit();
+  const tab = useGit((s) => s.panelTab);
+  const setTab = useGit((s) => s.setPanelTab);
   const { addRepository, repositories } = useSettings();
   const show = useToast((s) => s.show);
-  const [tab, setTab] = useState<GitTab>('changes');
   const [message, setMessage] = useState('');
   const [amend, setAmend] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -36,13 +38,17 @@ export function GitPanel() {
   const explorerPath = useExplorer((s) => s.path);
 
   useEffect(() => {
-    if (repoRoot && tab === 'log') {
-      api.gitLog(repoRoot).then((r) => setCommits(r.commits)).catch(toastError);
+    // パス絞り込み時は線形リスト用にコミットを取得 (002.md §1.4)。全体表示は GitGraph が自前で取得
+    if (repoRoot && tab === 'log' && logFilter) {
+      api
+        .gitLog(repoRoot, { path: logFilter.path, follow: logFilter.follow, limit: 200 })
+        .then((r) => setCommits(r.commits))
+        .catch(toastError);
     }
     if (repoRoot && tab === 'branches') {
       api.gitBranches(repoRoot).then((r) => setBranches(r.branches)).catch(toastError);
     }
-  }, [repoRoot, tab, status]);
+  }, [repoRoot, tab, status, logFilter]);
 
   if (!repoRoot) {
     return (
@@ -67,21 +73,8 @@ export function GitPanel() {
           >
             git init
           </button>{' '}
-          <button
-            className="btn"
-            onClick={() =>
-              void promptDialog('リポジトリを clone', '', { message: 'clone する URL を入力' }).then((url) => {
-                if (!url) return;
-                const name = url.split('/').pop()?.replace(/\.git$/, '') ?? 'repo';
-                api
-                  .gitClone(url, `${explorerPath}/${name}`)
-                  .then(() => useExplorer.getState().refresh())
-                  .then(() => show('success', 'clone しました'))
-                  .catch(toastError);
-              })
-            }
-          >
-            clone
+          <button className="btn" onClick={() => openCloneDialog(explorerPath)}>
+            Git Clone…
           </button>
         </div>
       </div>
@@ -208,6 +201,38 @@ export function GitPanel() {
         </div>
       </div>
 
+      {mergeState.inProgress && (
+        <div className="merge-banner">
+          ⚠ {mergeState.inProgress === 'merge' ? 'マージ' : mergeState.inProgress === 'rebase' ? 'リベース' : 'cherry-pick'}
+          が進行中です
+          {mergeState.conflicted.length > 0 && ` (競合 ${mergeState.conflicted.length} 件)`}
+          {mergeState.conflicted.length > 0 ? (
+            <button className="btn" onClick={() => openConflictResolver('')}>
+              競合を解消…
+            </button>
+          ) : (
+            <button
+              className="btn"
+              onClick={() => void run(() => api.gitMergeContinue(repoRoot), '完了しました')}
+            >
+              完了 (コミット)
+            </button>
+          )}
+          <button
+            className="btn danger"
+            onClick={() =>
+              void confirmDialog('中止', '進行中の操作を中止して開始前の状態へ戻します。よろしいですか?', true).then(
+                (ok) => {
+                  if (ok) void run(() => api.gitMergeAbort(repoRoot), '中止しました');
+                },
+              )
+            }
+          >
+            中止
+          </button>
+        </div>
+      )}
+
       <div className="git-body">
         <div className="git-left">
           {tab === 'changes' && (
@@ -281,8 +306,17 @@ export function GitPanel() {
             </>
           )}
 
-          {tab === 'log' && (
+          {tab === 'log' && logFilter && (
+            // パス絞り込み時は履歴が疎になるため線形リスト表示 (002.md §1.4 / §5.6)
             <div className="git-log">
+              <div className="log-filter-bar">
+                <span className="log-filter-path" title={logFilter.path}>
+                  {logFilter.path} の履歴{logFilter.follow ? ' (リネーム追跡)' : ''}
+                </span>
+                <button className="status-btn" onClick={() => setLogFilter(null)}>
+                  絞り込み解除
+                </button>
+              </div>
               {commits.map((c) => (
                 <button
                   key={c.hash}
@@ -299,7 +333,17 @@ export function GitPanel() {
                   </span>
                 </button>
               ))}
+              {commits.length === 0 && <div className="empty-hint">該当するコミットがありません</div>}
             </div>
+          )}
+
+          {tab === 'log' && !logFilter && (
+            // 全体表示時はコミット DAG をグラフ描画 (002.md §5)
+            <GitGraph
+              repo={repoRoot}
+              selectedHash={commitDetail?.hash ?? null}
+              onSelect={(hash) => api.gitShow(repoRoot, hash).then(setCommitDetail).catch(toastError)}
+            />
           )}
 
           {tab === 'branches' && (

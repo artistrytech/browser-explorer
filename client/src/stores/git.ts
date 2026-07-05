@@ -1,6 +1,15 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
-import type { GitStatus } from '../types';
+import { switchView } from './ui';
+import type { GitStatus, MergeState } from '../types';
+
+export type GitTab = 'changes' | 'log' | 'branches';
+
+/** パス絞り込みログの条件 (002.md §1)。path はリポジトリルート相対 */
+export interface LogFilter {
+  path: string;
+  follow: boolean;
+}
 
 /**
  * ファイル一覧オーバーレイ用の Git 状態コード
@@ -13,8 +22,18 @@ interface GitStore {
   status: GitStatus | null;
   /** repo 相対ではなく絶対パス → オーバーレイコード */
   overlay: Record<string, OverlayCode>;
+  /** マージ/リベース/cherry-pick の進行状態 (002.md §2.2) */
+  mergeState: MergeState;
+  /** Git パネルの表示タブ (コンテキストメニューから外部制御するためストアに置く) */
+  panelTab: GitTab;
+  /** ログのパス絞り込み。null なら全体 (002.md §1) */
+  logFilter: LogFilter | null;
   checkRepo: (dirPath: string) => Promise<void>;
   refreshStatus: () => Promise<void>;
+  setPanelTab: (tab: GitTab) => void;
+  setLogFilter: (f: LogFilter | null) => void;
+  /** 「ログを表示」: 絞り込みを設定して Git パネルのログタブを開く (002.md §1.2) */
+  showLogFor: (relPath: string, isFile: boolean) => void;
 }
 
 function buildOverlay(root: string, status: GitStatus): Record<string, OverlayCode> {
@@ -41,23 +60,31 @@ function buildOverlay(root: string, status: GitStatus): Record<string, OverlayCo
   return overlay;
 }
 
+const NO_MERGE: MergeState = { inProgress: null, conflicted: [] };
+
 export const useGit = create<GitStore>((set, get) => ({
   repoRoot: null,
   status: null,
   overlay: {},
+  mergeState: NO_MERGE,
+  panelTab: 'changes',
+  logFilter: null,
 
   checkRepo: async (dirPath) => {
     try {
       const { isRepo, root } = await api.isRepo(dirPath);
       if (isRepo && root) {
-        if (get().repoRoot !== root) set({ repoRoot: root, status: null, overlay: {} });
-        else set({ repoRoot: root });
+        if (get().repoRoot !== root) {
+          set({ repoRoot: root, status: null, overlay: {}, mergeState: NO_MERGE, logFilter: null });
+        } else {
+          set({ repoRoot: root });
+        }
         await get().refreshStatus();
       } else {
-        set({ repoRoot: null, status: null, overlay: {} });
+        set({ repoRoot: null, status: null, overlay: {}, mergeState: NO_MERGE, logFilter: null });
       }
     } catch {
-      set({ repoRoot: null, status: null, overlay: {} });
+      set({ repoRoot: null, status: null, overlay: {}, mergeState: NO_MERGE, logFilter: null });
     }
   },
 
@@ -65,10 +92,22 @@ export const useGit = create<GitStore>((set, get) => ({
     const root = get().repoRoot;
     if (!root) return;
     try {
-      const status = await api.gitStatus(root);
-      set({ status, overlay: buildOverlay(root, status) });
+      const [status, mergeState] = await Promise.all([
+        api.gitStatus(root),
+        api.gitMergeState(root).catch(() => NO_MERGE),
+      ]);
+      set({ status, overlay: buildOverlay(root, status), mergeState });
     } catch {
       /* repo が消えた等 */
     }
+  },
+
+  setPanelTab: (panelTab) => set({ panelTab }),
+  setLogFilter: (logFilter) => set({ logFilter }),
+
+  showLogFor: (relPath, isFile) => {
+    // リポジトリルート自体 ('') は全体表示 = 絞り込みなし
+    set({ panelTab: 'log', logFilter: relPath ? { path: relPath, follow: isFile } : null });
+    switchView('git');
   },
 }));

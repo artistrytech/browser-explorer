@@ -57,6 +57,38 @@ export interface GitBranch {
   label: string;
 }
 
+/** グラフ用ログの 1 コミット (002.md §5.2) */
+export interface GitGraphCommit {
+  hash: string;
+  parents: string[];
+  author: string;
+  date: string;
+  refs: string[];
+  subject: string;
+}
+
+/** マージ/リベース/cherry-pick の進行状態 (002.md §2.2) */
+export interface MergeState {
+  inProgress: 'merge' | 'rebase' | 'cherry-pick' | null;
+  conflicted: string[];
+}
+
+export interface ConflictFile {
+  path: string;
+  kind: string;
+  binary: boolean;
+}
+
+export interface ConflictVersions {
+  path: string;
+  base: string | null;
+  ours: string | null;
+  theirs: string | null;
+  working: string | null;
+  kind: string;
+  binary: boolean;
+}
+
 export interface Favorite {
   path: string;
   label: string;

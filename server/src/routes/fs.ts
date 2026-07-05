@@ -23,7 +23,10 @@ function reqPath(v: unknown): string {
     err.status = 400;
     throw err;
   }
-  return v;
+  // ドライブ付き絶対パスへ解決して '/' 区切りに統一する。
+  // Windows で '/' のようなドライブレター無しパスをそのまま扱うと、
+  // git の repoRoot (C:/...) とのパス比較が全て外れてしまう。
+  return norm(path.resolve(v));
 }
 
 fsRouter.get('/volumes', async (_req, res) => {

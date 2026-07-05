@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { api } from '../api/client';
 import { toastError, useToast } from './toast';
 import { confirmDialog } from './dialog';
-import { useUi } from './ui';
+import { switchView, replaceView } from './ui';
 import { useSettings } from './settings';
 import { baseName } from '../lib/paths';
 import type { Eol } from '../types';
@@ -48,7 +48,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
     const existing = get().tabs.find((t) => t.path === path);
     if (existing) {
       set({ activePath: path });
-      useUi.getState().setView('editor');
+      switchView('editor');
       return;
     }
     try {
@@ -65,7 +65,8 @@ export const useEditor = create<EditorStore>((set, get) => ({
         mtime: r.mtime,
       };
       set((s) => ({ tabs: [...s.tabs, tab], activePath: r.path }));
-      useUi.getState().setView('editor');
+      // ファイル編集開始も履歴に積み、ブラウザバックで「ファイル」タブへ戻れるようにする
+      switchView('editor');
       useSettings.getState().addRecent(r.path, 'file');
     } catch (e) {
       toastError(e);
@@ -90,12 +91,12 @@ export const useEditor = create<EditorStore>((set, get) => ({
       activePath = tabs[Math.min(idx, tabs.length - 1)]?.path ?? null;
     }
     set({ tabs, activePath });
-    if (tabs.length === 0) useUi.getState().setView('files');
+    if (tabs.length === 0) replaceView('files');
   },
 
   activate: (path) => {
     set({ activePath: path });
-    useUi.getState().setView('editor');
+    switchView('editor');
   },
 
   updateContent: (path, content) => {

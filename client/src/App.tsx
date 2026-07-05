@@ -7,6 +7,8 @@ import { SettingsDialog } from './app/SettingsDialog';
 import { FileList } from './features/explorer/FileList';
 import { EditorPane } from './features/editor/EditorPane';
 import { GitPanel } from './features/git/GitPanel';
+import { CloneDialog } from './features/git/CloneDialog';
+import { ConflictResolver } from './features/git/ConflictResolver';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
 import { ToastHost } from './components/ToastHost';
@@ -14,8 +16,9 @@ import { useExplorer, pathFromUrl } from './stores/explorer';
 import { useEditor } from './stores/editor';
 import { useGit } from './stores/git';
 import { useSettings } from './stores/settings';
-import { useUi } from './stores/ui';
+import { useUi, viewFromUrl, switchView, replaceView } from './stores/ui';
 import { onFsChange } from './api/ws';
+import { api } from './api/client';
 import { parentPath, isRootPath } from './lib/paths';
 
 export default function App() {
@@ -30,11 +33,22 @@ export default function App() {
   // 初期化: 設定ロード → URL のパスを表示 (plan §6.5)
   useEffect(() => {
     void useSettings.getState().load();
+    // ホスト OS 判定 (002.md §4.2): メニューラベルの出し分けに使う
+    api.osPlatform().then((r) => useUi.getState().setPlatform(r.platform)).catch(() => {});
     const initial = pathFromUrl();
-    history.replaceState({ path: initial }, '', `${location.pathname}?path=${encodeURIComponent(initial)}`);
+    const initialView = viewFromUrl();
+    const params = new URLSearchParams();
+    params.set('path', initial);
+    if (initialView !== 'files') params.set('view', initialView);
+    history.replaceState({ path: initial, view: initialView }, '', `${location.pathname}?${params}`);
+    useUi.getState().setView(initialView);
     void navigate(initial, false);
 
-    const onPop = () => void useExplorer.getState().navigate(pathFromUrl(), false);
+    // 戻る/進む: パスとビューの両方を URL から復元する
+    const onPop = () => {
+      void useExplorer.getState().navigate(pathFromUrl(), false);
+      useUi.getState().setView(viewFromUrl());
+    };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -84,24 +98,24 @@ export default function App() {
     document.body.dataset.theme = theme;
   }, [theme]);
 
-  // エディタタブが無くなったら files へ
+  // エディタタブが無くなったら files へ (履歴は積まず URL のみ整合させる)
   useEffect(() => {
-    if (view === 'editor' && tabs.length === 0) setView('files');
+    if (view === 'editor' && tabs.length === 0) replaceView('files');
   }, [view, tabs.length, setView]);
 
   return (
     <div className="app">
       <Toolbar />
       <div className="view-tabs">
-        <button className={`view-tab${view === 'files' ? ' active' : ''}`} onClick={() => setView('files')}>
+        <button className={`view-tab${view === 'files' ? ' active' : ''}`} onClick={() => switchView('files')}>
           📁 ファイル
         </button>
         {tabs.length > 0 && (
-          <button className={`view-tab${view === 'editor' ? ' active' : ''}`} onClick={() => setView('editor')}>
+          <button className={`view-tab${view === 'editor' ? ' active' : ''}`} onClick={() => switchView('editor')}>
             📝 エディタ ({tabs.length})
           </button>
         )}
-        <button className={`view-tab${view === 'git' ? ' active' : ''}`} onClick={() => setView('git')}>
+        <button className={`view-tab${view === 'git' ? ' active' : ''}`} onClick={() => switchView('git')}>
           🌿 Git
         </button>
       </div>
@@ -129,6 +143,8 @@ export default function App() {
       <DialogHost />
       <ToastHost />
       <SettingsDialog />
+      <CloneDialog />
+      <ConflictResolver />
     </div>
   );
 }

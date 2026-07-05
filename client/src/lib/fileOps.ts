@@ -4,12 +4,22 @@ import { useEditor } from '../stores/editor';
 import { useGit } from '../stores/git';
 import { useToast, toastError } from '../stores/toast';
 import { confirmDialog, promptDialog } from '../stores/dialog';
-import { joinPath, baseName, formatSize, formatDate } from './paths';
+import { joinPath, baseName, formatSize, formatDate, parentPath } from './paths';
+import { saveEnteredChild } from './focusMemory';
 import type { FsEntry } from '../types';
+
+/** サブフォルダへ入る直前に親パスの focus を「今入る子」に更新 (002.md §6.3) */
+function rememberEnteredChild(entry: FsEntry): void {
+  const ex = useExplorer.getState();
+  if (parentPath(entry.path) !== ex.path) return; // 検索結果など別階層は対象外
+  const idx = ex.entries.findIndex((e) => e.path === entry.path);
+  saveEnteredChild(ex.path, entry.name, idx);
+}
 
 /** エントリを開く: フォルダなら移動、ファイルならエディタ */
 export function openEntry(entry: FsEntry): void {
   if (entry.type === 'dir' || (entry.type === 'symlink' && entry.linkTarget)) {
+    rememberEnteredChild(entry);
     if (entry.type === 'symlink') {
       // リンクは実体を stat して判断
       void api

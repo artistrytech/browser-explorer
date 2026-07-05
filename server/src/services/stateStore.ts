@@ -85,6 +85,33 @@ export function putState(partial: Partial<AppState>): void {
   tx();
 }
 
+// --- クイックアクセス (favorites) 単体操作 (002.md §7.4) ---
+
+export function listFavorites(): Favorite[] {
+  return db.prepare('SELECT path, label FROM favorites ORDER BY sort').all() as Favorite[];
+}
+
+/** ピン止め追加。パス重複は無視して false を返す。追加位置は末尾 (sort 採番) */
+export function addFavoriteRow(path: string, label: string): boolean {
+  const exists = db.prepare('SELECT 1 FROM favorites WHERE path = ?').get(path);
+  if (exists) return false;
+  const max = db.prepare('SELECT COALESCE(MAX(sort), -1) AS m FROM favorites').get() as { m: number };
+  db.prepare('INSERT INTO favorites (path, label, sort) VALUES (?, ?, ?)').run(path, label, max.m + 1);
+  return true;
+}
+
+export function removeFavoriteRow(path: string): boolean {
+  return db.prepare('DELETE FROM favorites WHERE path = ?').run(path).changes > 0;
+}
+
+export function reorderFavorites(paths: string[]): void {
+  const tx = db.transaction(() => {
+    const stmt = db.prepare('UPDATE favorites SET sort = ? WHERE path = ?');
+    paths.forEach((p, i) => stmt.run(i, p));
+  });
+  tx();
+}
+
 export function importState(state: Partial<AppState>): void {
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM settings').run();
