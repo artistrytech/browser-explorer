@@ -1,0 +1,987 @@
+* {
+  box-sizing: border-box;
+}
+
+:root,
+body[data-theme='light'] {
+  --bg: #ffffff;
+  --bg-alt: #f3f3f3;
+  --bg-hover: #e8f0fe;
+  --bg-selected: #cce4ff;
+  --border: #d9d9d9;
+  --text: #1f1f1f;
+  --text-dim: #707070;
+  --accent: #0067c0;
+  --danger: #c42b1c;
+  --add: #107c10;
+  --add-bg: #e6f4e6;
+  --del: #c42b1c;
+  --del-bg: #fde7e9;
+}
+
+body[data-theme='dark'] {
+  --bg: #1e1e1e;
+  --bg-alt: #252526;
+  --bg-hover: #2a2d2e;
+  --bg-selected: #094771;
+  --border: #3c3c3c;
+  --text: #d4d4d4;
+  --text-dim: #9a9a9a;
+  --accent: #4daafc;
+  --danger: #f48771;
+  --add: #4ec94e;
+  --add-bg: #173117;
+  --del: #f48771;
+  --del-bg: #3b1a1d;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', Meiryo, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---------- ツールバー ---------- */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+.tool-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 4px;
+  padding: 4px 9px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.tool-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.tool-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.address-bar {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  cursor: text;
+  overflow: hidden;
+}
+
+.address-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.crumb {
+  border: none;
+  background: transparent;
+  padding: 3px 5px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.crumb:hover {
+  background: var(--bg-hover);
+}
+
+.crumb-sep {
+  color: var(--text-dim);
+  margin: 0 1px;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.search-input {
+  width: 190px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 8px;
+  background: var(--bg);
+  color: inherit;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: var(--accent);
+}
+
+/* ---------- ビュータブ ---------- */
+.view-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px;
+}
+
+.view-tab {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.view-tab.active {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.view-tab:hover {
+  background: var(--bg-hover);
+}
+
+/* ---------- レイアウト ---------- */
+.main-split {
+  flex: 1;
+  min-height: 0;
+}
+
+.resize-handle {
+  width: 4px;
+  background: var(--bg-alt);
+  cursor: col-resize;
+}
+
+.resize-handle:hover {
+  background: var(--accent);
+}
+
+.main-area {
+  height: 100%;
+  position: relative;
+}
+
+.main-view {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-view.hidden {
+  visibility: hidden;
+  z-index: -1;
+}
+
+/* ---------- サイドバー ---------- */
+.sidebar {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-alt);
+  padding: 6px 0;
+}
+
+.side-section {
+  margin-bottom: 12px;
+}
+
+.side-heading {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 4px 12px;
+  text-transform: none;
+}
+
+.side-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 5px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.side-item:hover {
+  background: var(--bg-hover);
+}
+
+.side-item.active {
+  background: var(--bg-selected);
+}
+
+.side-icon {
+  width: 18px;
+  text-align: center;
+  flex: none;
+}
+
+.side-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-empty {
+  color: var(--text-dim);
+  padding: 2px 12px;
+  font-size: 12px;
+}
+
+/* ---------- ファイル一覧 ---------- */
+.file-list {
+  flex: 1;
+  overflow: auto;
+  outline: none;
+  background: var(--bg);
+}
+
+.search-banner {
+  padding: 6px 12px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.loading-bar {
+  padding: 4px 12px;
+  color: var(--text-dim);
+}
+
+.details-table {
+  width: 100%;
+  border-collapse: collapse;
+  user-select: none;
+}
+
+.details-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-alt);
+  text-align: left;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.details-table th:hover {
+  background: var(--bg-hover);
+}
+
+.sort-arrow {
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.details-table td {
+  padding: 4px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 380px;
+}
+
+.details-table tbody tr {
+  cursor: default;
+}
+
+.details-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.details-table tbody tr.selected {
+  background: var(--bg-selected);
+}
+
+.details-table tbody tr.drop-target {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.hidden-entry {
+  opacity: 0.55;
+}
+
+.col-size {
+  text-align: right;
+}
+
+.entry-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.entry-icon {
+  position: relative;
+  flex: none;
+}
+
+.git-overlay {
+  position: absolute;
+  right: -5px;
+  bottom: -4px;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 50%;
+  padding: 0 1px;
+  background: var(--bg);
+  line-height: 1.2;
+}
+
+.ov-normal { color: var(--add); }
+.ov-modified { color: #e08a00; }
+.ov-staged { color: var(--add); }
+.ov-untracked { color: var(--accent); }
+.ov-conflicted { color: var(--danger); }
+
+.cut-pending {
+  opacity: 0.5;
+}
+
+.rename-input {
+  font: inherit;
+  border: 1px solid var(--accent);
+  outline: none;
+  padding: 1px 4px;
+  background: var(--bg);
+  color: inherit;
+  width: 240px;
+}
+
+.empty-hint {
+  padding: 28px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.icon-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 10px;
+  user-select: none;
+  align-content: flex-start;
+}
+
+.icon-grid > div {
+  width: 96px;
+  padding: 8px 4px;
+  border-radius: 6px;
+  text-align: center;
+  cursor: default;
+}
+
+.icon-grid > div:hover {
+  background: var(--bg-hover);
+}
+
+.icon-grid > div.selected {
+  background: var(--bg-selected);
+}
+
+.big-icon {
+  font-size: 34px;
+  position: relative;
+  display: inline-block;
+}
+
+.big-icon .git-overlay {
+  font-size: 13px;
+}
+
+.icon-label {
+  margin-top: 4px;
+  word-break: break-all;
+  font-size: 12px;
+  max-height: 3.6em;
+  overflow: hidden;
+}
+
+/* ---------- コンテキストメニュー ---------- */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 200px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  padding: 4px;
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.menu-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.menu-item.danger {
+  color: var(--danger);
+}
+
+.menu-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
+}
+
+/* ---------- ダイアログ ---------- */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px;
+  min-width: 380px;
+  max-width: 560px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.dialog-title {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+
+.dialog-message {
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: inherit;
+  outline: none;
+  font: inherit;
+}
+
+.dialog-input:focus {
+  border-color: var(--accent);
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn.primary.danger,
+.btn.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.settings-dialog {
+  min-width: 460px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+
+.settings-label {
+  color: var(--text-dim);
+}
+
+.settings-row select,
+.settings-row input[type='number'] {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: inherit;
+}
+
+/* ---------- トースト ---------- */
+.toast-host {
+  position: fixed;
+  right: 16px;
+  bottom: 40px;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toast {
+  padding: 10px 16px;
+  border-radius: 6px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  max-width: 420px;
+}
+
+.toast.error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.toast.success {
+  border-color: var(--add);
+}
+
+/* ---------- ステータスバー ---------- */
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 3px 12px;
+  background: var(--bg-alt);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dim);
+  min-height: 26px;
+}
+
+.status-spacer {
+  flex: 1;
+}
+
+.status-select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 12px;
+  padding: 1px 3px;
+}
+
+.status-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 3px;
+  padding: 1px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.status-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.status-btn:disabled {
+  opacity: 0.45;
+}
+
+.status-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.status-btn.danger {
+  color: var(--danger);
+}
+
+/* ---------- エディタ ---------- */
+.editor-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.editor-tabs {
+  display: flex;
+  align-items: center;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex: none;
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 14px;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.editor-tab.active {
+  background: var(--bg);
+  border-bottom: 2px solid var(--accent);
+}
+
+.editor-tab:hover:not(.active) {
+  background: var(--bg-hover);
+}
+
+.tab-close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0 4px;
+  color: var(--text-dim);
+}
+
+.tab-close:hover {
+  background: var(--bg-hover);
+  color: var(--danger);
+}
+
+.editor-tab-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  padding: 0 10px;
+}
+
+.monaco-container {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---------- Git パネル ---------- */
+.git-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.git-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+  flex-wrap: wrap;
+}
+
+.git-repo-name {
+  font-weight: 600;
+}
+
+.git-tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.git-tab {
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.git-tab.active {
+  background: var(--bg);
+  border-color: var(--border);
+  font-weight: 600;
+}
+
+.git-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.git-left {
+  width: 44%;
+  min-width: 300px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding: 8px;
+}
+
+.git-right {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+}
+
+.git-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin: 10px 0 4px;
+}
+
+.git-file-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.git-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.git-file-name:hover {
+  background: var(--bg-hover);
+}
+
+.git-file-status {
+  display: inline-block;
+  min-width: 42px;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.commit-box {
+  margin-top: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.commit-message {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+}
+
+.amend-label {
+  display: block;
+  margin: 6px 0 10px;
+  color: var(--text-dim);
+}
+
+.git-log {
+  display: flex;
+  flex-direction: column;
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 0 6px;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+.log-row:hover {
+  background: var(--bg-hover);
+}
+
+.log-row.active {
+  background: var(--bg-selected);
+}
+
+.log-graph {
+  color: var(--accent);
+}
+
+.log-message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-refs {
+  color: #e08a00;
+  font-size: 11px;
+}
+
+.log-meta {
+  grid-column: 2;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.branch-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.branch-row > span {
+  flex: 1;
+  white-space: pre;
+}
+
+.branch-current {
+  font-weight: 700;
+  color: var(--add);
+}
+
+.git-branches .btn {
+  margin-bottom: 8px;
+}
+
+.commit-detail-head {
+  padding: 6px 4px 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.diff-title {
+  font-weight: 600;
+  padding: 4px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.diff-view {
+  margin: 0;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.diff-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 0 6px;
+}
+
+.diff-add {
+  background: var(--add-bg);
+  color: var(--add);
+}
+
+.diff-del {
+  background: var(--del-bg);
+  color: var(--del);
+}
+
+.diff-hunk {
+  color: var(--accent);
+  background: var(--bg-alt);
+}
+
+.diff-meta {
+  color: var(--text-dim);
+}

@@ -1,0 +1,97 @@
+import Database from 'better-sqlite3';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
+import { dataDir } from '../config.js';
+
+mkdirSync(dataDir, { recursive: true });
+const db = new Database(path.join(dataDir, 'app.db'));
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS favorites (id INTEGER PRIMARY KEY, path TEXT NOT NULL, label TEXT NOT NULL, sort INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS repositories (id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL, added_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS recents (id INTEGER PRIMARY KEY, path TEXT NOT NULL, kind TEXT NOT NULL, opened_at TEXT NOT NULL);
+`);
+
+export interface Favorite {
+  path: string;
+  label: string;
+}
+
+export interface AppState {
+  settings: Record<string, unknown>;
+  favorites: Favorite[];
+  repositories: string[];
+  recents: { path: string; kind: string; openedAt: string }[];
+}
+
+export function getState(): AppState {
+  const settings: Record<string, unknown> = {};
+  for (const row of db.prepare('SELECT key, value FROM settings').all() as {
+    key: string;
+    value: string;
+  }[]) {
+    try {
+      settings[row.key] = JSON.parse(row.value);
+    } catch {
+      settings[row.key] = row.value;
+    }
+  }
+  const favorites = (
+    db.prepare('SELECT path, label FROM favorites ORDER BY sort').all() as Favorite[]
+  );
+  const repositories = (
+    db.prepare('SELECT path FROM repositories ORDER BY added_at').all() as { path: string }[]
+  ).map((r) => r.path);
+  const recents = (
+    db
+      .prepare('SELECT path, kind, opened_at FROM recents ORDER BY opened_at DESC LIMIT 30')
+      .all() as { path: string; kind: string; opened_at: string }[]
+  ).map((r) => ({ path: r.path, kind: r.kind, openedAt: r.opened_at }));
+  return { settings, favorites, repositories, recents };
+}
+
+export function putState(partial: Partial<AppState>): void {
+  const tx = db.transaction(() => {
+    if (partial.settings) {
+      const stmt = db.prepare(
+        'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+      );
+      for (const [k, v] of Object.entries(partial.settings)) {
+        stmt.run(k, JSON.stringify(v));
+      }
+    }
+    if (partial.favorites) {
+      db.prepare('DELETE FROM favorites').run();
+      const stmt = db.prepare('INSERT INTO favorites (path, label, sort) VALUES (?, ?, ?)');
+      partial.favorites.forEach((f, i) => stmt.run(f.path, f.label, i));
+    }
+    if (partial.repositories) {
+      db.prepare('DELETE FROM repositories').run();
+      const stmt = db.prepare('INSERT INTO repositories (path, added_at) VALUES (?, ?)');
+      partial.repositories.forEach((p, i) =>
+        stmt.run(p, new Date(Date.now() + i).toISOString()),
+      );
+    }
+    if (partial.recents) {
+      db.prepare('DELETE FROM recents').run();
+      const stmt = db.prepare('INSERT INTO recents (path, kind, opened_at) VALUES (?, ?, ?)');
+      for (const r of partial.recents.slice(0, 30)) {
+        stmt.run(r.path, r.kind, r.openedAt);
+      }
+    }
+  });
+  tx();
+}
+
+export function importState(state: Partial<AppState>): void {
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM settings').run();
+    db.prepare('DELETE FROM favorites').run();
+    db.prepare('DELETE FROM repositories').run();
+    db.prepare('DELETE FROM recents').run();
+  });
+  tx();
+  putState(state);
+}
