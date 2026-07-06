@@ -831,6 +831,13 @@ button {
   padding: 8px;
 }
 
+/* グラフ表示時: スクロールは .graph-rows 側で行う (位置の保存/復元対象のため) */
+.git-left.graph-host {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .git-right {
   flex: 1;
   overflow: auto;

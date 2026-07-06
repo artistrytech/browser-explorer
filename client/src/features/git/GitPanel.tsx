@@ -76,28 +76,34 @@ export function GitPanel() {
     }
   }, [repoRoot]);
 
-  // ログ (線形リスト) のスクロール位置を保存 (デバウンス)
+  // ログ (線形リスト) のスクロール位置を保存 (デバウンス + アンマウント時フラッシュ)
   useEffect(() => {
     const el = leftRef.current;
     if (!el || !repoRoot) return;
     let t: ReturnType<typeof setTimeout>;
+    let last = -1;
     const onScroll = () => {
+      if (useGit.getState().panelTab !== 'log') return;
+      last = el.scrollTop;
       clearTimeout(t);
-      t = setTimeout(() => {
-        if (useGit.getState().panelTab === 'log') saveGitView(repoRoot, { logScrollTop: el.scrollTop });
-      }, 250);
+      t = setTimeout(() => saveGitView(repoRoot, { logScrollTop: last }), 250);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       clearTimeout(t);
       el.removeEventListener('scroll', onScroll);
+      if (last >= 0) saveGitView(repoRoot, { logScrollTop: last });
     };
   }, [repoRoot]);
 
   // ログ (線形リスト) 表示時: コミット読み込み後にスクロール位置を復元
   const logRestoredRef = useRef(false);
   useEffect(() => {
-    if (tab !== 'log' || !logFilter || !repoRoot || commits.length === 0 || logRestoredRef.current) return;
+    if (tab !== 'log' || !logFilter) {
+      logRestoredRef.current = false; // タブを離れたら次回表示時に再復元する
+      return;
+    }
+    if (!repoRoot || commits.length === 0 || logRestoredRef.current) return;
     logRestoredRef.current = true;
     const saved = loadGitView(repoRoot);
     if (saved && leftRef.current) leftRef.current.scrollTop = saved.logScrollTop;
@@ -321,7 +327,8 @@ export function GitPanel() {
       )}
 
       <div className="git-body">
-        <div className="git-left" ref={leftRef}>
+        {/* グラフ表示時はスクロールを .graph-rows 側に持たせる (スクロール位置の保存/復元のため) */}
+        <div className={`git-left${tab === 'log' && !logFilter ? ' graph-host' : ''}`} ref={leftRef}>
           {tab === 'changes' && (
             <>
               <div className="git-section-title">

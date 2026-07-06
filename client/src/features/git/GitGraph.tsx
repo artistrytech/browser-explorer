@@ -207,19 +207,23 @@ export function GitGraph({
   const rowsRef = useRef<HTMLDivElement>(null);
   const scrollRestoredRef = useRef(false);
 
-  // スクロール位置を sessionStorage に保持 (タブ復帰時に復元)
+  // スクロール位置を sessionStorage に保持 (タブ復帰時に復元)。
+  // アンマウント時はデバウンス待ちの値をフラッシュして取りこぼしを防ぐ
   useEffect(() => {
     const el = rowsRef.current;
     if (!el) return;
     let t: ReturnType<typeof setTimeout>;
+    let last = -1;
     const onScroll = () => {
+      last = el.scrollTop;
       clearTimeout(t);
-      t = setTimeout(() => saveGitView(repo, { graphScrollTop: el.scrollTop }), 250);
+      t = setTimeout(() => saveGitView(repo, { graphScrollTop: last }), 250);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       clearTimeout(t);
       el.removeEventListener('scroll', onScroll);
+      if (last >= 0) saveGitView(repo, { graphScrollTop: last });
     };
   }, [repo]);
 
