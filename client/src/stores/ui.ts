@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
-/** メイン領域の表示: ファイル一覧 / Git パネル / エディタ */
-export type MainView = 'files' | 'git' | 'editor';
+/** メイン領域の表示: ファイル一覧 / Git パネル / エディタ / コミット差分 */
+export type MainView = 'files' | 'git' | 'editor' | 'diff';
 
 interface UiStore {
   view: MainView;
@@ -25,7 +25,7 @@ export const useUi = create<UiStore>((set) => ({
 /** URL の ?view= から表示ビューを復元 (無指定は files) */
 export function viewFromUrl(): MainView {
   const v = new URLSearchParams(location.search).get('view');
-  return v === 'git' || v === 'editor' ? v : 'files';
+  return v === 'git' || v === 'editor' || v === 'diff' ? v : 'files';
 }
 
 /**

@@ -89,6 +89,23 @@ export interface ConflictVersions {
   binary: boolean;
 }
 
+/** コミットの差分ファイル 1 件 (行数はバイナリ時 null) */
+export interface CommitFile {
+  path: string;
+  status: string; // A / M / D / T
+  added: number | null;
+  deleted: number | null;
+  binary: boolean;
+}
+
+export interface CommitFilesResult {
+  hash: string;
+  author: string;
+  date: string;
+  message: string;
+  files: CommitFile[];
+}
+
 export interface Favorite {
   path: string;
   label: string;

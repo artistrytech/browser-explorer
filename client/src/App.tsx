@@ -9,6 +9,9 @@ import { EditorPane } from './features/editor/EditorPane';
 import { GitPanel } from './features/git/GitPanel';
 import { CloneDialog } from './features/git/CloneDialog';
 import { ConflictResolver } from './features/git/ConflictResolver';
+import { GitCommandDialog } from './features/git/GitCommandDialog';
+import { PushDialog } from './features/git/PushDialog';
+import { DiffTab, useDiffTab } from './features/git/DiffTab';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
 import { ToastHost } from './components/ToastHost';
@@ -19,12 +22,13 @@ import { useSettings } from './stores/settings';
 import { useUi, viewFromUrl, switchView, replaceView } from './stores/ui';
 import { onFsChange } from './api/ws';
 import { api } from './api/client';
-import { parentPath, isRootPath } from './lib/paths';
+import { parentPath, isRootPath, baseName } from './lib/paths';
 
 export default function App() {
   const path = useExplorer((s) => s.path);
   const navigate = useExplorer((s) => s.navigate);
   const tabs = useEditor((s) => s.tabs);
+  const diffTarget = useDiffTab((s) => s.current);
   const { view, setView } = useUi();
   const theme = useSettings((s) => s.settings.theme);
   const loaded = useSettings((s) => s.loaded);
@@ -103,6 +107,11 @@ export default function App() {
     if (view === 'editor' && tabs.length === 0) replaceView('files');
   }, [view, tabs.length, setView]);
 
+  // 差分タブ: 対象が無いのに view=diff (リロード直後等) なら files へ
+  useEffect(() => {
+    if (view === 'diff' && !diffTarget) replaceView('files');
+  }, [view, diffTarget]);
+
   return (
     <div className="app">
       <Toolbar />
@@ -118,6 +127,11 @@ export default function App() {
         <button className={`view-tab${view === 'git' ? ' active' : ''}`} onClick={() => switchView('git')}>
           🌿 Git
         </button>
+        {diffTarget && (
+          <button className={`view-tab${view === 'diff' ? ' active' : ''}`} onClick={() => switchView('diff')}>
+            ± {baseName(diffTarget.path)}
+          </button>
+        )}
       </div>
       <PanelGroup direction="horizontal" className="main-split">
         <Panel defaultSize={18} minSize={12} maxSize={40}>
@@ -135,6 +149,9 @@ export default function App() {
             <div className={`main-view${view === 'git' ? '' : ' hidden'}`}>
               {view === 'git' && <GitPanel />}
             </div>
+            <div className={`main-view${view === 'diff' ? '' : ' hidden'}`}>
+              {view === 'diff' && <DiffTab />}
+            </div>
           </div>
         </Panel>
       </PanelGroup>
@@ -145,6 +162,8 @@ export default function App() {
       <SettingsDialog />
       <CloneDialog />
       <ConflictResolver />
+      <PushDialog />
+      <GitCommandDialog />
     </div>
   );
 }

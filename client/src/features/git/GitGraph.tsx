@@ -3,7 +3,8 @@ import { api } from '../../api/client';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import { confirmDialog, promptDialog } from '../../stores/dialog';
 import { useGit } from '../../stores/git';
-import { toastError, useToast } from '../../stores/toast';
+import { toastError } from '../../stores/toast';
+import { runGitCommands } from './GitCommandDialog';
 import type { GitGraphCommit } from '../../types';
 
 /**
@@ -225,14 +226,6 @@ export function GitGraph({
   const { rows, maxLanes } = useMemo(() => assignLanes(commits), [commits]);
   const graphWidth = Math.min(maxLanes, 12) * LANE_W + 8;
 
-  const run = (fn: () => Promise<unknown>, msg: string) =>
-    void fn()
-      .then(() => {
-        useToast.getState().show('success', msg);
-        void useGit.getState().refreshStatus();
-      })
-      .catch(toastError);
-
   const commitMenu = (e: React.MouseEvent, c: GitGraphCommit) => {
     e.preventDefault();
     const short = c.hash.slice(0, 7);
@@ -243,14 +236,14 @@ export function GitGraph({
         label: `このコミットを checkout (${short})`,
         action: () =>
           void confirmDialog('checkout', `${short} を checkout しますか? (detached HEAD)`).then((ok) => {
-            if (ok) run(() => api.gitCheckoutCommit(repo, c.hash), `${short} を checkout しました`);
+            if (ok) void runGitCommands(repo, [['checkout', c.hash]], 'Checkout');
           }),
       },
       {
         label: `ここへ reset --mixed`,
         action: () =>
           void confirmDialog('reset --mixed', `現在のブランチを ${short} へ reset しますか?`).then((ok) => {
-            if (ok) run(() => api.gitReset(repo, c.hash, 'mixed'), 'reset しました');
+            if (ok) void runGitCommands(repo, [['reset', '--mixed', c.hash]], 'Reset');
           }),
       },
       {
@@ -262,18 +255,18 @@ export function GitGraph({
             `${short} へ reset --hard します。作業ツリーの変更は失われます。よろしいですか?`,
             true,
           ).then((ok) => {
-            if (ok) run(() => api.gitReset(repo, c.hash, 'hard'), 'reset --hard しました');
+            if (ok) void runGitCommands(repo, [['reset', '--hard', c.hash]], 'Reset --hard');
           }),
       },
       {
         label: 'cherry-pick',
-        action: () => run(() => api.gitCherryPick(repo, c.hash), `${short} を cherry-pick しました`),
+        action: () => void runGitCommands(repo, [['cherry-pick', c.hash]], 'Cherry-pick'),
       },
       {
         label: 'タグを付ける…',
         action: () =>
           void promptDialog('タグ付け', '', { message: `${short} に付けるタグ名` }).then((name) => {
-            if (name) run(() => api.gitTag(repo, name, c.hash), `タグ ${name} を作成しました`);
+            if (name) void runGitCommands(repo, [['tag', name, c.hash]], 'タグ付け');
           }),
       },
     ];

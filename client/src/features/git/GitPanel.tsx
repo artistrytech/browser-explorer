@@ -9,7 +9,24 @@ import { DiffView } from './DiffView';
 import { GitGraph } from './GitGraph';
 import { openCloneDialog } from './CloneDialog';
 import { openConflictResolver } from './ConflictResolver';
-import type { GitBranch, GitCommit, GitFileStatus } from '../../types';
+import { runGitCommands } from './GitCommandDialog';
+import { openPushDialog, defaultPushArgs } from './PushDialog';
+import { openCommitDiff } from './DiffTab';
+import type { CommitFilesResult, GitBranch, GitCommit, GitFileStatus } from '../../types';
+
+/** コミット差分ファイルのステータス表示 (A/M/D/T) */
+const COMMIT_FILE_STATUS: Record<string, { label: string; cls: string }> = {
+  A: { label: '追加', cls: 'st-add' },
+  M: { label: '修正', cls: 'st-mod' },
+  D: { label: '削除', cls: 'st-del' },
+  T: { label: '種別変更', cls: 'st-mod' },
+};
+
+/** コミットの引数を組み立てる (amend + メッセージ空欄は --no-edit) */
+function commitArgs(message: string, amend: boolean): string[] {
+  if (amend && !message.trim()) return ['commit', '--amend', '--no-edit'];
+  return amend ? ['commit', '--amend', '-m', message] : ['commit', '-m', message];
+}
 
 function statusLabel(f: GitFileStatus, staged: boolean): string {
   const c = staged ? f.index : f.workingDir;
@@ -31,9 +48,7 @@ export function GitPanel() {
   const [diff, setDiff] = useState<{ title: string; text: string } | null>(null);
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const [branches, setBranches] = useState<GitBranch[]>([]);
-  const [commitDetail, setCommitDetail] = useState<{
-    hash: string; author: string; date: string; message: string; patch: string;
-  } | null>(null);
+  const [commitDetail, setCommitDetail] = useState<CommitFilesResult | null>(null);
 
   const explorerPath = useExplorer((s) => s.path);
 
@@ -155,26 +170,26 @@ export function GitPanel() {
           🌿 {status?.branch ?? '?'}
           {status?.tracking ? ` ↑${status.ahead}↓${status.behind}` : ''}
         </span>
-        <button className="status-btn" disabled={busy} onClick={() => void run(() => api.gitFetch(repoRoot), 'fetch 完了')}>
+        <button className="status-btn" disabled={busy} onClick={() => void runGitCommands(repoRoot, [['fetch']], 'Fetch')}>
           Fetch
         </button>
-        <button className="status-btn" disabled={busy} onClick={() => void run(() => api.gitPull(repoRoot), 'pull 完了')}>
+        <button className="status-btn" disabled={busy} onClick={() => void runGitCommands(repoRoot, [['pull']], 'Pull')}>
           Pull
         </button>
-        <button className="status-btn" disabled={busy} onClick={() => void run(() => api.gitPush(repoRoot), 'push 完了')}>
+        <button className="status-btn" disabled={busy} onClick={openPushDialog}>
           Push
         </button>
         <button
           className="status-btn"
           disabled={busy}
-          onClick={() => void run(() => api.gitStash(repoRoot, 'save'), 'stash しました')}
+          onClick={() => void runGitCommands(repoRoot, [['stash']], 'Stash')}
         >
           Stash
         </button>
         <button
           className="status-btn"
           disabled={busy}
-          onClick={() => void run(() => api.gitStash(repoRoot, 'pop'), 'stash pop しました')}
+          onClick={() => void runGitCommands(repoRoot, [['stash', 'pop']], 'Stash pop')}
         >
           Pop
         </button>
@@ -213,7 +228,19 @@ export function GitPanel() {
           ) : (
             <button
               className="btn"
-              onClick={() => void run(() => api.gitMergeContinue(repoRoot), '完了しました')}
+              onClick={() =>
+                void runGitCommands(
+                  repoRoot,
+                  [
+                    mergeState.inProgress === 'merge'
+                      ? ['commit', '--no-edit']
+                      : mergeState.inProgress === 'rebase'
+                        ? ['rebase', '--continue']
+                        : ['cherry-pick', '--continue'],
+                  ],
+                  '続行 (完了)',
+                )
+              }
             >
               完了 (コミット)
             </button>
@@ -223,7 +250,18 @@ export function GitPanel() {
             onClick={() =>
               void confirmDialog('中止', '進行中の操作を中止して開始前の状態へ戻します。よろしいですか?', true).then(
                 (ok) => {
-                  if (ok) void run(() => api.gitMergeAbort(repoRoot), '中止しました');
+                  if (ok)
+                    void runGitCommands(
+                      repoRoot,
+                      [
+                        mergeState.inProgress === 'merge'
+                          ? ['merge', '--abort']
+                          : mergeState.inProgress === 'rebase'
+                            ? ['rebase', '--abort']
+                            : ['cherry-pick', '--abort'],
+                      ],
+                      '中止',
+                    );
                 },
               )
             }
@@ -278,9 +316,11 @@ export function GitPanel() {
                     className="btn primary"
                     disabled={busy || (!message.trim() && !amend) || (staged.length === 0 && !amend)}
                     onClick={() =>
-                      void run(() => api.gitCommit(repoRoot, message, amend), 'コミットしました').then(() => {
-                        setMessage('');
-                        setAmend(false);
+                      void runGitCommands(repoRoot, [commitArgs(message, amend)], 'Commit').then((ok) => {
+                        if (ok) {
+                          setMessage('');
+                          setAmend(false);
+                        }
                       })
                     }
                   >
@@ -290,12 +330,15 @@ export function GitPanel() {
                     className="btn"
                     disabled={busy || (!message.trim() && !amend) || (staged.length === 0 && !amend)}
                     onClick={() =>
-                      void run(
-                        () => api.gitCommit(repoRoot, message, amend).then(() => api.gitPush(repoRoot)),
-                        'コミットして push しました',
-                      ).then(() => {
-                        setMessage('');
-                        setAmend(false);
+                      void runGitCommands(
+                        repoRoot,
+                        [commitArgs(message, amend), defaultPushArgs(status ?? { branch: null, tracking: null })],
+                        'Commit & Push',
+                      ).then((ok) => {
+                        if (ok) {
+                          setMessage('');
+                          setAmend(false);
+                        }
                       })
                     }
                   >
@@ -321,7 +364,7 @@ export function GitPanel() {
                 <button
                   key={c.hash}
                   className={`log-row${commitDetail?.hash === c.hash ? ' active' : ''}`}
-                  onClick={() => api.gitShow(repoRoot, c.hash).then(setCommitDetail).catch(toastError)}
+                  onClick={() => api.gitCommitFiles(repoRoot, c.hash).then(setCommitDetail).catch(toastError)}
                 >
                   <span className="log-graph">{c.parents.split(' ').filter(Boolean).length > 1 ? '⑂' : '●'}</span>
                   <span className="log-message">
@@ -342,7 +385,7 @@ export function GitPanel() {
             <GitGraph
               repo={repoRoot}
               selectedHash={commitDetail?.hash ?? null}
-              onSelect={(hash) => api.gitShow(repoRoot, hash).then(setCommitDetail).catch(toastError)}
+              onSelect={(hash) => api.gitCommitFiles(repoRoot, hash).then(setCommitDetail).catch(toastError)}
             />
           )}
 
@@ -353,7 +396,7 @@ export function GitPanel() {
                 onClick={() =>
                   void promptDialog('新しいブランチ', '', { message: '作成して切り替えるブランチ名' }).then(
                     (name) => {
-                      if (name) void run(() => api.gitBranch(repoRoot, 'create', name), `${name} を作成しました`);
+                      if (name) void runGitCommands(repoRoot, [['checkout', '-b', name]], 'ブランチ作成');
                     },
                   )
                 }
@@ -370,13 +413,13 @@ export function GitPanel() {
                     <>
                       <button
                         className="status-btn"
-                        onClick={() => void run(() => api.gitBranch(repoRoot, 'checkout', b.name), `${b.name} に切替`)}
+                        onClick={() => void runGitCommands(repoRoot, [['checkout', b.name]], 'ブランチ切替')}
                       >
                         切替
                       </button>
                       <button
                         className="status-btn"
-                        onClick={() => void run(() => api.gitMerge(repoRoot, b.name), `${b.name} をマージ`)}
+                        onClick={() => void runGitCommands(repoRoot, [['merge', b.name]], 'マージ')}
                       >
                         マージ
                       </button>
@@ -384,7 +427,7 @@ export function GitPanel() {
                         className="status-btn danger"
                         onClick={() =>
                           void confirmDialog('ブランチ削除', `${b.name} を削除しますか?`, true).then((ok) => {
-                            if (ok) void run(() => api.gitBranch(repoRoot, 'delete', b.name), '削除しました');
+                            if (ok) void runGitCommands(repoRoot, [['branch', '-d', b.name]], 'ブランチ削除');
                           })
                         }
                       >
@@ -409,7 +452,43 @@ export function GitPanel() {
                   {commitDetail.author} · {commitDetail.date} · {commitDetail.hash.slice(0, 12)}
                 </div>
               </div>
-              <DiffView diff={commitDetail.patch} />
+              {/* 差分ファイル一覧: ダブルクリックで 2 ペイン差分タブを開く */}
+              <table className="commit-files">
+                <thead>
+                  <tr>
+                    <th>ステータス</th>
+                    <th>ファイル</th>
+                    <th className="num">追加</th>
+                    <th className="num">削除</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {commitDetail.files.map((f) => {
+                    const st = COMMIT_FILE_STATUS[f.status] ?? { label: f.status, cls: 'st-mod' };
+                    return (
+                      <tr
+                        key={f.path}
+                        title="ダブルクリックで差分を表示"
+                        onDoubleClick={() =>
+                          openCommitDiff({
+                            repo: repoRoot,
+                            hash: commitDetail.hash,
+                            path: f.path,
+                            subject: commitDetail.message.split('\n')[0],
+                          })
+                        }
+                      >
+                        <td className={`cf-status ${st.cls}`}>{st.label}</td>
+                        <td className="cf-path" title={f.path}>{f.path}</td>
+                        <td className="num cf-added">{f.binary ? '–' : `+${f.added ?? 0}`}</td>
+                        <td className="num cf-deleted">{f.binary ? '–' : `−${f.deleted ?? 0}`}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {commitDetail.files.length === 0 && <div className="empty-hint">変更ファイルはありません</div>}
+              <div className="commit-files-hint">行をダブルクリックすると 2 ペインの差分を表示します</div>
             </div>
           ) : diff ? (
             <>

@@ -1,5 +1,6 @@
 import type {
   AppState,
+  CommitFilesResult,
   ConflictFile,
   ConflictVersions,
   Eol,
@@ -100,6 +101,12 @@ export const api = {
       `/api/git/graph?repo=${q(repo)}&limit=${opts.limit ?? 200}` +
         `${opts.skip ? `&skip=${opts.skip}` : ''}${opts.all ? '&all=true' : ''}`,
     ),
+  gitCommitFiles: (repo: string, hash: string) =>
+    get<CommitFilesResult>(`/api/git/commit-files?repo=${q(repo)}&hash=${q(hash)}`),
+  gitCommitFileDiff: (repo: string, hash: string, path: string) =>
+    get<{ path: string; before: string | null; after: string | null; binary: boolean }>(
+      `/api/git/commit-file-diff?repo=${q(repo)}&hash=${q(hash)}&path=${q(path)}`,
+    ),
   gitShow: (repo: string, hash: string) =>
     get<{ hash: string; author: string; date: string; message: string; patch: string }>(
       `/api/git/show?repo=${q(repo)}&hash=${q(hash)}`,
@@ -126,6 +133,12 @@ export const api = {
   gitStash: (repo: string, action: 'save' | 'pop' | 'list') =>
     post<{ ok: true; list?: unknown[] }>('/api/git/stash', { repo, action }),
   gitInit: (path: string) => post<{ ok: true }>('/api/git/init', { path }),
+  /** git コマンド実行: 非 0 終了でも HTTP 200 で ok:false が返る */
+  gitExec: (repo: string, args: string[]) =>
+    post<{ ok: boolean; code: number; command: string; output: string }>('/api/git/exec', {
+      repo,
+      args,
+    }),
   gitClone: (body: { url: string; dir: string; branch?: string; depth?: number; recursive?: boolean }) =>
     post<{ ok: true; id: string }>('/api/git/clone', body),
 

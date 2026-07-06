@@ -165,6 +165,62 @@ gitRouter.get('/show', async (req, res) => {
   res.json({ hash: h, author, date, message: msg.join('\n').trim(), patch: patch ?? '' });
 });
 
+/**
+ * コミットの差分ファイル一覧: パス・ステータス (追加/修正/削除)・追加行数・削除行数。
+ * マージコミットは第 1 親との差分。リネーム検出はしない (--no-renames: D+A として扱う)。
+ */
+gitRouter.get('/commit-files', async (req, res) => {
+  const g = git(req.query.repo);
+  const hash = String(req.query.hash ?? '');
+  if (!hash) badRequest('hash is required');
+  const metaRaw = await g.show([hash, '--no-patch', '--format=%H%x1f%P%x1f%an%x1f%ad%x1f%B', '--date=iso']);
+  const [h, parentsRaw, author, date, ...msg] = metaRaw.split('\x1f');
+  const hasParent = parentsRaw.trim().length > 0;
+  const base = hasParent
+    ? ['diff', '--no-renames']
+    : ['diff-tree', '-r', '--root', '--no-renames', '--format='];
+  const revs = hasParent ? [`${hash}^`, hash] : [hash];
+  const [numstatRaw, nameStatusRaw] = await Promise.all([
+    g.raw([...base, '--numstat', ...revs]),
+    g.raw([...base, '--name-status', ...revs]),
+  ]);
+  const status = new Map<string, string>();
+  for (const line of nameStatusRaw.split('\n')) {
+    const m = line.match(/^([A-Z])\d*\t(.+)$/);
+    if (m) status.set(norm(m[2]), m[1]);
+  }
+  const files = numstatRaw
+    .split('\n')
+    .map((line) => line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/))
+    .filter((m): m is RegExpMatchArray => m !== null)
+    .map((m) => {
+      const p = norm(m[3]);
+      return {
+        path: p,
+        status: status.get(p) ?? 'M',
+        added: m[1] === '-' ? null : Number(m[1]),
+        deleted: m[2] === '-' ? null : Number(m[2]),
+        binary: m[1] === '-', // numstat が '-' を返すのはバイナリ
+      };
+    });
+  res.json({ hash: h, author, date, message: msg.join('\x1f').trim(), files });
+});
+
+/** コミット前後のファイル内容 (2 ペイン差分表示用)。存在しない側は null */
+gitRouter.get('/commit-file-diff', async (req, res) => {
+  const g = git(req.query.repo);
+  const hash = String(req.query.hash ?? '');
+  if (!hash) badRequest('hash is required');
+  const rel = relPath(req.query.path);
+  const [before, after] = await Promise.all([
+    g.show([`${hash}^:${rel}`]).catch(() => null),
+    g.show([`${hash}:${rel}`]).catch(() => null),
+  ]);
+  const nul = String.fromCharCode(0);
+  const binary = (before !== null && before.includes(nul)) || (after !== null && after.includes(nul));
+  res.json({ path: rel, before, after, binary });
+});
+
 gitRouter.get('/diff', async (req, res) => {
   const g = git(req.query.repo);
   const p = typeof req.query.path === 'string' ? req.query.path : undefined;
@@ -331,6 +387,59 @@ gitRouter.post('/conflict/take', async (req, res) => {
 });
 
 const execFileAsync = promisify(execFile);
+
+/** /exec で許可する git サブコマンド (読み書き系の操作コマンドのみ) */
+const EXEC_ALLOWED = new Set([
+  'push', 'pull', 'fetch', 'merge', 'commit', 'checkout', 'switch', 'branch',
+  'tag', 'stash', 'cherry-pick', 'reset', 'rebase', 'revert', 'restore', 'clean', 'add',
+]);
+
+/**
+ * Git コマンド実行 (実行コマンドと出力をそのまま返す)。
+ * 成否はダイアログでユーザーに確認させるため、非 0 終了でも HTTP 200 で
+ * { ok:false, output } を返す。
+ */
+gitRouter.post('/exec', (req, res) => {
+  const { repo, args } = req.body as { repo?: unknown; args?: unknown };
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  if (
+    !Array.isArray(args) ||
+    args.length === 0 ||
+    !args.every((a): a is string => typeof a === 'string' && !a.includes(String.fromCharCode(0)))
+  ) {
+    badRequest('args (string[]) is required');
+  }
+  if (!EXEC_ALLOWED.has(args[0])) badRequest(`git ${String(args[0])} は許可されていません`);
+
+  const command = `git ${args.join(' ')}`;
+  // 引数配列で spawn (シェル補間なし)。認証プロンプトで固まらないよう対話は無効化
+  const child = spawn('git', args, {
+    cwd: repo,
+    windowsHide: true,
+    env: { ...process.env, GIT_EDITOR: 'true', GIT_TERMINAL_PROMPT: '0', GIT_PAGER: 'cat' },
+  });
+  let output = '';
+  const cap = (c: Buffer) => {
+    output += c.toString('utf8');
+    if (output.length > 200_000) output = output.slice(-200_000);
+  };
+  child.stdout.on('data', cap);
+  child.stderr.on('data', cap);
+
+  let sent = false;
+  const reply = (ok: boolean, code: number, extra?: string) => {
+    if (sent) return;
+    sent = true;
+    clearTimeout(timer);
+    res.json({ ok, code, command, output: extra ? `${output}${output ? '\n' : ''}${extra}` : output });
+  };
+  const timer = setTimeout(() => {
+    child.kill();
+    reply(false, -1, '(タイムアウトのため中断しました)');
+  }, 120_000);
+  child.on('error', (err) => reply(false, -1, err.message));
+  child.on('close', (code) => reply(code === 0, code ?? -1));
+});
 
 gitRouter.post('/merge/continue', async (req, res) => {
   const repo = req.body.repo as string;
