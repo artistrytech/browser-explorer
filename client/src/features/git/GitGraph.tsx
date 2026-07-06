@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
+import { loadGitView, saveGitView } from '../../lib/gitViewMemory';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import { confirmDialog, promptDialog } from '../../stores/dialog';
 import { useGit } from '../../stores/git';
@@ -203,6 +204,32 @@ export function GitGraph({
   const [loading, setLoading] = useState(false);
   const openMenu = useContextMenu((s) => s.open);
   const status = useGit((s) => s.status);
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const scrollRestoredRef = useRef(false);
+
+  // スクロール位置を sessionStorage に保持 (タブ復帰時に復元)
+  useEffect(() => {
+    const el = rowsRef.current;
+    if (!el) return;
+    let t: ReturnType<typeof setTimeout>;
+    const onScroll = () => {
+      clearTimeout(t);
+      t = setTimeout(() => saveGitView(repo, { graphScrollTop: el.scrollTop }), 250);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      clearTimeout(t);
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, [repo]);
+
+  // 初回描画後に一度だけスクロール位置を復元
+  useEffect(() => {
+    if (scrollRestoredRef.current || commits.length === 0 || !rowsRef.current) return;
+    scrollRestoredRef.current = true;
+    const saved = loadGitView(repo);
+    if (saved) rowsRef.current.scrollTop = saved.graphScrollTop;
+  }, [commits, repo]);
 
   const load = (reset: boolean) => {
     setLoading(true);
@@ -281,7 +308,7 @@ export function GitGraph({
           全ブランチ (--all)
         </label>
       </div>
-      <div className="graph-rows">
+      <div className="graph-rows" ref={rowsRef}>
         {rows.map((row) => {
           const c = row.commit;
           return (

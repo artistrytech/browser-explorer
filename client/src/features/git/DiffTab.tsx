@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { api } from '../../api/client';
 import { monaco, languageForPath } from '../editor/monacoSetup';
 import { useSettings } from '../../stores/settings';
-import { switchView } from '../../stores/ui';
+import { switchView, replaceView, useUi } from '../../stores/ui';
 import { toastError } from '../../stores/toast';
 
 /**
@@ -34,6 +34,12 @@ export const useDiffTab = create<DiffViewStore>((set) => ({
 export function openCommitDiff(target: CommitDiffTarget): void {
   useDiffTab.getState().open(target);
   switchView('diff');
+}
+
+/** 差分タブを閉じる。表示中だった場合は Git タブへ戻す (履歴は積まない) */
+export function closeDiffTab(): void {
+  useDiffTab.getState().close();
+  if (useUi.getState().view === 'diff') replaceView('git');
 }
 
 interface DiffData {
@@ -107,6 +113,9 @@ export function DiffTab() {
         <span className="diff-tab-legend">
           左: {short}^ (変更前) / 右: {short} (変更後)
         </span>
+        <button className="dialog-close" title="差分タブを閉じる" onClick={closeDiffTab}>
+          ✕
+        </button>
       </div>
       {!data ? (
         <div className="empty-hint">読み込み中…</div>

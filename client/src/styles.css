@@ -1674,3 +1674,18 @@ button {
   flex: 1;
   min-height: 0;
 }
+
+/* ビュータブの閉じるボタン (差分タブ) */
+.view-tab-close {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 3px;
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.view-tab-close:hover {
+  background: var(--bg-selected);
+  color: var(--danger);
+}

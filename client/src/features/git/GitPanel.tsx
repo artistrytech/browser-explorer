@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
+import { loadGitView, saveGitView } from '../../lib/gitViewMemory';
 import { useGit, GitTab } from '../../stores/git';
 import { useExplorer } from '../../stores/explorer';
 import { useSettings } from '../../stores/settings';
@@ -49,8 +50,59 @@ export function GitPanel() {
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const [branches, setBranches] = useState<GitBranch[]>([]);
   const [commitDetail, setCommitDetail] = useState<CommitFilesResult | null>(null);
+  /** 右ペインの優先表示: 最後に行った操作 (コミット選択 or 作業ツリー差分) を優先 */
+  const [rightPane, setRightPane] = useState<'commit' | 'diff'>('commit');
+  const leftRef = useRef<HTMLDivElement>(null);
 
   const explorerPath = useExplorer((s) => s.path);
+
+  /** コミット選択: 詳細を取得しつつ sessionStorage に保持 (タブ復帰時に復元) */
+  const selectCommit = (hash: string) => {
+    if (!repoRoot) return;
+    saveGitView(repoRoot, { hash });
+    setRightPane('commit');
+    api.gitCommitFiles(repoRoot, hash).then(setCommitDetail).catch(toastError);
+  };
+
+  // タブ復帰/リポジトリ切替時: 保存済みの選択コミットを復元
+  useEffect(() => {
+    setCommitDetail(null);
+    if (!repoRoot) return;
+    const saved = loadGitView(repoRoot);
+    if (saved?.hash) {
+      api.gitCommitFiles(repoRoot, saved.hash).then(setCommitDetail).catch(() => {
+        saveGitView(repoRoot, { hash: null }); // 消えたコミット (reset 等) は破棄
+      });
+    }
+  }, [repoRoot]);
+
+  // ログ (線形リスト) のスクロール位置を保存 (デバウンス)
+  useEffect(() => {
+    const el = leftRef.current;
+    if (!el || !repoRoot) return;
+    let t: ReturnType<typeof setTimeout>;
+    const onScroll = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        if (useGit.getState().panelTab === 'log') saveGitView(repoRoot, { logScrollTop: el.scrollTop });
+      }, 250);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      clearTimeout(t);
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, [repoRoot]);
+
+  // ログ (線形リスト) 表示時: コミット読み込み後にスクロール位置を復元
+  const logRestoredRef = useRef(false);
+  useEffect(() => {
+    if (tab !== 'log' || !logFilter || !repoRoot || commits.length === 0 || logRestoredRef.current) return;
+    logRestoredRef.current = true;
+    const saved = loadGitView(repoRoot);
+    if (saved && leftRef.current) leftRef.current.scrollTop = saved.logScrollTop;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, logFilter, commits, repoRoot]);
 
   useEffect(() => {
     // パス絞り込み時は線形リスト用にコミットを取得 (002.md §1.4)。全体表示は GitGraph が自前で取得
@@ -115,6 +167,7 @@ export function GitPanel() {
   );
 
   const showFileDiff = (f: GitFileStatus, stagedSide: boolean) => {
+    setRightPane('diff');
     api
       .gitDiff(repoRoot, f.path, stagedSide)
       .then((r) => setDiff({ title: `${f.path} (${stagedSide ? 'ステージ vs HEAD' : '作業ツリー'})`, text: r.diff }))
@@ -204,11 +257,7 @@ export function GitPanel() {
             <button
               key={t}
               className={`git-tab${tab === t ? ' active' : ''}`}
-              onClick={() => {
-                setTab(t);
-                setDiff(null);
-                setCommitDetail(null);
-              }}
+              onClick={() => setTab(t)}
             >
               {t === 'changes' ? '変更' : t === 'log' ? 'ログ' : 'ブランチ'}
             </button>
@@ -272,7 +321,7 @@ export function GitPanel() {
       )}
 
       <div className="git-body">
-        <div className="git-left">
+        <div className="git-left" ref={leftRef}>
           {tab === 'changes' && (
             <>
               <div className="git-section-title">
@@ -364,7 +413,7 @@ export function GitPanel() {
                 <button
                   key={c.hash}
                   className={`log-row${commitDetail?.hash === c.hash ? ' active' : ''}`}
-                  onClick={() => api.gitCommitFiles(repoRoot, c.hash).then(setCommitDetail).catch(toastError)}
+                  onClick={() => selectCommit(c.hash)}
                 >
                   <span className="log-graph">{c.parents.split(' ').filter(Boolean).length > 1 ? '⑂' : '●'}</span>
                   <span className="log-message">
@@ -385,7 +434,7 @@ export function GitPanel() {
             <GitGraph
               repo={repoRoot}
               selectedHash={commitDetail?.hash ?? null}
-              onSelect={(hash) => api.gitCommitFiles(repoRoot, hash).then(setCommitDetail).catch(toastError)}
+              onSelect={selectCommit}
             />
           )}
 
@@ -442,7 +491,12 @@ export function GitPanel() {
         </div>
 
         <div className="git-right">
-          {commitDetail ? (
+          {rightPane === 'diff' && diff ? (
+            <>
+              <div className="diff-title">{diff.title}</div>
+              <DiffView diff={diff.text} />
+            </>
+          ) : commitDetail ? (
             <div className="commit-detail">
               <div className="commit-detail-head">
                 <div>

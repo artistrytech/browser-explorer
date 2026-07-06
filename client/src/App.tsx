@@ -11,7 +11,7 @@ import { CloneDialog } from './features/git/CloneDialog';
 import { ConflictResolver } from './features/git/ConflictResolver';
 import { GitCommandDialog } from './features/git/GitCommandDialog';
 import { PushDialog } from './features/git/PushDialog';
-import { DiffTab, useDiffTab } from './features/git/DiffTab';
+import { DiffTab, useDiffTab, closeDiffTab } from './features/git/DiffTab';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
 import { ToastHost } from './components/ToastHost';
@@ -128,8 +128,28 @@ export default function App() {
           🌿 Git
         </button>
         {diffTarget && (
-          <button className={`view-tab${view === 'diff' ? ' active' : ''}`} onClick={() => switchView('diff')}>
+          <button
+            className={`view-tab${view === 'diff' ? ' active' : ''}`}
+            onClick={() => switchView('diff')}
+            onMouseDown={(e) => {
+              // 中クリックでも閉じられるように (エディタタブと同様)
+              if (e.button === 1) {
+                e.preventDefault();
+                closeDiffTab();
+              }
+            }}
+          >
             ± {baseName(diffTarget.path)}
+            <span
+              className="view-tab-close"
+              title="差分タブを閉じる"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeDiffTab();
+              }}
+            >
+              ✕
+            </span>
           </button>
         )}
       </div>
