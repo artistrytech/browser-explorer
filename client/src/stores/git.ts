@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
-import { switchView } from './ui';
-import { saveGitView } from '../lib/gitViewMemory';
+import { pushLogView, openLogInNewTab } from './ui';
+import { saveGitView, loadGitView } from '../lib/gitViewMemory';
 import type { GitStatus, MergeState } from '../types';
 
 export type GitTab = 'changes' | 'log' | 'branches';
@@ -30,8 +30,8 @@ interface GitStore {
   checkRepo: (dirPath: string) => Promise<void>;
   refreshStatus: () => Promise<void>;
   setLogFilter: (f: LogFilter | null) => void;
-  /** 「ログを表示」: 絞り込みを設定して「ログ」タブを開く (002.md §1.2) */
-  showLogFor: (relPath: string, isFile: boolean) => void;
+  /** 「ログを表示」: 絞り込みを設定して「ログ」タブを開く (002.md §1.2)。newTab でブラウザ別タブに開く */
+  showLogFor: (relPath: string, isFile: boolean, newTab?: boolean) => void;
 }
 
 function buildOverlay(root: string, status: GitStatus): Record<string, OverlayCode> {
@@ -72,7 +72,15 @@ export const useGit = create<GitStore>((set, get) => ({
       const { isRepo, root } = await api.isRepo(dirPath);
       if (isRepo && root) {
         if (get().repoRoot !== root) {
-          set({ repoRoot: root, status: null, overlay: {}, mergeState: NO_MERGE, logFilter: null });
+          // 初回検出 (null → repo) は URL から復元した logFilter を保持する
+          const keepFilter = get().repoRoot === null;
+          set({
+            repoRoot: root,
+            status: null,
+            overlay: {},
+            mergeState: NO_MERGE,
+            ...(keepFilter ? {} : { logFilter: null }),
+          });
         } else {
           set({ repoRoot: root });
         }
@@ -101,12 +109,23 @@ export const useGit = create<GitStore>((set, get) => ({
 
   setLogFilter: (logFilter) => set({ logFilter }),
 
-  showLogFor: (relPath, isFile) => {
-    // 差分ファイル一覧のフィルタ初期値として対象パスを設定 (GitPanel が復元する)
+  showLogFor: (relPath, isFile, newTab = false) => {
     const repo = get().repoRoot;
-    if (repo) saveGitView(repo, { filesFilter: relPath });
     // リポジトリルート自体 ('') は全体表示 = 絞り込みなし
-    set({ logFilter: relPath ? { path: relPath, follow: isFile } : null });
-    switchView('log');
+    const filter = relPath ? { path: relPath, follow: isFile } : null;
+    if (newTab) {
+      // 別タブで開く: sessionStorage は window.open 時に複製されるので、
+      // 差分ファイル一覧のフィルタ初期値を一時的に対象パスへ差し替えてから開く
+      const prev = repo ? loadGitView(repo)?.filesFilter ?? '' : '';
+      if (repo) saveGitView(repo, { filesFilter: relPath });
+      openLogInNewTab(filter);
+      if (repo) saveGitView(repo, { filesFilter: prev });
+      return;
+    }
+    // 差分ファイル一覧のフィルタ初期値として対象パスを設定 (GitPanel が復元する)
+    if (repo) saveGitView(repo, { filesFilter: relPath });
+    set({ logFilter: filter });
+    // ブラウザ履歴に追加 (URL に対象の相対パスを含める)
+    pushLogView(filter);
   },
 }));

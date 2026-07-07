@@ -1,0 +1,40 @@
+// アプリ設定 (JSONC: // や /* */ のコメントを書けます。末尾カンマは不可)
+{
+  // サーバの待受アドレス (127.0.0.1 固定を推奨)
+  "host": "127.0.0.1",
+  // API サーバのポート
+  "port": 5175,
+  // 開発用クライアント (vite) のポート
+  "clientPort": 5173,
+  // API 認証トークン (x-app-token ヘッダで全 API に要求される)
+  "token": "eb-7f3c9a1d5e8b4620c4d2a6f0b9e17358",
+  // コミット差分ファイル一覧の表示上限
+  "commitFilesLimit": 100,
+
+  // Explorer のコンテキストメニュー表示設定。
+  // false にすると該当メニューを非表示にする (キーを省略した場合は表示)
+  "contextMenu": {
+    "open": true,             // 開く
+    "openEditor": true,       // エディタで開く
+    "openNewWindow": true,    // 別ウィンドウで開く
+    "pin": true,              // クイックアクセスにピン止め / ピン止めを解除
+    "osFileManager": true,    // Explorer / Finder で開く
+    "osTerminal": true,       // コマンドプロンプト / ターミナルで開く
+    "copy": true,             // コピー
+    "cut": true,              // 切り取り
+    "paste": true,            // 貼り付け
+    "rename": true,           // 名前の変更 (F2)
+    "delete": true,           // 削除 (ゴミ箱)
+    "deletePermanent": true,  // 完全に削除
+    "gitLog": true,           // Gitログ
+    "resolveConflict": true,  // 競合を解消…
+    "gitClone": true,         // Git Clone…
+    "gitStage": true,         // Git: ステージ
+    "gitUnstage": true,       // Git: ステージ解除
+    "gitDiscard": true,       // Git: 変更を破棄
+    "properties": true,       // プロパティ
+    "newFolder": true,        // 新規フォルダ (空白右クリック)
+    "newFile": true,          // 新規ファイル (空白右クリック)
+    "refresh": true           // 最新の情報に更新 (空白右クリック)
+  }
+}

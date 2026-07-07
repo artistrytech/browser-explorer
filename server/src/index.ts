@@ -54,6 +54,11 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, platform: process.platform });
 });
 
+// クライアント向けの UI 設定 (トークン等の秘匿値は返さない)
+app.get('/api/config', (_req, res) => {
+  res.json({ contextMenu: config.contextMenu ?? {} });
+});
+
 // エラーハンドラ: 種別付き JSON で返す (plan §10)
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error & { status?: number; code?: string }, _req: Request, res: Response, _next: NextFunction) => {

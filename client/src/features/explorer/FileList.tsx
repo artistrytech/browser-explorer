@@ -278,6 +278,21 @@ export function FileList() {
 
   // --- コンテキストメニュー (出し分けは 002.md §8) ---
   const osLabels = osMenuLabels(platform);
+  const menuConfig = useUi((s) => s.menuConfig);
+
+  /** config.jsonc の contextMenu 設定 (false で非表示、未設定は表示) */
+  type CfgMenuItem = MenuItem & { id?: string };
+  const pruneMenu = (items: CfgMenuItem[]): MenuItem[] => {
+    const kept = items.filter((it) => it.separator || !it.id || menuConfig[it.id] !== false);
+    // 非表示により連続/先頭/末尾になった separator を除去
+    const out: MenuItem[] = [];
+    for (const it of kept) {
+      if (it.separator && (out.length === 0 || out[out.length - 1].separator)) continue;
+      out.push(it);
+    }
+    while (out.length > 0 && out[out.length - 1].separator) out.pop();
+    return out;
+  };
 
   /**
    * 「別ウィンドウで開く」: 指定フォルダをブラウザの別タブで開く。
@@ -292,28 +307,33 @@ export function FileList() {
   };
 
   /** フォルダ/空白共通の OS 連携項目 (002.md §4): 対象がファイルでない場合のみ */
-  const osMenuItems = (dirPath: string): MenuItem[] => [
-    { label: osLabels.fileManager, action: () => void api.osOpenFileManager(dirPath).catch(toastError) },
-    { label: osLabels.terminal, action: () => void api.osOpenTerminal(dirPath).catch(toastError) },
+  const osMenuItems = (dirPath: string): CfgMenuItem[] => [
+    {
+      id: 'osFileManager',
+      label: osLabels.fileManager,
+      action: () => void api.osOpenFileManager(dirPath).catch(toastError),
+    },
+    { id: 'osTerminal', label: osLabels.terminal, action: () => void api.osOpenTerminal(dirPath).catch(toastError) },
   ];
 
   /** Git 系の文脈依存項目 (ログを表示 / 競合を解消 / Git Clone…) */
-  const gitContextItems = (targetPath: string, isFile: boolean, isDir: boolean): MenuItem[] => {
+  const gitContextItems = (targetPath: string, isFile: boolean, isDir: boolean): CfgMenuItem[] => {
     const rel = relOf(targetPath);
-    const items: MenuItem[] = [];
+    const items: CfgMenuItem[] = [];
     if (rel !== null) {
-      // Git 管理下: パス絞り込みログ (002.md §1)
+      // Git 管理下: パス絞り込みログ (002.md §1)。Ctrl+クリック (mac は ⌘) は別タブで開く
       items.push({
+        id: 'gitLog',
         label: 'Gitログ',
-        action: () => useGit.getState().showLogFor(rel, isFile),
+        action: (e) => useGit.getState().showLogFor(rel, isFile, e.ctrlKey || e.metaKey),
       });
       // 進行中 かつ 配下に競合あり → 競合を解消 (002.md §2)
       if (isDir && mergeState.inProgress && conflictsUnder(rel)) {
-        items.push({ label: '競合を解消…', action: () => openConflictResolver(rel) });
+        items.push({ id: 'resolveConflict', label: '競合を解消…', action: () => openConflictResolver(rel) });
       }
     } else if (isDir) {
       // Git 管理外のフォルダ → Git Clone… (002.md §3)
-      items.push({ label: 'Git Clone…', action: () => openCloneDialog(targetPath) });
+      items.push({ id: 'gitClone', label: 'Git Clone…', action: () => openCloneDialog(targetPath) });
     }
     return items;
   };
@@ -330,21 +350,22 @@ export function FileList() {
     const sel = selectedSet.has(entry.path) ? selection : [entry.path];
     const single = sel.length === 1;
     const pinned = useSettings.getState().isPinned(entry.path);
-    const items: MenuItem[] = [
-      { label: '開く', action: () => displayed.filter((d) => sel.includes(d.path)).forEach(openEntry) },
+    const items: CfgMenuItem[] = [
+      { id: 'open', label: '開く', action: () => displayed.filter((d) => sel.includes(d.path)).forEach(openEntry) },
       ...(entry.type !== 'dir'
         ? [
-            { label: 'エディタで開く', action: () => openEntry(entry) },
+            { id: 'openEditor', label: 'エディタで開く', action: () => openEntry(entry) },
             // ファイル: 同じフォルダを別ウィンドウで開いて対象にフォーカス
-            { label: '別ウィンドウで開く', action: () => openInNewWindow(path, entry.name) },
+            { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(path, entry.name) },
           ]
         : [
             // フォルダ: 対象フォルダ自体を別ウィンドウで開く
-            { label: '別ウィンドウで開く', action: () => openInNewWindow(entry.path) },
+            { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(entry.path) },
             // ピン止め / 解除のトグル (002.md §7.2)。解除は確認フローへ
             pinned
-              ? { label: 'ピン止めを解除', action: () => void unpinFolder(entry.path, entry.name) }
+              ? { id: 'pin', label: 'ピン止めを解除', action: () => void unpinFolder(entry.path, entry.name) }
               : {
+                  id: 'pin',
                   label: 'クイックアクセスにピン止め',
                   action: () => void pinFolder(entry.path, entry.name),
                 },
@@ -352,13 +373,18 @@ export function FileList() {
             ...osMenuItems(entry.path),
           ]),
       { separator: true },
-      { label: 'コピー', action: copySelection },
-      { label: '切り取り', action: cutSelection },
-      { label: '貼り付け', action: () => void paste(entry.type === 'dir' ? entry.path : undefined), disabled: !clipboard },
+      { id: 'copy', label: 'コピー', action: copySelection },
+      { id: 'cut', label: '切り取り', action: cutSelection },
+      {
+        id: 'paste',
+        label: '貼り付け',
+        action: () => void paste(entry.type === 'dir' ? entry.path : undefined),
+        disabled: !clipboard,
+      },
       { separator: true },
-      { label: '名前の変更 (F2)', action: () => setRenaming(entry.path), disabled: !single },
-      { label: '削除 (ゴミ箱)', action: () => void deleteSelection(false) },
-      { label: '完全に削除', action: () => void deleteSelection(true), danger: true },
+      { id: 'rename', label: '名前の変更 (F2)', action: () => setRenaming(entry.path), disabled: !single },
+      { id: 'delete', label: '削除 (ゴミ箱)', action: () => void deleteSelection(false) },
+      { id: 'deletePermanent', label: '完全に削除', action: () => void deleteSelection(true), danger: true },
       { separator: true },
     ];
     const gitItems = gitContextItems(entry.path, entry.type === 'file', entry.type === 'dir');
@@ -367,6 +393,7 @@ export function FileList() {
       const rel = sel.map((p) => p.slice(repoRoot.length + 1));
       items.push(
         {
+          id: 'gitStage',
           label: 'Git: ステージ',
           action: () =>
             void api
@@ -375,6 +402,7 @@ export function FileList() {
               .catch(toastError),
         },
         {
+          id: 'gitUnstage',
           label: 'Git: ステージ解除',
           action: () =>
             void api
@@ -383,6 +411,7 @@ export function FileList() {
               .catch(toastError),
         },
         {
+          id: 'gitDiscard',
           label: 'Git: 変更を破棄',
           danger: true,
           action: () =>
@@ -394,8 +423,8 @@ export function FileList() {
         { separator: true },
       );
     }
-    items.push({ label: 'プロパティ', action: () => void showProperties(entry), disabled: !single });
-    openMenu(e.clientX, e.clientY, items);
+    items.push({ id: 'properties', label: 'プロパティ', action: () => void showProperties(entry), disabled: !single });
+    openMenu(e.clientX, e.clientY, pruneMenu(items));
   };
 
   const backgroundMenu = (e: React.MouseEvent) => {
@@ -403,18 +432,19 @@ export function FileList() {
     setSelection([]);
     // 空白 = カレントフォルダを対象とする (002.md §4.1 / §8)
     const currentPinned = useSettings.getState().isPinned(path);
-    const items: MenuItem[] = [
-      { label: '新規フォルダ', action: () => void createFolder() },
-      { label: '新規ファイル', action: () => void createFile() },
+    const items: CfgMenuItem[] = [
+      { id: 'newFolder', label: '新規フォルダ', action: () => void createFolder() },
+      { id: 'newFile', label: '新規ファイル', action: () => void createFile() },
       { separator: true },
       // フォーカス無し: 表示中のフォルダを別ウィンドウで開く
-      { label: '別ウィンドウで開く', action: () => openInNewWindow(path) },
+      { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(path) },
       { separator: true },
-      { label: '貼り付け', action: () => void paste(), disabled: !clipboard },
+      { id: 'paste', label: '貼り付け', action: () => void paste(), disabled: !clipboard },
       { separator: true },
       currentPinned
-        ? { label: 'ピン止めを解除', action: () => void unpinFolder(path, baseName(path)) }
+        ? { id: 'pin', label: 'ピン止めを解除', action: () => void unpinFolder(path, baseName(path)) }
         : {
+            id: 'pin',
             label: 'クイックアクセスにピン止め',
             action: () => void pinFolder(path, baseName(path)),
           },
@@ -424,8 +454,8 @@ export function FileList() {
     ];
     const gitItems = gitContextItems(path, false, true);
     if (gitItems.length > 0) items.push(...gitItems, { separator: true });
-    items.push({ label: '最新の情報に更新', action: () => void useExplorer.getState().refresh() });
-    openMenu(e.clientX, e.clientY, items);
+    items.push({ id: 'refresh', label: '最新の情報に更新', action: () => void useExplorer.getState().refresh() });
+    openMenu(e.clientX, e.clientY, pruneMenu(items));
   };
 
   // --- ドラッグ & ドロップ (Ctrl でコピー、通常は移動) ---

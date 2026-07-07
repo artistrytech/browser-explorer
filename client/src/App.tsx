@@ -19,7 +19,7 @@ import { useExplorer, pathFromUrl } from './stores/explorer';
 import { useEditor } from './stores/editor';
 import { useGit } from './stores/git';
 import { useSettings } from './stores/settings';
-import { useUi, viewFromUrl, switchView, replaceView, isGitView } from './stores/ui';
+import { useUi, viewFromUrl, switchView, replaceView, isGitView, logFilterFromUrl } from './stores/ui';
 import { onFsChange } from './api/ws';
 import { api } from './api/client';
 import { parentPath, isRootPath, baseName } from './lib/paths';
@@ -39,19 +39,33 @@ export default function App() {
     void useSettings.getState().load();
     // ホスト OS 判定 (002.md §4.2): メニューラベルの出し分けに使う
     api.osPlatform().then((r) => useUi.getState().setPlatform(r.platform)).catch(() => {});
+    // コンテキストメニューの表示設定 (config.jsonc の contextMenu)
+    api.uiConfig().then((r) => useUi.getState().setMenuConfig(r.contextMenu)).catch(() => {});
     const initial = pathFromUrl();
     const initialView = viewFromUrl();
+    const initialLogFilter = logFilterFromUrl();
     const params = new URLSearchParams();
     params.set('path', initial);
     if (initialView !== 'files') params.set('view', initialView);
+    if (initialLogFilter) {
+      params.set('logpath', initialLogFilter.path);
+      if (initialLogFilter.follow) params.set('follow', '1');
+    }
     history.replaceState({ path: initial, view: initialView }, '', `${location.pathname}?${params}`);
     useUi.getState().setView(initialView);
+    useGit.getState().setLogFilter(initialLogFilter);
     void navigate(initial, false);
 
-    // 戻る/進む: パスとビューの両方を URL から復元する
+    // 戻る/進む: パス・ビュー・ログ絞り込みを URL から復元する
     const onPop = () => {
       void useExplorer.getState().navigate(pathFromUrl(), false);
       useUi.getState().setView(viewFromUrl());
+      const cur = useGit.getState().logFilter;
+      const next = logFilterFromUrl();
+      // 内容が同じなら参照を維持 (不要な再読込を避ける)
+      if (!(cur && next && cur.path === next.path && cur.follow === next.follow)) {
+        useGit.getState().setLogFilter(next);
+      }
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);

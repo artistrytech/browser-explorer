@@ -41,7 +41,7 @@ function statusLabel(f: GitFileStatus, staged: boolean): string {
 
 /** tab は最上位タブ (コミット/ログ/ブランチ) から与えられる */
 export function GitPanel({ tab }: { tab: GitTab }) {
-  const { repoRoot, status, refreshStatus, mergeState, logFilter, setLogFilter } = useGit();
+  const { repoRoot, status, refreshStatus, mergeState, logFilter } = useGit();
   const { addRepository, repositories } = useSettings();
   const show = useToast((s) => s.show);
   const [message, setMessage] = useState('');
@@ -178,7 +178,8 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         const items: MenuItem[] = [
           {
             label: 'ログを表示',
-            action: () => useGit.getState().showLogFor(f.path, true),
+            // Ctrl+クリック (mac は ⌘) はブラウザの別タブで開く
+            action: (ev) => useGit.getState().showLogFor(f.path, true, ev.ctrlKey || ev.metaKey),
           },
           {
             label: 'ファイル場所に移動',
@@ -457,7 +458,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   <span className="log-filter-path" title={logFilter.path}>
                     {logFilter.path} の履歴{logFilter.follow ? ' (リネーム追跡)' : ''}
                   </span>
-                  <button className="status-btn" onClick={() => setLogFilter(null)}>
+                  <button className="status-btn" onClick={() => useGit.getState().showLogFor('', false)}>
                     絞り込み解除
                   </button>
                 </div>

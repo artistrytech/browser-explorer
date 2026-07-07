@@ -85,6 +85,9 @@ export const api = {
   search: (dir: string, query: string) =>
     get<{ results: FsEntry[] }>(`/api/fs/search?dir=${q(dir)}&query=${q(query)}`),
 
+  // --- config ---
+  uiConfig: () => get<{ contextMenu: Record<string, boolean> }>('/api/config'),
+
   // --- git ---
   isRepo: (path: string) =>
     get<{ isRepo: boolean; root?: string }>(`/api/git/is-repo?path=${q(path)}`),

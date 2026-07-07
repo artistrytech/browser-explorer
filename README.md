@@ -5,8 +5,9 @@ Explorer(ファイル管理)を主画面に、テキスト編集(Monaco)と Git 
 
 ## 設定
 
-初回セットアップ時は `config.json.sample` を `config.json` にコピーして作成し、
-必要に応じてポートやトークンを調整する。
+初回セットアップ時は `config.jsonc.sample` を `config.jsonc` にコピーして作成し、
+必要に応じてポートやトークンを調整する。JSONC 形式なので `//` コメントを書ける
+(コンテキストメニューの表示設定 `contextMenu` など、各項目の説明はサンプル内のコメント参照)。
 
 ## 起動
 
@@ -20,7 +21,7 @@ npm run dev     # server (127.0.0.1:5175) + client (127.0.0.1:5173) を並列起
 ## 構成
 
 ```
-config.json      # ポート・API トークン
+config.jsonc     # ポート・API トークン・メニュー表示設定 (コメント可)
 data/app.db      # SQLite (設定・ブックマーク等の永続化)
 server/          # Express + simple-git + chokidar + better-sqlite3
 client/          # React + Vite + Zustand + Monaco Editor
