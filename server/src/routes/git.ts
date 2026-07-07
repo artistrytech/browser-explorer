@@ -137,6 +137,14 @@ gitRouter.get('/graph', async (req, res) => {
   const args = ['log', '--topo-order', `--max-count=${limit}`, `--skip=${skip}`,
     '--pretty=format:%H%x1f%P%x1f%an%x1f%aI%x1f%D%x1f%s%x1e'];
   if (req.query.all === 'true') args.splice(1, 0, '--all');
+  // パス絞り込み (§1): --parents で %P を簡略化後の親に書き換えさせ、レーン描画の整合性を保つ
+  if (typeof req.query.path === 'string' && req.query.path.length > 0) {
+    const rel = relPath(req.query.path);
+    args.splice(1, 0, '--parents');
+    // --follow はリネーム追跡。単一ファイルのみ有効 (フォルダには付けない)
+    if (req.query.follow === 'true') args.splice(1, 0, '--follow');
+    args.push('--', rel);
+  }
   const out = await g.raw(args).catch(() => '');
   const commits = out
     .split('\x1e')

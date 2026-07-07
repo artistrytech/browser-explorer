@@ -193,13 +193,17 @@ export function GitGraph({
   repo,
   onSelect,
   selectedHash,
+  filter = null,
 }: {
   repo: string;
   onSelect: (hash: string) => void;
   selectedHash: string | null;
+  /** パス絞り込み (002.md §1): 指定時はそのパスに関わるコミットだけをグラフ表示する */
+  filter?: { path: string; follow: boolean } | null;
 }) {
   const [commits, setCommits] = useState<GitGraphCommit[]>([]);
-  const [all, setAll] = useState(true);
+  // 「全ブランチ」はデフォルト OFF、sessionStorage に状態を保持
+  const [all, setAll] = useState(() => loadGitView(repo)?.graphAll ?? false);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const openMenu = useContextMenu((s) => s.open);
@@ -207,39 +211,55 @@ export function GitGraph({
   const rowsRef = useRef<HTMLDivElement>(null);
   const scrollRestoredRef = useRef(false);
 
-  // スクロール位置を sessionStorage に保持 (タブ復帰時に復元)。
+  const toggleAll = (checked: boolean) => {
+    setAll(checked);
+    saveGitView(repo, { graphAll: checked });
+  };
+
+  // リポジトリ/絞り込みが切り替わったら表示をリセット
+  useEffect(() => {
+    setAll(loadGitView(repo)?.graphAll ?? false);
+  }, [repo]);
+  useEffect(() => {
+    setCommits([]);
+    scrollRestoredRef.current = false;
+  }, [repo, filter]);
+
+  // スクロール位置を sessionStorage に保持 (タブ復帰時に復元)。全体グラフと絞り込みグラフで別枠。
   // アンマウント時はデバウンス待ちの値をフラッシュして取りこぼしを防ぐ
   useEffect(() => {
     const el = rowsRef.current;
     if (!el) return;
+    const save = (top: number) =>
+      saveGitView(repo, filter ? { logScrollTop: top } : { graphScrollTop: top });
     let t: ReturnType<typeof setTimeout>;
     let last = -1;
     const onScroll = () => {
       last = el.scrollTop;
       clearTimeout(t);
-      t = setTimeout(() => saveGitView(repo, { graphScrollTop: last }), 250);
+      t = setTimeout(() => save(last), 250);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       clearTimeout(t);
       el.removeEventListener('scroll', onScroll);
-      if (last >= 0) saveGitView(repo, { graphScrollTop: last });
+      if (last >= 0) save(last);
     };
-  }, [repo]);
+  }, [repo, filter]);
 
   // 初回描画後に一度だけスクロール位置を復元
   useEffect(() => {
     if (scrollRestoredRef.current || commits.length === 0 || !rowsRef.current) return;
     scrollRestoredRef.current = true;
     const saved = loadGitView(repo);
-    if (saved) rowsRef.current.scrollTop = saved.graphScrollTop;
-  }, [commits, repo]);
+    if (saved) rowsRef.current.scrollTop = filter ? saved.logScrollTop : saved.graphScrollTop;
+  }, [commits, repo, filter]);
 
   const load = (reset: boolean) => {
     setLoading(true);
     const skip = reset ? 0 : commits.length;
     api
-      .gitGraph(repo, { all, limit: PAGE, skip })
+      .gitGraph(repo, { all, limit: PAGE, skip, path: filter?.path, follow: filter?.follow })
       .then((r) => {
         // ページングはレーン連続性のため読み込み済み全体を再計算する (§5.4)
         setCommits((prev) => (reset ? r.commits : [...prev, ...r.commits]));
@@ -252,9 +272,17 @@ export function GitGraph({
   useEffect(() => {
     load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo, all, status]);
+  }, [repo, all, status, filter]);
 
-  const { rows, maxLanes } = useMemo(() => assignLanes(commits), [commits]);
+  const { rows, maxLanes } = useMemo(() => {
+    // --follow (リネーム追跡) は git の履歴簡略化と併用すると親の書き換えが行われず、
+    // セット外の親を待つレーンが増え続ける。単一ファイルの系譜 (直列) なので
+    // 前後のコミットを繋いで 1 本線で描画する (TortoiseGit のファイルログと同様)
+    const list = filter?.follow
+      ? commits.map((c, i) => ({ ...c, parents: i + 1 < commits.length ? [commits[i + 1].hash] : [] }))
+      : commits;
+    return assignLanes(list);
+  }, [commits, filter]);
   const graphWidth = Math.min(maxLanes, 12) * LANE_W + 8;
 
   const commitMenu = (e: React.MouseEvent, c: GitGraphCommit) => {
@@ -308,7 +336,7 @@ export function GitGraph({
     <div className="git-graph">
       <div className="graph-toolbar">
         <label>
-          <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
+          <input type="checkbox" checked={all} onChange={(e) => toggleAll(e.target.checked)} />
           全ブランチ (--all)
         </label>
       </div>

@@ -96,10 +96,15 @@ export const api = {
         `${opts.path ? `&path=${q(opts.path)}` : ''}` +
         `${opts.follow ? '&follow=true' : ''}`,
     ),
-  gitGraph: (repo: string, opts: { all?: boolean; limit?: number; skip?: number } = {}) =>
+  gitGraph: (
+    repo: string,
+    opts: { all?: boolean; limit?: number; skip?: number; path?: string; follow?: boolean } = {},
+  ) =>
     get<{ commits: GitGraphCommit[] }>(
       `/api/git/graph?repo=${q(repo)}&limit=${opts.limit ?? 200}` +
-        `${opts.skip ? `&skip=${opts.skip}` : ''}${opts.all ? '&all=true' : ''}`,
+        `${opts.skip ? `&skip=${opts.skip}` : ''}${opts.all ? '&all=true' : ''}` +
+        `${opts.path ? `&path=${q(opts.path)}` : ''}` +
+        `${opts.follow ? '&follow=true' : ''}`,
     ),
   gitCommitFiles: (repo: string, hash: string) =>
     get<CommitFilesResult>(`/api/git/commit-files?repo=${q(repo)}&hash=${q(hash)}`),

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { loadGitView, saveGitView } from '../../lib/gitViewMemory';
 import { useGit, GitTab } from '../../stores/git';
@@ -13,7 +13,7 @@ import { openConflictResolver } from './ConflictResolver';
 import { runGitCommands } from './GitCommandDialog';
 import { openPushDialog, defaultPushArgs } from './PushDialog';
 import { openCommitDiff } from './DiffTab';
-import type { CommitFilesResult, GitBranch, GitCommit, GitFileStatus } from '../../types';
+import type { CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
 
 /** コミット差分ファイルのステータス表示 (A/M/D/T) */
 const COMMIT_FILE_STATUS: Record<string, { label: string; cls: string }> = {
@@ -47,12 +47,10 @@ export function GitPanel() {
   const [amend, setAmend] = useState(false);
   const [busy, setBusy] = useState(false);
   const [diff, setDiff] = useState<{ title: string; text: string } | null>(null);
-  const [commits, setCommits] = useState<GitCommit[]>([]);
   const [branches, setBranches] = useState<GitBranch[]>([]);
   const [commitDetail, setCommitDetail] = useState<CommitFilesResult | null>(null);
   /** 右ペインの優先表示: 最後に行った操作 (コミット選択 or 作業ツリー差分) を優先 */
   const [rightPane, setRightPane] = useState<'commit' | 'diff'>('commit');
-  const leftRef = useRef<HTMLDivElement>(null);
 
   const explorerPath = useExplorer((s) => s.path);
 
@@ -76,52 +74,11 @@ export function GitPanel() {
     }
   }, [repoRoot]);
 
-  // ログ (線形リスト) のスクロール位置を保存 (デバウンス + アンマウント時フラッシュ)
   useEffect(() => {
-    const el = leftRef.current;
-    if (!el || !repoRoot) return;
-    let t: ReturnType<typeof setTimeout>;
-    let last = -1;
-    const onScroll = () => {
-      if (useGit.getState().panelTab !== 'log') return;
-      last = el.scrollTop;
-      clearTimeout(t);
-      t = setTimeout(() => saveGitView(repoRoot, { logScrollTop: last }), 250);
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      clearTimeout(t);
-      el.removeEventListener('scroll', onScroll);
-      if (last >= 0) saveGitView(repoRoot, { logScrollTop: last });
-    };
-  }, [repoRoot]);
-
-  // ログ (線形リスト) 表示時: コミット読み込み後にスクロール位置を復元
-  const logRestoredRef = useRef(false);
-  useEffect(() => {
-    if (tab !== 'log' || !logFilter) {
-      logRestoredRef.current = false; // タブを離れたら次回表示時に再復元する
-      return;
-    }
-    if (!repoRoot || commits.length === 0 || logRestoredRef.current) return;
-    logRestoredRef.current = true;
-    const saved = loadGitView(repoRoot);
-    if (saved && leftRef.current) leftRef.current.scrollTop = saved.logScrollTop;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, logFilter, commits, repoRoot]);
-
-  useEffect(() => {
-    // パス絞り込み時は線形リスト用にコミットを取得 (002.md §1.4)。全体表示は GitGraph が自前で取得
-    if (repoRoot && tab === 'log' && logFilter) {
-      api
-        .gitLog(repoRoot, { path: logFilter.path, follow: logFilter.follow, limit: 200 })
-        .then((r) => setCommits(r.commits))
-        .catch(toastError);
-    }
     if (repoRoot && tab === 'branches') {
       api.gitBranches(repoRoot).then((r) => setBranches(r.branches)).catch(toastError);
     }
-  }, [repoRoot, tab, status, logFilter]);
+  }, [repoRoot, tab, status]);
 
   if (!repoRoot) {
     return (
@@ -327,8 +284,8 @@ export function GitPanel() {
       )}
 
       <div className="git-body">
-        {/* グラフ表示時はスクロールを .graph-rows 側に持たせる (スクロール位置の保存/復元のため) */}
-        <div className={`git-left${tab === 'log' && !logFilter ? ' graph-host' : ''}`} ref={leftRef}>
+        {/* ログタブはスクロールを .graph-rows 側に持たせる (スクロール位置の保存/復元のため) */}
+        <div className={`git-left${tab === 'log' ? ' graph-host' : ''}`}>
           {tab === 'changes' && (
             <>
               <div className="git-section-title">
@@ -405,44 +362,26 @@ export function GitPanel() {
             </>
           )}
 
-          {tab === 'log' && logFilter && (
-            // パス絞り込み時は履歴が疎になるため線形リスト表示 (002.md §1.4 / §5.6)
-            <div className="git-log">
-              <div className="log-filter-bar">
-                <span className="log-filter-path" title={logFilter.path}>
-                  {logFilter.path} の履歴{logFilter.follow ? ' (リネーム追跡)' : ''}
-                </span>
-                <button className="status-btn" onClick={() => setLogFilter(null)}>
-                  絞り込み解除
-                </button>
-              </div>
-              {commits.map((c) => (
-                <button
-                  key={c.hash}
-                  className={`log-row${commitDetail?.hash === c.hash ? ' active' : ''}`}
-                  onClick={() => selectCommit(c.hash)}
-                >
-                  <span className="log-graph">{c.parents.split(' ').filter(Boolean).length > 1 ? '⑂' : '●'}</span>
-                  <span className="log-message">
-                    {c.refs && <span className="log-refs">{c.refs} </span>}
-                    {c.message}
+          {tab === 'log' && (
+            // コミット DAG をグラフ描画 (002.md §5)。パス絞り込み時も同じグラフ表示
+            <>
+              {logFilter && (
+                <div className="log-filter-bar">
+                  <span className="log-filter-path" title={logFilter.path}>
+                    {logFilter.path} の履歴{logFilter.follow ? ' (リネーム追跡)' : ''}
                   </span>
-                  <span className="log-meta">
-                    {c.author} · {c.date.slice(0, 16)} · {c.hash.slice(0, 7)}
-                  </span>
-                </button>
-              ))}
-              {commits.length === 0 && <div className="empty-hint">該当するコミットがありません</div>}
-            </div>
-          )}
-
-          {tab === 'log' && !logFilter && (
-            // 全体表示時はコミット DAG をグラフ描画 (002.md §5)
-            <GitGraph
-              repo={repoRoot}
-              selectedHash={commitDetail?.hash ?? null}
-              onSelect={selectCommit}
-            />
+                  <button className="status-btn" onClick={() => setLogFilter(null)}>
+                    絞り込み解除
+                  </button>
+                </div>
+              )}
+              <GitGraph
+                repo={repoRoot}
+                selectedHash={commitDetail?.hash ?? null}
+                onSelect={selectCommit}
+                filter={logFilter}
+              />
+            </>
           )}
 
           {tab === 'branches' && (

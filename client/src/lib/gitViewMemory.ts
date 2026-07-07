@@ -8,10 +8,12 @@ const PREFIX = 'git:view:';
 export interface GitViewRecord {
   /** 選択中コミットのハッシュ */
   hash: string | null;
-  /** ログ (線形リスト) 側のスクロール位置 */
+  /** 絞り込みグラフ側のスクロール位置 */
   logScrollTop: number;
-  /** グラフ側のスクロール位置 */
+  /** 全体グラフ側のスクロール位置 */
   graphScrollTop: number;
+  /** 「全ブランチ (--all)」チェックボックスの状態 (デフォルト OFF) */
+  graphAll: boolean;
   ts: number;
 }
 
@@ -27,7 +29,7 @@ export function loadGitView(repo: string): GitViewRecord | null {
 /** 部分更新でマージ保存する */
 export function saveGitView(repo: string, partial: Partial<Omit<GitViewRecord, 'ts'>>): void {
   try {
-    const prev = loadGitView(repo) ?? { hash: null, logScrollTop: 0, graphScrollTop: 0 };
+    const prev = loadGitView(repo) ?? { hash: null, logScrollTop: 0, graphScrollTop: 0, graphAll: false };
     sessionStorage.setItem(PREFIX + repo, JSON.stringify({ ...prev, ...partial, ts: Date.now() }));
   } catch {
     /* storage full 等は無視 */
