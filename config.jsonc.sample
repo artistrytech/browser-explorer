@@ -36,5 +36,18 @@
     "newFolder": true,        // 新規フォルダ (空白右クリック)
     "newFile": true,          // 新規ファイル (空白右クリック)
     "refresh": true           // 最新の情報に更新 (空白右クリック)
-  }
+  },
+
+  // コンテキストメニューから起動する外部ツール。
+  // - label:   メニューに表示する名前
+  // - command: 実行ファイル (絶対パス推奨。PATH 上の .exe 名も可。.cmd/.bat は不可)
+  // - args:    オプション引数 (省略可)。"${paths}" と書いた位置に選択中のパス群が展開される。
+  //            "${paths}" が無い場合は末尾に選択パスを追加する。
+  // ファイルを複数選択して実行するとまとめて引数に渡る。選択が無い空白右クリックでは表示中フォルダが渡る。
+  // ここに設定したツール以外はサーバ側で実行を拒否する。
+  "externalTools": [
+    { "label": "メモ帳で開く", "command": "notepad.exe" }
+    // 例: VSCode で開く (新しいウィンドウ)
+    // { "label": "VSCode で開く", "command": "C:/Users/you/AppData/Local/Programs/Microsoft VS Code/Code.exe", "args": ["-n", "${paths}"] }
+  ]
 }

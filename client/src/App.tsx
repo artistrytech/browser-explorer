@@ -41,8 +41,14 @@ export default function App() {
     void useSettings.getState().load();
     // ホスト OS 判定 (002.md §4.2): メニューラベルの出し分けに使う
     api.osPlatform().then((r) => useUi.getState().setPlatform(r.platform)).catch(() => {});
-    // コンテキストメニューの表示設定 (config.jsonc の contextMenu)
-    api.uiConfig().then((r) => useUi.getState().setMenuConfig(r.contextMenu)).catch(() => {});
+    // コンテキストメニューの表示設定・外部ツール (config.jsonc)
+    api
+      .uiConfig()
+      .then((r) => {
+        useUi.getState().setMenuConfig(r.contextMenu);
+        useUi.getState().setExternalTools(r.externalTools ?? []);
+      })
+      .catch(() => {});
     const initial = pathFromUrl();
     const initialView = viewFromUrl();
     const initialLogFilter = logFilterFromUrl();

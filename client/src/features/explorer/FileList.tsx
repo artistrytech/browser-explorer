@@ -279,6 +279,16 @@ export function FileList() {
   // --- コンテキストメニュー (出し分けは 002.md §8) ---
   const osLabels = osMenuLabels(platform);
   const menuConfig = useUi((s) => s.menuConfig);
+  const externalTools = useUi((s) => s.externalTools);
+
+  /** 外部ツール項目 (config.jsonc の externalTools)。paths を引数にサーバ側で起動する */
+  const externalToolItems = (paths: string[]): MenuItem[] =>
+    externalTools
+      .map((t, i) => ({
+        label: t.label,
+        action: () => void api.osRunTool(i, paths).catch(toastError),
+      }))
+      .filter((t) => t.label);
 
   /** config.jsonc の contextMenu 設定 (false で非表示、未設定は表示) */
   type CfgMenuItem = MenuItem & { id?: string };
@@ -423,6 +433,9 @@ export function FileList() {
         { separator: true },
       );
     }
+    // 外部ツール: 選択中のパス群 (複数可) を引数に起動
+    const extItems = externalToolItems(sel);
+    if (extItems.length > 0) items.push(...extItems, { separator: true });
     items.push({ id: 'properties', label: 'プロパティ', action: () => void showProperties(entry), disabled: !single });
     openMenu(e.clientX, e.clientY, pruneMenu(items));
   };
@@ -454,6 +467,9 @@ export function FileList() {
     ];
     const gitItems = gitContextItems(path, false, true);
     if (gitItems.length > 0) items.push(...gitItems, { separator: true });
+    // 外部ツール: 選択が無い場合は表示中のフォルダを引数に起動
+    const extItems = externalToolItems([path]);
+    if (extItems.length > 0) items.push(...extItems, { separator: true });
     items.push({ id: 'refresh', label: '最新の情報に更新', action: () => void useExplorer.getState().refresh() });
     openMenu(e.clientX, e.clientY, pruneMenu(items));
   };

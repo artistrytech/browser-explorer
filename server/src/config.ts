@@ -14,6 +14,12 @@ export interface AppConfig {
   commitFilesLimit?: number;
   /** Explorer コンテキストメニューの表示設定 (false で非表示、省略時は表示) */
   contextMenu?: Record<string, boolean>;
+  /**
+   * コンテキストメニューから起動する外部ツール。
+   * command は実行ファイル (絶対パス推奨)。args の "${paths}" が選択パス群に展開される
+   * (省略時や "${paths}" が無い場合は末尾に選択パスを追加)。
+   */
+  externalTools?: { label: string; command: string; args?: string[] }[];
 }
 
 /**

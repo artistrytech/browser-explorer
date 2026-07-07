@@ -86,7 +86,8 @@ export const api = {
     get<{ results: FsEntry[] }>(`/api/fs/search?dir=${q(dir)}&query=${q(query)}`),
 
   // --- config ---
-  uiConfig: () => get<{ contextMenu: Record<string, boolean> }>('/api/config'),
+  uiConfig: () =>
+    get<{ contextMenu: Record<string, boolean>; externalTools: { label: string }[] }>('/api/config'),
 
   // --- git ---
   isRepo: (path: string) =>
@@ -178,6 +179,7 @@ export const api = {
   osPlatform: () => get<{ platform: string }>('/api/os/platform'),
   osOpenFileManager: (path: string) => post<{ ok: true }>('/api/os/open-in-file-manager', { path }),
   osOpenTerminal: (path: string) => post<{ ok: true }>('/api/os/open-in-terminal', { path }),
+  osRunTool: (tool: number, paths: string[]) => post<{ ok: true }>('/api/os/run-tool', { tool, paths }),
 
   // --- クイックアクセス (002.md §7) ---
   quickaccessList: () => get<{ favorites: Favorite[] }>('/api/quickaccess'),

@@ -18,10 +18,13 @@ interface UiStore {
   platform: string;
   /** コンテキストメニューの表示設定 (config.jsonc の contextMenu。false で非表示) */
   menuConfig: Record<string, boolean>;
+  /** コンテキストメニューから起動する外部ツール (config.jsonc の externalTools。index が識別子) */
+  externalTools: { label: string }[];
   setView: (v: MainView) => void;
   setSettingsOpen: (open: boolean) => void;
   setPlatform: (p: string) => void;
   setMenuConfig: (m: Record<string, boolean>) => void;
+  setExternalTools: (t: { label: string }[]) => void;
 }
 
 export const useUi = create<UiStore>((set) => ({
@@ -29,10 +32,12 @@ export const useUi = create<UiStore>((set) => ({
   settingsOpen: false,
   platform: 'win32',
   menuConfig: {},
+  externalTools: [],
   setView: (view) => set({ view }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setPlatform: (platform) => set({ platform }),
   setMenuConfig: (menuConfig) => set({ menuConfig }),
+  setExternalTools: (externalTools) => set({ externalTools }),
 }));
 
 /** URL の ?view= から表示ビューを復元 (無指定は files)。旧 'git' は 'commit' に読み替え */

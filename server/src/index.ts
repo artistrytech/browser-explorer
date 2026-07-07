@@ -56,7 +56,11 @@ app.get('/api/health', (_req, res) => {
 
 // クライアント向けの UI 設定 (トークン等の秘匿値は返さない)
 app.get('/api/config', (_req, res) => {
-  res.json({ contextMenu: config.contextMenu ?? {} });
+  res.json({
+    contextMenu: config.contextMenu ?? {},
+    // 外部ツールはラベルのみ返す (index が /api/os/run-tool の識別子になる)
+    externalTools: (config.externalTools ?? []).map((t) => ({ label: String(t?.label ?? '') })),
+  });
 });
 
 // エラーハンドラ: 種別付き JSON で返す (plan §10)
