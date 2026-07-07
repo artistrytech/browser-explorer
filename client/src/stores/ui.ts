@@ -1,7 +1,15 @@
 import { create } from 'zustand';
 
-/** メイン領域の表示: ファイル一覧 / Git パネル / エディタ / コミット差分 */
-export type MainView = 'files' | 'git' | 'editor' | 'diff';
+/**
+ * メイン領域の表示: ファイル一覧 / コミット(変更) / ログ / ブランチ / エディタ / コミット差分。
+ * Git 系 (commit/log/branches) はそれぞれ独立した最上位タブ (ブラウザ履歴も独立)。
+ */
+export type MainView = 'files' | 'commit' | 'log' | 'branches' | 'editor' | 'diff';
+
+/** Git パネルを表示するビューか */
+export function isGitView(v: MainView): boolean {
+  return v === 'commit' || v === 'log' || v === 'branches';
+}
 
 interface UiStore {
   view: MainView;
@@ -22,10 +30,13 @@ export const useUi = create<UiStore>((set) => ({
   setPlatform: (platform) => set({ platform }),
 }));
 
-/** URL の ?view= から表示ビューを復元 (無指定は files) */
+/** URL の ?view= から表示ビューを復元 (無指定は files)。旧 'git' は 'commit' に読み替え */
 export function viewFromUrl(): MainView {
   const v = new URLSearchParams(location.search).get('view');
-  return v === 'git' || v === 'editor' || v === 'diff' ? v : 'files';
+  if (v === 'git') return 'commit';
+  return v === 'commit' || v === 'log' || v === 'branches' || v === 'editor' || v === 'diff'
+    ? v
+    : 'files';
 }
 
 /**

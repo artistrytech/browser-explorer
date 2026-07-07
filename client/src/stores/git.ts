@@ -25,15 +25,12 @@ interface GitStore {
   overlay: Record<string, OverlayCode>;
   /** マージ/リベース/cherry-pick の進行状態 (002.md §2.2) */
   mergeState: MergeState;
-  /** Git パネルの表示タブ (コンテキストメニューから外部制御するためストアに置く) */
-  panelTab: GitTab;
   /** ログのパス絞り込み。null なら全体 (002.md §1) */
   logFilter: LogFilter | null;
   checkRepo: (dirPath: string) => Promise<void>;
   refreshStatus: () => Promise<void>;
-  setPanelTab: (tab: GitTab) => void;
   setLogFilter: (f: LogFilter | null) => void;
-  /** 「ログを表示」: 絞り込みを設定して Git パネルのログタブを開く (002.md §1.2) */
+  /** 「ログを表示」: 絞り込みを設定して「ログ」タブを開く (002.md §1.2) */
   showLogFor: (relPath: string, isFile: boolean) => void;
 }
 
@@ -68,7 +65,6 @@ export const useGit = create<GitStore>((set, get) => ({
   status: null,
   overlay: {},
   mergeState: NO_MERGE,
-  panelTab: 'changes',
   logFilter: null,
 
   checkRepo: async (dirPath) => {
@@ -103,7 +99,6 @@ export const useGit = create<GitStore>((set, get) => ({
     }
   },
 
-  setPanelTab: (panelTab) => set({ panelTab }),
   setLogFilter: (logFilter) => set({ logFilter }),
 
   showLogFor: (relPath, isFile) => {
@@ -111,7 +106,7 @@ export const useGit = create<GitStore>((set, get) => ({
     const repo = get().repoRoot;
     if (repo) saveGitView(repo, { filesFilter: relPath });
     // リポジトリルート自体 ('') は全体表示 = 絞り込みなし
-    set({ panelTab: 'log', logFilter: relPath ? { path: relPath, follow: isFile } : null });
-    switchView('git');
+    set({ logFilter: relPath ? { path: relPath, follow: isFile } : null });
+    switchView('log');
   },
 }));

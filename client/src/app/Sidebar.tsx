@@ -101,7 +101,7 @@ export function Sidebar() {
             className={`side-item${repoRoot === r ? ' active' : ''}`}
             title={r}
             onClick={() => {
-              void navigate(r).then(() => switchView('git'));
+              void navigate(r).then(() => switchView('commit'));
             }}
             onContextMenu={(e) => {
               e.preventDefault();

@@ -36,10 +36,10 @@ export function openCommitDiff(target: CommitDiffTarget): void {
   switchView('diff');
 }
 
-/** 差分タブを閉じる。表示中だった場合は Git タブへ戻す (履歴は積まない) */
+/** 差分タブを閉じる。表示中だった場合は「ログ」タブへ戻す (履歴は積まない) */
 export function closeDiffTab(): void {
   useDiffTab.getState().close();
-  if (useUi.getState().view === 'diff') replaceView('git');
+  if (useUi.getState().view === 'diff') replaceView('log');
 }
 
 interface DiffData {

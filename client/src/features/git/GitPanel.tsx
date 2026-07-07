@@ -39,10 +39,9 @@ function statusLabel(f: GitFileStatus, staged: boolean): string {
   return map[c] ?? c;
 }
 
-export function GitPanel() {
+/** tab は最上位タブ (コミット/ログ/ブランチ) から与えられる */
+export function GitPanel({ tab }: { tab: GitTab }) {
   const { repoRoot, status, refreshStatus, mergeState, logFilter, setLogFilter } = useGit();
-  const tab = useGit((s) => s.panelTab);
-  const setTab = useGit((s) => s.setPanelTab);
   const { addRepository, repositories } = useSettings();
   const show = useToast((s) => s.show);
   const [message, setMessage] = useState('');
@@ -314,17 +313,6 @@ export function GitPanel() {
           </button>
         )}
         <span className="status-spacer" />
-        <div className="git-tabs">
-          {(['changes', 'log', 'branches'] as GitTab[]).map((t) => (
-            <button
-              key={t}
-              className={`git-tab${tab === t ? ' active' : ''}`}
-              onClick={() => setTab(t)}
-            >
-              {t === 'changes' ? '変更' : t === 'log' ? 'ログ' : 'ブランチ'}
-            </button>
-          ))}
-        </div>
       </div>
 
       {mergeState.inProgress && (

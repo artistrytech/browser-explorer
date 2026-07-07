@@ -19,7 +19,7 @@ import { useExplorer, pathFromUrl } from './stores/explorer';
 import { useEditor } from './stores/editor';
 import { useGit } from './stores/git';
 import { useSettings } from './stores/settings';
-import { useUi, viewFromUrl, switchView, replaceView } from './stores/ui';
+import { useUi, viewFromUrl, switchView, replaceView, isGitView } from './stores/ui';
 import { onFsChange } from './api/ws';
 import { api } from './api/client';
 import { parentPath, isRootPath, baseName } from './lib/paths';
@@ -124,8 +124,15 @@ export default function App() {
             📝 エディタ ({tabs.length})
           </button>
         )}
-        <button className={`view-tab${view === 'git' ? ' active' : ''}`} onClick={() => switchView('git')}>
-          🌿 Git
+        {/* Git 系は独立した最上位タブ (コミットは旧「変更」と同機能)。履歴もそれぞれ独立 */}
+        <button className={`view-tab${view === 'commit' ? ' active' : ''}`} onClick={() => switchView('commit')}>
+          🌿 コミット
+        </button>
+        <button className={`view-tab${view === 'log' ? ' active' : ''}`} onClick={() => switchView('log')}>
+          📜 ログ
+        </button>
+        <button className={`view-tab${view === 'branches' ? ' active' : ''}`} onClick={() => switchView('branches')}>
+          🔀 ブランチ
         </button>
         {diffTarget && (
           <button
@@ -166,8 +173,11 @@ export default function App() {
             <div className={`main-view${view === 'editor' ? '' : ' hidden'}`}>
               {tabs.length > 0 && <EditorPane />}
             </div>
-            <div className={`main-view${view === 'git' ? '' : ' hidden'}`}>
-              {view === 'git' && <GitPanel />}
+            <div className={`main-view${isGitView(view) ? '' : ' hidden'}`}>
+              {/* コミット/ログ/ブランチ間の切替では GitPanel をアンマウントせず状態を保つ */}
+              {isGitView(view) && (
+                <GitPanel tab={view === 'commit' ? 'changes' : view === 'log' ? 'log' : 'branches'} />
+              )}
             </div>
             <div className={`main-view${view === 'diff' ? '' : ' hidden'}`}>
               {view === 'diff' && <DiffTab />}
