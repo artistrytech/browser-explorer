@@ -10,6 +10,8 @@ export interface AppConfig {
   port: number;
   clientPort: number;
   token: string;
+  /** コミット差分ファイル一覧の表示上限 (省略時 100) */
+  commitFilesLimit?: number;
 }
 
 export const config: AppConfig = JSON.parse(

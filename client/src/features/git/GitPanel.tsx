@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { loadGitView, saveGitView } from '../../lib/gitViewMemory';
+import { saveEnteredChild } from '../../lib/focusMemory';
+import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import { useGit, GitTab } from '../../stores/git';
 import { useExplorer } from '../../stores/explorer';
 import { useSettings } from '../../stores/settings';
@@ -13,7 +15,7 @@ import { openConflictResolver } from './ConflictResolver';
 import { runGitCommands } from './GitCommandDialog';
 import { openPushDialog, defaultPushArgs } from './PushDialog';
 import { openCommitDiff } from './DiffTab';
-import type { CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
+import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
 
 /** コミット差分ファイルのステータス表示 (A/M/D/T) */
 const COMMIT_FILE_STATUS: Record<string, { label: string; cls: string }> = {
@@ -49,8 +51,9 @@ export function GitPanel() {
   const [diff, setDiff] = useState<{ title: string; text: string } | null>(null);
   const [branches, setBranches] = useState<GitBranch[]>([]);
   const [commitDetail, setCommitDetail] = useState<CommitFilesResult | null>(null);
-  /** 右ペインの優先表示: 最後に行った操作 (コミット選択 or 作業ツリー差分) を優先 */
-  const [rightPane, setRightPane] = useState<'commit' | 'diff'>('commit');
+  /** 差分ファイル一覧のフィルタ (パス部分一致)。sessionStorage に保持 */
+  const [fileFilter, setFileFilter] = useState('');
+  const openMenu = useContextMenu((s) => s.open);
 
   const explorerPath = useExplorer((s) => s.path);
 
@@ -58,21 +61,37 @@ export function GitPanel() {
   const selectCommit = (hash: string) => {
     if (!repoRoot) return;
     saveGitView(repoRoot, { hash });
-    setRightPane('commit');
     api.gitCommitFiles(repoRoot, hash).then(setCommitDetail).catch(toastError);
   };
 
-  // タブ復帰/リポジトリ切替時: 保存済みの選択コミットを復元
+  // タブ復帰/リポジトリ切替時: 保存済みの選択コミット・ファイルフィルタを復元
   useEffect(() => {
     setCommitDetail(null);
     if (!repoRoot) return;
     const saved = loadGitView(repoRoot);
+    setFileFilter(saved?.filesFilter ?? '');
     if (saved?.hash) {
       api.gitCommitFiles(repoRoot, saved.hash).then(setCommitDetail).catch(() => {
         saveGitView(repoRoot, { hash: null }); // 消えたコミット (reset 等) は破棄
       });
     }
   }, [repoRoot]);
+
+  // ログの絞り込み対象が変わったら、フィルタの初期値をそのパスにする (解除時は空欄)
+  const prevLogFilterRef = useRef(logFilter);
+  useEffect(() => {
+    if (prevLogFilterRef.current === logFilter) return; // マウント直後は sessionStorage の復元を優先
+    prevLogFilterRef.current = logFilter;
+    const v = logFilter?.path ?? '';
+    setFileFilter(v);
+    if (repoRoot) saveGitView(repoRoot, { filesFilter: v });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logFilter]);
+
+  const changeFileFilter = (v: string) => {
+    setFileFilter(v);
+    if (repoRoot) saveGitView(repoRoot, { filesFilter: v });
+  };
 
   useEffect(() => {
     if (repoRoot && tab === 'branches') {
@@ -129,12 +148,92 @@ export function GitPanel() {
     (f) => (f.workingDir !== ' ' && f.workingDir !== '') || f.index === '?',
   );
 
+  // 差分ファイル一覧: パス部分一致フィルタ → 表示上限 (config.json の commitFilesLimit)
+  const filterText = fileFilter.trim().toLowerCase();
+  const matchedFiles = commitDetail
+    ? filterText
+      ? commitDetail.files.filter((f) => f.path.toLowerCase().includes(filterText))
+      : commitDetail.files
+    : [];
+  const filesLimit = commitDetail?.limit ?? 100;
+  const shownFiles = matchedFiles.slice(0, filesLimit);
+
   const showFileDiff = (f: GitFileStatus, stagedSide: boolean) => {
-    setRightPane('diff');
     api
       .gitDiff(repoRoot, f.path, stagedSide)
       .then((r) => setDiff({ title: `${f.path} (${stagedSide ? 'ステージ vs HEAD' : '作業ツリー'})`, text: r.diff }))
       .catch(toastError);
+  };
+
+  /** 差分ファイル行の右クリックメニュー。存在チェック後に開く (場所に移動の活性判定) */
+  const commitFileMenu = (e: React.MouseEvent, f: CommitFile, hash: string) => {
+    e.preventDefault();
+    const { clientX: x, clientY: y } = e;
+    const abs = `${repoRoot}/${f.path}`;
+    void api
+      .stat(abs)
+      .then(() => true)
+      .catch(() => false)
+      .then((exists) => {
+        const short = hash.slice(0, 7);
+        const items: MenuItem[] = [
+          {
+            label: 'ログを表示',
+            action: () => useGit.getState().showLogFor(f.path, true),
+          },
+          {
+            label: 'ファイル場所に移動',
+            disabled: !exists,
+            action: (ev) => {
+              const slash = abs.lastIndexOf('/');
+              const dir = abs.slice(0, slash);
+              // 移動先でこのファイルにフォーカスが当たるように記録してから遷移する
+              // (新規タブは sessionStorage が複製されるので、window.open より先に保存する)
+              saveEnteredChild(dir, f.path.slice(f.path.lastIndexOf('/') + 1), 0);
+              if (ev.ctrlKey || ev.metaKey) {
+                // Ctrl+クリック (mac は ⌘) はブラウザの別タブで開く
+                window.open(`${location.pathname}?path=${encodeURIComponent(dir)}`, '_blank');
+              } else {
+                void useExplorer.getState().navigate(dir);
+              }
+            },
+          },
+          { separator: true },
+          {
+            label: `このバージョンに戻す (${short})`,
+            action: () =>
+              void confirmDialog(
+                'このバージョンに戻す',
+                `${f.path} を ${short} コミット後の内容に置き換えます。作業ツリーの変更は失われます。よろしいですか?`,
+                true,
+              ).then((ok) => {
+                if (ok)
+                  void runGitCommands(
+                    repoRoot,
+                    [['restore', '--source', hash, '--worktree', '--', f.path]],
+                    'このバージョンに戻す',
+                  );
+              }),
+          },
+          {
+            label: `一つ前のバージョンに戻す (${short}^)`,
+            action: () =>
+              void confirmDialog(
+                '一つ前のバージョンに戻す',
+                `${f.path} を ${short} コミット前の内容に置き換えます。作業ツリーの変更は失われます。よろしいですか?`,
+                true,
+              ).then((ok) => {
+                if (ok)
+                  void runGitCommands(
+                    repoRoot,
+                    [['restore', '--source', `${hash}^`, '--worktree', '--', f.path]],
+                    '一つ前のバージョンに戻す',
+                  );
+              }),
+          },
+        ];
+        openMenu(x, y, items);
+      });
   };
 
   const fileRow = (f: GitFileStatus, stagedSide: boolean) => (
@@ -437,66 +536,88 @@ export function GitPanel() {
         </div>
 
         <div className="git-right">
-          {rightPane === 'diff' && diff ? (
-            <>
-              <div className="diff-title">{diff.title}</div>
-              <DiffView diff={diff.text} />
-            </>
-          ) : commitDetail ? (
-            <div className="commit-detail">
-              <div className="commit-detail-head">
-                <div>
-                  <b>{commitDetail.message.split('\n')[0]}</b>
+          {/* 差分ファイル一覧はログタブ選択時のみ表示 (変更/ブランチでは非表示) */}
+          {tab === 'log' ? (
+            commitDetail ? (
+              <div className="commit-detail">
+                <div className="commit-detail-head">
+                  <div>
+                    <b>{commitDetail.message.split('\n')[0]}</b>
+                  </div>
+                  <div className="log-meta">
+                    {commitDetail.author} · {commitDetail.date} · {commitDetail.hash.slice(0, 12)}
+                  </div>
                 </div>
-                <div className="log-meta">
-                  {commitDetail.author} · {commitDetail.date} · {commitDetail.hash.slice(0, 12)}
+                <div className="cf-filter-bar">
+                  <input
+                    className="cf-filter"
+                    type="text"
+                    placeholder="パスで絞り込み (部分一致)"
+                    value={fileFilter}
+                    onChange={(e) => changeFileFilter(e.target.value)}
+                  />
+                  <span className="cf-count">
+                    {matchedFiles.length}/{commitDetail.files.length} 件
+                  </span>
                 </div>
+                {/* 差分ファイル一覧: ダブルクリックで 2 ペイン差分タブ、右クリックでメニュー */}
+                <table className="commit-files">
+                  <thead>
+                    <tr>
+                      <th>ステータス</th>
+                      <th>ファイル</th>
+                      <th className="num">追加</th>
+                      <th className="num">削除</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shownFiles.map((f) => {
+                      const st = COMMIT_FILE_STATUS[f.status] ?? { label: f.status, cls: 'st-mod' };
+                      return (
+                        <tr
+                          key={f.path}
+                          title="ダブルクリックで差分を表示 / 右クリックでメニュー"
+                          onDoubleClick={() =>
+                            openCommitDiff({
+                              repo: repoRoot,
+                              hash: commitDetail.hash,
+                              path: f.path,
+                              subject: commitDetail.message.split('\n')[0],
+                            })
+                          }
+                          onContextMenu={(e) => commitFileMenu(e, f, commitDetail.hash)}
+                        >
+                          <td className={`cf-status ${st.cls}`}>{st.label}</td>
+                          <td className="cf-path" title={f.path}>{f.path}</td>
+                          <td className="num cf-added">{f.binary ? '–' : `+${f.added ?? 0}`}</td>
+                          <td className="num cf-deleted">{f.binary ? '–' : `−${f.deleted ?? 0}`}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {commitDetail.files.length === 0 && <div className="empty-hint">変更ファイルはありません</div>}
+                {commitDetail.files.length > 0 && matchedFiles.length === 0 && (
+                  <div className="empty-hint">フィルタに一致するファイルがありません</div>
+                )}
+                {matchedFiles.length > shownFiles.length && (
+                  <div className="commit-files-hint">
+                    表示上限 {filesLimit} 件 (該当 {matchedFiles.length} 件)。上限は config.json の
+                    commitFilesLimit で変更できます
+                  </div>
+                )}
+                <div className="commit-files-hint">行をダブルクリックすると 2 ペインの差分を表示します</div>
               </div>
-              {/* 差分ファイル一覧: ダブルクリックで 2 ペイン差分タブを開く */}
-              <table className="commit-files">
-                <thead>
-                  <tr>
-                    <th>ステータス</th>
-                    <th>ファイル</th>
-                    <th className="num">追加</th>
-                    <th className="num">削除</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {commitDetail.files.map((f) => {
-                    const st = COMMIT_FILE_STATUS[f.status] ?? { label: f.status, cls: 'st-mod' };
-                    return (
-                      <tr
-                        key={f.path}
-                        title="ダブルクリックで差分を表示"
-                        onDoubleClick={() =>
-                          openCommitDiff({
-                            repo: repoRoot,
-                            hash: commitDetail.hash,
-                            path: f.path,
-                            subject: commitDetail.message.split('\n')[0],
-                          })
-                        }
-                      >
-                        <td className={`cf-status ${st.cls}`}>{st.label}</td>
-                        <td className="cf-path" title={f.path}>{f.path}</td>
-                        <td className="num cf-added">{f.binary ? '–' : `+${f.added ?? 0}`}</td>
-                        <td className="num cf-deleted">{f.binary ? '–' : `−${f.deleted ?? 0}`}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {commitDetail.files.length === 0 && <div className="empty-hint">変更ファイルはありません</div>}
-              <div className="commit-files-hint">行をダブルクリックすると 2 ペインの差分を表示します</div>
-            </div>
+            ) : (
+              <div className="empty-hint">コミットを選択すると差分ファイル一覧を表示します</div>
+            )
           ) : diff ? (
             <>
               <div className="diff-title">{diff.title}</div>
               <DiffView diff={diff.text} />
             </>
           ) : (
-            <div className="empty-hint">ファイルまたはコミットを選択すると差分を表示します</div>
+            <div className="empty-hint">ファイルを選択すると差分を表示します</div>
           )}
         </div>
       </div>

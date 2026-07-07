@@ -3,7 +3,8 @@ import { create } from 'zustand';
 
 export interface MenuItem {
   label?: string;
-  action?: () => void;
+  /** クリックイベントを受け取れる (Ctrl+クリック等の修飾キー判定用) */
+  action?: (e: React.MouseEvent) => void;
   disabled?: boolean;
   danger?: boolean;
   separator?: boolean;
@@ -74,9 +75,9 @@ export function ContextMenuHost() {
             key={i}
             className={`menu-item${item.danger ? ' danger' : ''}`}
             disabled={item.disabled}
-            onClick={() => {
+            onClick={(e) => {
               close();
-              item.action?.();
+              item.action?.(e);
             }}
           >
             {item.label}

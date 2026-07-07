@@ -8,6 +8,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { norm } from '../services/fsService.js';
 import { broadcastEvent } from '../ws/watcher.js';
+import { config } from '../config.js';
 
 export const gitRouter = Router();
 
@@ -211,7 +212,9 @@ gitRouter.get('/commit-files', async (req, res) => {
         binary: m[1] === '-', // numstat が '-' を返すのはバイナリ
       };
     });
-  res.json({ hash: h, author, date, message: msg.join('\x1f').trim(), files });
+  // 表示上限 (config.json の commitFilesLimit)。絞り込みはクライアント側で全件に対して行う
+  const limit = Math.max(1, Number(config.commitFilesLimit) || 100);
+  res.json({ hash: h, author, date, message: msg.join('\x1f').trim(), files, limit });
 });
 
 /** コミット前後のファイル内容 (2 ペイン差分表示用)。存在しない側は null */

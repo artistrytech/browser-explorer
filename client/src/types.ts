@@ -104,6 +104,8 @@ export interface CommitFilesResult {
   date: string;
   message: string;
   files: CommitFile[];
+  /** 表示上限 (config.json の commitFilesLimit) */
+  limit: number;
 }
 
 export interface Favorite {

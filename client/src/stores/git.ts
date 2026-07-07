@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
 import { switchView } from './ui';
+import { saveGitView } from '../lib/gitViewMemory';
 import type { GitStatus, MergeState } from '../types';
 
 export type GitTab = 'changes' | 'log' | 'branches';
@@ -106,6 +107,9 @@ export const useGit = create<GitStore>((set, get) => ({
   setLogFilter: (logFilter) => set({ logFilter }),
 
   showLogFor: (relPath, isFile) => {
+    // 差分ファイル一覧のフィルタ初期値として対象パスを設定 (GitPanel が復元する)
+    const repo = get().repoRoot;
+    if (repo) saveGitView(repo, { filesFilter: relPath });
     // リポジトリルート自体 ('') は全体表示 = 絞り込みなし
     set({ panelTab: 'log', logFilter: relPath ? { path: relPath, follow: isFile } : null });
     switchView('git');

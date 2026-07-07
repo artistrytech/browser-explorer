@@ -1640,6 +1640,31 @@ button {
   font-size: 11px;
 }
 
+/* 差分ファイル一覧のフィルタ */
+.cf-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px;
+}
+
+.cf-filter {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.cf-count {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 /* --- コミット差分タブ (2 ペイン) --- */
 .diff-tab {
   display: flex;

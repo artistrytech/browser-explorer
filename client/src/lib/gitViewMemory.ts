@@ -14,6 +14,8 @@ export interface GitViewRecord {
   graphScrollTop: number;
   /** 「全ブランチ (--all)」チェックボックスの状態 (デフォルト OFF) */
   graphAll: boolean;
+  /** コミット差分ファイル一覧のフィルタテキスト */
+  filesFilter: string;
   ts: number;
 }
 
@@ -29,7 +31,8 @@ export function loadGitView(repo: string): GitViewRecord | null {
 /** 部分更新でマージ保存する */
 export function saveGitView(repo: string, partial: Partial<Omit<GitViewRecord, 'ts'>>): void {
   try {
-    const prev = loadGitView(repo) ?? { hash: null, logScrollTop: 0, graphScrollTop: 0, graphAll: false };
+    const prev =
+      loadGitView(repo) ?? { hash: null, logScrollTop: 0, graphScrollTop: 0, graphAll: false, filesFilter: '' };
     sessionStorage.setItem(PREFIX + repo, JSON.stringify({ ...prev, ...partial, ts: Date.now() }));
   } catch {
     /* storage full 等は無視 */
