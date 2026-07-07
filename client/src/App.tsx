@@ -15,7 +15,7 @@ import { DiffTab, useDiffTab, closeDiffTab } from './features/git/DiffTab';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
 import { ToastHost } from './components/ToastHost';
-import { useExplorer, pathFromUrl } from './stores/explorer';
+import { useExplorer, pathFromUrl, searchFromUrl } from './stores/explorer';
 import { useEditor } from './stores/editor';
 import { useGit } from './stores/git';
 import { useSettings } from './stores/settings';
@@ -44,6 +44,7 @@ export default function App() {
     const initial = pathFromUrl();
     const initialView = viewFromUrl();
     const initialLogFilter = logFilterFromUrl();
+    const initialSearch = searchFromUrl();
     const params = new URLSearchParams();
     params.set('path', initial);
     if (initialView !== 'files') params.set('view', initialView);
@@ -51,14 +52,20 @@ export default function App() {
       params.set('logpath', initialLogFilter.path);
       if (initialLogFilter.follow) params.set('follow', '1');
     }
+    if (initialSearch) params.set('q', initialSearch);
     history.replaceState({ path: initial, view: initialView }, '', `${location.pathname}?${params}`);
     useUi.getState().setView(initialView);
     useGit.getState().setLogFilter(initialLogFilter);
-    void navigate(initial, false);
+    void navigate(initial, false).then(() => {
+      if (initialSearch) void useExplorer.getState().runSearch(initialSearch, false);
+    });
 
-    // 戻る/進む: パス・ビュー・ログ絞り込みを URL から復元する
+    // 戻る/進む: パス・ビュー・ログ絞り込み・検索を URL から復元する
     const onPop = () => {
-      void useExplorer.getState().navigate(pathFromUrl(), false);
+      void useExplorer.getState().navigate(pathFromUrl(), false).then(() => {
+        const q = searchFromUrl();
+        if (q) void useExplorer.getState().runSearch(q, false);
+      });
       useUi.getState().setView(viewFromUrl());
       const cur = useGit.getState().logFilter;
       const next = logFilterFromUrl();

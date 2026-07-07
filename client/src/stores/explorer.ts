@@ -42,13 +42,19 @@ interface ExplorerStore {
   setSelection: (paths: string[], anchor?: string | null) => void;
   setClipboard: (c: Clipboard | null) => void;
   setRenaming: (path: string | null) => void;
-  runSearch: (query: string) => Promise<void>;
+  /** 名前で検索。push=true でブラウザ履歴に追加 (URL の ?q= に反映) */
+  runSearch: (query: string, push?: boolean) => Promise<void>;
   clearSearch: () => void;
 }
 
 export function pathFromUrl(): string {
   const p = new URLSearchParams(location.search).get('path');
   return p && p.length > 0 ? p : '/';
+}
+
+/** URL の ?q= から検索クエリを復元 */
+export function searchFromUrl(): string {
+  return new URLSearchParams(location.search).get('q') ?? '';
 }
 
 export const useExplorer = create<ExplorerStore>((set, get) => ({
@@ -105,14 +111,22 @@ export const useExplorer = create<ExplorerStore>((set, get) => ({
   setClipboard: (clipboard) => set({ clipboard }),
   setRenaming: (renaming) => set({ renaming }),
 
-  runSearch: async (query) => {
+  runSearch: async (query, push = true) => {
     if (!query) {
-      set({ searchResults: null, searchQuery: '' });
+      get().clearSearch();
       return;
     }
     set({ loading: true, searchQuery: query });
     try {
       const { results } = await api.search(get().path, query);
+      if (push) {
+        // 検索実行をブラウザ履歴に追加 (戻るで検索前の一覧へ)
+        const params = new URLSearchParams();
+        params.set('path', get().path);
+        params.set('q', query);
+        history.pushState({ path: get().path, view: 'files' }, '', `${location.pathname}?${params}`);
+        useUi.getState().setView('files');
+      }
       set({ searchResults: results, selection: [] });
     } catch (e) {
       toastError(e);
@@ -121,5 +135,13 @@ export const useExplorer = create<ExplorerStore>((set, get) => ({
     }
   },
 
-  clearSearch: () => set({ searchResults: null, searchQuery: '' }),
+  clearSearch: () => {
+    set({ searchResults: null, searchQuery: '' });
+    // URL の ?q= も現状に合わせる (履歴は積まない)
+    const params = new URLSearchParams(location.search);
+    if (params.has('q')) {
+      params.delete('q');
+      history.replaceState(history.state, '', `${location.pathname}?${params}`);
+    }
+  },
 }));

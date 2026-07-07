@@ -149,6 +149,11 @@ fsRouter.delete('/delete', async (req, res) => {
 
 fsRouter.get('/search', async (req, res) => {
   const dir = reqPath(req.query.dir);
-  const query = reqPath(req.query.query);
-  res.json({ results: await searchByName(dir, query) });
+  // query はパスではなく検索文字列 (reqPath を通すと絶対パス化されて一致しなくなる)
+  const query = req.query.query;
+  if (typeof query !== 'string' || query.trim().length === 0) {
+    res.status(400).json({ error: 'bad_request', message: 'query is required' });
+    return;
+  }
+  res.json({ results: await searchByName(dir, query.trim()) });
 });

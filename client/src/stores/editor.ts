@@ -39,6 +39,13 @@ interface EditorStore {
   handleExternalChange: (path: string) => void;
 }
 
+/**
+ * このアプリからの保存時刻 (path → epoch ms)。
+ * 自分の書き込みで発火した fs 監視イベントを「外部変更」として扱わないための記録。
+ */
+const ownSaves = new Map<string, number>();
+const OWN_SAVE_GRACE_MS = 2000;
+
 export const useEditor = create<EditorStore>((set, get) => ({
   tabs: [],
   activePath: null,
@@ -119,6 +126,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
         eol: tab.eol,
         bom: tab.bom,
       });
+      ownSaves.set(tab.path, Date.now());
       set((s) => ({
         tabs: s.tabs.map((t) =>
           t.path === tab.path
@@ -126,7 +134,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
             : t,
         ),
       }));
-      useToast.getState().show('success', `${tab.name} を保存しました`);
+      // 成功時のトーストは出さない (失敗時のみ通知する)
     } catch (e) {
       toastError(e);
     }
@@ -149,6 +157,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
         eol: tab.eol,
         bom: tab.bom,
       });
+      ownSaves.set(newPath, Date.now());
       // タブを新パスに付け替え
       set((s) => ({
         tabs: s.tabs.map((t) =>
@@ -207,12 +216,23 @@ export const useEditor = create<EditorStore>((set, get) => ({
   handleExternalChange: (path) => {
     const tab = get().tabs.find((t) => t.path === path);
     if (!tab) return;
-    if (!tab.dirty) {
-      void get().reload(path);
-    } else {
-      useToast
-        .getState()
-        .show('info', `${tab.name} が外部で変更されました (未保存の編集があるため再読込していません)`);
-    }
+    // このアプリからの保存で発火したイベントは外部変更として扱わない
+    const savedAt = ownSaves.get(path);
+    if (savedAt && Date.now() - savedAt < OWN_SAVE_GRACE_MS) return;
+    // mtime が保存/読込時と同じなら実際には変わっていない (自分の保存イベントの遅延到達等)
+    void api
+      .stat(path)
+      .then((st) => {
+        const cur = get().tabs.find((t) => t.path === path);
+        if (!cur || st.mtime === cur.mtime) return;
+        if (!cur.dirty) {
+          void get().reload(path);
+        } else {
+          useToast
+            .getState()
+            .show('info', `${cur.name} が外部で変更されました (未保存の編集があるため再読込していません)`);
+        }
+      })
+      .catch(() => {});
   },
 }));

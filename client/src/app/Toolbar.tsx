@@ -13,8 +13,12 @@ export function Toolbar() {
 
   useEffect(() => {
     setAddressValue(path);
-    if (!searchQuery) setSearch('');
-  }, [path, searchQuery]);
+  }, [path]);
+
+  // 履歴の戻る/進む等で検索状態が変わったら入力欄にも反映する
+  useEffect(() => {
+    setSearch(searchQuery);
+  }, [searchQuery]);
 
   useEffect(() => {
     if (editing) inputRef.current?.select();
