@@ -17,7 +17,7 @@ import {
 } from '../../lib/fileOps';
 import { formatSize, formatDate, kindLabel, fileIcon, baseName } from '../../lib/paths';
 import { pinFolder, unpinFolder } from '../../lib/quickaccessOps';
-import { saveFocus, loadFocus } from '../../lib/focusMemory';
+import { saveFocus, loadFocus, saveEnteredChild } from '../../lib/focusMemory';
 import { openCloneDialog } from '../git/CloneDialog';
 import { openConflictResolver } from '../git/ConflictResolver';
 import { api } from '../../api/client';
@@ -28,15 +28,17 @@ const OVERLAY_MARK: Record<OverlayCode, { mark: string; cls: string; title: stri
   normal: { mark: '✔', cls: 'ov-normal', title: '変更なし' },
   modified: { mark: '●', cls: 'ov-modified', title: '変更あり' },
   staged: { mark: '＋', cls: 'ov-staged', title: 'ステージ済み' },
-  untracked: { mark: '？', cls: 'ov-untracked', title: '未追跡' },
+  untracked: { mark: '？', cls: 'ov-untracked', title: 'Git 管理外' },
   conflicted: { mark: '⚠', cls: 'ov-conflicted', title: '競合' },
+  ignored: { mark: '－', cls: 'ov-ignored', title: '無視 (.gitignore)' },
 };
 
-function GitOverlay({ path }: { path: string }) {
+function GitOverlay({ path, dirCode }: { path: string; dirCode?: OverlayCode }) {
   const repoRoot = useGit((s) => s.repoRoot);
   const code = useGit((s) => s.overlay[path]);
   if (!repoRoot || !path.startsWith(repoRoot)) return null;
-  const info = OVERLAY_MARK[code ?? 'normal'];
+  // /status 由来 (変更/ステージ/競合) を優先し、無ければフォルダ単位の判定 (無視/管理外)
+  const info = OVERLAY_MARK[code ?? dirCode ?? 'normal'];
   return (
     <span className={`git-overlay ${info.cls}`} title={info.title}>
       {info.mark}
@@ -77,6 +79,32 @@ export function FileList() {
   /** 指定フォルダ (repo 相対) 配下に競合ファイルがあるか (002.md §2.2) */
   const conflictsUnder = (relDir: string): boolean =>
     mergeState.conflicted.some((c) => relDir === '' || c === relDir || c.startsWith(`${relDir}/`));
+
+  // 表示中フォルダ直下の「無視 (.gitignore) / Git 管理外」判定 (abs path → code)
+  const [dirOverlay, setDirOverlay] = useState<Record<string, OverlayCode>>({});
+  useEffect(() => {
+    const relDir = repoRoot ? relOf(path) : null;
+    if (relDir === null || entries.length === 0) {
+      setDirOverlay({});
+      return;
+    }
+    let cancelled = false;
+    api
+      .gitEntriesStatus(repoRoot!, relDir, entries.map((e) => e.name))
+      .then((r) => {
+        if (cancelled) return;
+        const map: Record<string, OverlayCode> = {};
+        const abs = (n: string) => (path.endsWith('/') ? path + n : `${path}/${n}`);
+        for (const n of r.ignored) map[abs(n)] = 'ignored';
+        for (const n of r.untracked) map[abs(n)] = 'untracked';
+        setDirOverlay(map);
+      })
+      .catch(() => setDirOverlay({}));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries, repoRoot, path]);
 
   const displayed = useMemo(() => {
     const base = searchResults ?? entries;
@@ -251,6 +279,18 @@ export function FileList() {
   // --- コンテキストメニュー (出し分けは 002.md §8) ---
   const osLabels = osMenuLabels(platform);
 
+  /**
+   * 「別ウィンドウで開く」: 指定フォルダをブラウザの別タブで開く。
+   * focusName を渡すとそのエントリにフォーカスを当てる
+   * (フォーカス記録の sessionStorage は window.open 時に新タブへ複製される)
+   */
+  const openInNewWindow = (dir: string, focusName?: string) => {
+    if (focusName) {
+      saveEnteredChild(dir, focusName, displayed.findIndex((d) => d.name === focusName));
+    }
+    window.open(`${location.pathname}?path=${encodeURIComponent(dir)}`, '_blank');
+  };
+
   /** フォルダ/空白共通の OS 連携項目 (002.md §4): 対象がファイルでない場合のみ */
   const osMenuItems = (dirPath: string): MenuItem[] => [
     { label: osLabels.fileManager, action: () => void api.osOpenFileManager(dirPath).catch(toastError) },
@@ -293,8 +333,14 @@ export function FileList() {
     const items: MenuItem[] = [
       { label: '開く', action: () => displayed.filter((d) => sel.includes(d.path)).forEach(openEntry) },
       ...(entry.type !== 'dir'
-        ? [{ label: 'エディタで開く', action: () => openEntry(entry) }]
+        ? [
+            { label: 'エディタで開く', action: () => openEntry(entry) },
+            // ファイル: 同じフォルダを別ウィンドウで開いて対象にフォーカス
+            { label: '別ウィンドウで開く', action: () => openInNewWindow(path, entry.name) },
+          ]
         : [
+            // フォルダ: 対象フォルダ自体を別ウィンドウで開く
+            { label: '別ウィンドウで開く', action: () => openInNewWindow(entry.path) },
             // ピン止め / 解除のトグル (002.md §7.2)。解除は確認フローへ
             pinned
               ? { label: 'ピン止めを解除', action: () => void unpinFolder(entry.path, entry.name) }
@@ -360,6 +406,9 @@ export function FileList() {
     const items: MenuItem[] = [
       { label: '新規フォルダ', action: () => void createFolder() },
       { label: '新規ファイル', action: () => void createFile() },
+      { separator: true },
+      // フォーカス無し: 表示中のフォルダを別ウィンドウで開く
+      { label: '別ウィンドウで開く', action: () => openInNewWindow(path) },
       { separator: true },
       { label: '貼り付け', action: () => void paste(), disabled: !clipboard },
       { separator: true },
@@ -450,7 +499,7 @@ export function FileList() {
       <span className="entry-name">
         <span className="entry-icon">
           {fileIcon(entry)}
-          <GitOverlay path={entry.path} />
+          <GitOverlay path={entry.path} dirCode={dirOverlay[entry.path]} />
         </span>
         <span className={clipboard?.op === 'cut' && clipboard.paths.includes(entry.path) ? 'cut-pending' : ''}>
           {entry.name}
@@ -509,7 +558,7 @@ export function FileList() {
             <div key={entry.path} {...rowProps(entry)}>
               <div className="big-icon">
                 {fileIcon(entry)}
-                <GitOverlay path={entry.path} />
+                <GitOverlay path={entry.path} dirCode={dirOverlay[entry.path]} />
               </div>
               {renaming === entry.path ? renderName(entry) : <div className="icon-label">{entry.name}</div>}
             </div>

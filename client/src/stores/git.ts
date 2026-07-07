@@ -16,7 +16,7 @@ export interface LogFilter {
  * ファイル一覧オーバーレイ用の Git 状態コード
  * plan §8.1: ✔ Normal / ● Modified / ＋ Staged / ？ Untracked / ⚠ Conflicted / － Ignored
  */
-export type OverlayCode = 'normal' | 'modified' | 'staged' | 'untracked' | 'conflicted';
+export type OverlayCode = 'normal' | 'modified' | 'staged' | 'untracked' | 'conflicted' | 'ignored';
 
 interface GitStore {
   repoRoot: string | null;

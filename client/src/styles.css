@@ -413,6 +413,7 @@ button {
 .ov-staged { color: var(--add); }
 .ov-untracked { color: var(--accent); }
 .ov-conflicted { color: var(--danger); }
+.ov-ignored { color: var(--text-dim); }
 
 .cut-pending {
   opacity: 0.5;

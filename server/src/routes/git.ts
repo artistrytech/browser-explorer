@@ -99,6 +99,63 @@ gitRouter.get('/status', async (req, res) => {
   });
 });
 
+/**
+ * 一覧表示用: 指定フォルダ直下エントリの「無視 (.gitignore)」「Git 管理外」判定。
+ * 無視は check-ignore (stdin 一括)、管理外は ls-files の追跡ファイルから判定する。
+ */
+gitRouter.post('/entries-status', async (req, res) => {
+  const { repo, dir, names } = (req.body ?? {}) as { repo?: unknown; dir?: unknown; names?: unknown };
+  const g = git(repo);
+  const relDir = typeof dir === 'string' && dir.length > 0 ? relPath(dir) : '';
+  const NUL = String.fromCharCode(0);
+  const valid = Array.isArray(names)
+    ? names.filter(
+        (n): n is string =>
+          typeof n === 'string' && n.length > 0 && !/[/\\]/.test(n) &&
+          n !== '.' && n !== '..' && n !== '.git' && !n.includes(NUL),
+      )
+    : [];
+  if (valid.length === 0) {
+    res.json({ ignored: [], untracked: [] });
+    return;
+  }
+  const rels = valid.map((n) => (relDir ? `${relDir}/${n}` : n));
+
+  // 無視判定: エントリ数によらず 1 プロセスで済むよう stdin で流し込む
+  const ignoredSet = await new Promise<Set<string>>((resolve) => {
+    const child = spawn('git', ['check-ignore', '-z', '--stdin'], { cwd: String(repo) });
+    const chunks: Buffer[] = [];
+    child.stdout.on('data', (c: Buffer) => chunks.push(c));
+    child.on('close', () =>
+      resolve(new Set(Buffer.concat(chunks).toString('utf8').split(NUL).filter(Boolean))),
+    );
+    child.on('error', () => resolve(new Set()));
+    child.stdin.on('error', () => {});
+    child.stdin.end(rels.join(NUL) + NUL);
+  });
+
+  // 追跡判定: 対象フォルダ配下の追跡ファイルの「直下の子要素名」を集める
+  // (フォルダは配下に追跡ファイルが 1 つでもあれば管理下とみなす)
+  const lsArgs = relDir ? ['ls-files', '-z', '--', relDir] : ['ls-files', '-z'];
+  const lsOut = await g.raw(lsArgs).catch(() => '');
+  const prefix = relDir ? `${relDir}/` : '';
+  const trackedChildren = new Set(
+    lsOut
+      .split(NUL)
+      .filter((p) => p.length > prefix.length && p.startsWith(prefix))
+      .map((p) => p.slice(prefix.length).split('/')[0]),
+  );
+
+  const ignored: string[] = [];
+  const untracked: string[] = [];
+  valid.forEach((name, i) => {
+    if (trackedChildren.has(name)) return; // 管理下 (差分状態は /status 側で表示)
+    if (ignoredSet.has(rels[i])) ignored.push(name);
+    else untracked.push(name);
+  });
+  res.json({ ignored, untracked });
+});
+
 gitRouter.get('/log', async (req, res) => {
   const g = git(req.query.repo);
   const limit = Math.min(Number(req.query.limit) || 100, 500);

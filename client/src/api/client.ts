@@ -89,6 +89,8 @@ export const api = {
   isRepo: (path: string) =>
     get<{ isRepo: boolean; root?: string }>(`/api/git/is-repo?path=${q(path)}`),
   gitStatus: (repo: string) => get<GitStatus>(`/api/git/status?repo=${q(repo)}`),
+  gitEntriesStatus: (repo: string, dir: string, names: string[]) =>
+    post<{ ignored: string[]; untracked: string[] }>('/api/git/entries-status', { repo, dir, names }),
   gitLog: (repo: string, opts: { limit?: number; skip?: number; path?: string; follow?: boolean } = {}) =>
     get<{ commits: GitCommit[] }>(
       `/api/git/log?repo=${q(repo)}&limit=${opts.limit ?? 100}` +
