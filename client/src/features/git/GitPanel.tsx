@@ -14,6 +14,8 @@ import { openCloneDialog } from './CloneDialog';
 import { openConflictResolver } from './ConflictResolver';
 import { runGitCommands } from './GitCommandDialog';
 import { openPushDialog, defaultPushArgs } from './PushDialog';
+import { openFetchDialog } from './FetchDialog';
+import { openStashDialog } from './StashDialog';
 import { openCommitDiff } from './DiffTab';
 import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
 
@@ -285,28 +287,26 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           🌿 {status?.branch ?? '?'}
           {status?.tracking ? ` ↑${status.ahead}↓${status.behind}` : ''}
         </span>
-        <button className="status-btn" disabled={busy} onClick={() => void runGitCommands(repoRoot, [['fetch']], 'Fetch')}>
+        {/* Fetch/Pull/Stash は即時実行せず、確認ダイアログを挟む (Push と同じフロー) */}
+        <button className="status-btn" disabled={busy} onClick={openFetchDialog}>
           Fetch
         </button>
-        <button className="status-btn" disabled={busy} onClick={() => void runGitCommands(repoRoot, [['pull']], 'Pull')}>
+        <button
+          className="status-btn"
+          disabled={busy}
+          onClick={() =>
+            void confirmDialog('Pull', 'git pull を実行しますか?').then((ok) => {
+              if (ok) void runGitCommands(repoRoot, [['pull']], 'Pull');
+            })
+          }
+        >
           Pull
         </button>
         <button className="status-btn" disabled={busy} onClick={openPushDialog}>
           Push
         </button>
-        <button
-          className="status-btn"
-          disabled={busy}
-          onClick={() => void runGitCommands(repoRoot, [['stash']], 'Stash')}
-        >
+        <button className="status-btn" disabled={busy} onClick={openStashDialog}>
           Stash
-        </button>
-        <button
-          className="status-btn"
-          disabled={busy}
-          onClick={() => void runGitCommands(repoRoot, [['stash', 'pop']], 'Stash pop')}
-        >
-          Pop
         </button>
         {!repositories.includes(repoRoot) && (
           <button className="status-btn" onClick={() => addRepository(repoRoot)} title="サイドバーに登録">

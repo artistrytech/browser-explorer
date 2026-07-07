@@ -11,6 +11,8 @@ import { CloneDialog } from './features/git/CloneDialog';
 import { ConflictResolver } from './features/git/ConflictResolver';
 import { GitCommandDialog } from './features/git/GitCommandDialog';
 import { PushDialog } from './features/git/PushDialog';
+import { FetchDialog } from './features/git/FetchDialog';
+import { StashDialog } from './features/git/StashDialog';
 import { DiffTab, useDiffTab, closeDiffTab } from './features/git/DiffTab';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
@@ -214,6 +216,9 @@ export default function App() {
       <CloneDialog />
       <ConflictResolver />
       <PushDialog />
+      <FetchDialog />
+      <StashDialog />
+      {/* 実行結果ダイアログは他ダイアログより手前に出すため最後にマウント */}
       <GitCommandDialog />
     </div>
   );

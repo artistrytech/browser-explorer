@@ -1666,6 +1666,63 @@ button {
   white-space: nowrap;
 }
 
+/* Stash ダイアログ */
+.stash-section-title {
+  font-weight: 600;
+  margin-top: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.stash-list {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.stash-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.stash-row:hover {
+  background: var(--bg-hover);
+}
+
+.stash-row.active {
+  background: var(--bg-selected);
+}
+
+.stash-ref {
+  font-family: monospace;
+  white-space: nowrap;
+  color: var(--accent);
+}
+
+.stash-msg {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stash-date {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 /* --- コミット差分タブ (2 ペイン) --- */
 .diff-tab {
   display: flex;
