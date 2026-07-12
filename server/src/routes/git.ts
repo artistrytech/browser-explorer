@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { norm } from '../services/fsService.js';
 import { broadcastEvent } from '../ws/watcher.js';
+import { launch } from './os.js';
 import { config } from '../config.js';
 import { getGitAuth, setGitAuth } from '../services/stateStore.js';
 
@@ -289,6 +290,140 @@ gitRouter.get('/commit-file-diff', async (req, res) => {
   const nul = String.fromCharCode(0);
   const binary = (before !== null && before.includes(nul)) || (after !== null && after.includes(nul));
   res.json({ path: rel, before, after, binary });
+});
+
+/* ---------- 外部差分ツール (config.jsonc の diffTools) ---------- */
+
+const DIFF_TMP_ROOT = path.join(os.tmpdir(), 'expolorer-difftool');
+const DIFF_MAX_BUFFER = 64 * 1024 * 1024;
+
+/** 比較対象の指定。commit=コミット前後 / staged=HEAD vs ステージ / worktree=ステージ vs 作業ツリー */
+type DiffToolMode = 'commit' | 'staged' | 'worktree';
+
+/** 古い一時ファイル (24 時間以上前) を掃除する (best effort) */
+async function cleanupDiffTemp(): Promise<void> {
+  try {
+    const now = Date.now();
+    for (const name of await fs.readdir(DIFF_TMP_ROOT)) {
+      const dir = path.join(DIFF_TMP_ROOT, name);
+      const st = await fs.stat(dir).catch(() => null);
+      if (st && now - st.mtimeMs > 24 * 60 * 60 * 1000) {
+        await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+      }
+    }
+  } catch {
+    /* 未作成なら何もしない */
+  }
+}
+
+/** git show <spec> の内容。バイナリを壊さないよう Buffer で扱う。存在しなければ null */
+async function gitShowBuffer(repo: string, spec: string): Promise<Buffer | null> {
+  try {
+    const { stdout } = await execFileAsync('git', ['show', spec], {
+      cwd: repo,
+      encoding: 'buffer',
+      maxBuffer: DIFF_MAX_BUFFER,
+    });
+    return stdout as unknown as Buffer;
+  } catch {
+    return null; // そのリビジョンに存在しない (追加/削除されたファイル) → 空として扱う
+  }
+}
+
+/** 比較用の一時ファイルを書き出す (元のファイル名のまま side ごとのサブフォルダに置く) */
+async function writeSide(dir: string, side: string, rel: string, content: Buffer | null): Promise<string> {
+  const sub = path.join(dir, side);
+  await fs.mkdir(sub, { recursive: true });
+  const file = path.join(sub, path.basename(rel));
+  await fs.writeFile(file, content ?? Buffer.alloc(0));
+  return file;
+}
+
+interface DiffSides {
+  left: Buffer | null;
+  right: Buffer | null;
+  /** 作業ツリー側は実ファイルを直接開く (ツール上での編集を作業ツリーに反映できる) */
+  rightPath: string | null;
+  leftTitle: string;
+  rightTitle: string;
+}
+
+async function diffSides(repo: string, rel: string, mode: DiffToolMode, hash: string): Promise<DiffSides> {
+  if (mode === 'commit') {
+    if (!hash) badRequest('hash is required');
+    const short = hash.slice(0, 7);
+    const [left, right] = await Promise.all([
+      gitShowBuffer(repo, `${hash}^:${rel}`),
+      gitShowBuffer(repo, `${hash}:${rel}`),
+    ]);
+    return { left, right, rightPath: null, leftTitle: `${rel} (${short}^)`, rightTitle: `${rel} (${short})` };
+  }
+  if (mode === 'staged') {
+    const [left, right] = await Promise.all([
+      gitShowBuffer(repo, `HEAD:${rel}`),
+      gitShowBuffer(repo, `:${rel}`),
+    ]);
+    return { left, right, rightPath: null, leftTitle: `${rel} (HEAD)`, rightTitle: `${rel} (ステージ)` };
+  }
+  if (mode === 'worktree') {
+    // ステージ済みの内容 (未追跡なら HEAD、それも無ければ空) と作業ツリーの実ファイルを比較
+    const left = (await gitShowBuffer(repo, `:${rel}`)) ?? (await gitShowBuffer(repo, `HEAD:${rel}`));
+    const abs = path.join(repo, rel);
+    return {
+      left,
+      right: null,
+      rightPath: existsSync(abs) ? abs : null,
+      leftTitle: `${rel} (ステージ/HEAD)`,
+      rightTitle: `${rel} (作業ツリー)`,
+    };
+  }
+  badRequest('mode must be commit|staged|worktree');
+}
+
+/**
+ * 外部差分ツールで比較を開く (config.jsonc の diffTools)。
+ * クライアントが送るのはツールの index と比較対象 (repo/path/mode/hash) のみで、
+ * 実行するコマンドと引数の雛形はサーバ側の設定からしか参照しない → 設定外のツールは実行できない。
+ * 比較内容は一時ファイルに書き出し、引数配列で spawn する (シェル補間なし)。
+ */
+gitRouter.post('/difftool', async (req, res) => {
+  const { tool, repo, mode, hash } = (req.body ?? {}) as {
+    tool?: unknown;
+    repo?: unknown;
+    mode?: unknown;
+    hash?: unknown;
+  };
+  const tools = config.diffTools ?? [];
+  const t = typeof tool === 'number' && Number.isInteger(tool) && tool >= 0 ? tools[tool] : undefined;
+  if (!t || typeof t.command !== 'string' || t.command.trim().length === 0) badRequest('unknown diff tool');
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  if (mode !== 'commit' && mode !== 'staged' && mode !== 'worktree') {
+    badRequest('mode must be commit|staged|worktree');
+  }
+  const rel = relPath(req.body.path);
+  const command = t.command.trim();
+  // 絶対パス指定なら実在チェック (未インストール時に無反応にならないよう 400 で返す)
+  if (/[\\/]/.test(command) && !existsSync(command)) badRequest(`ツールが見つかりません: ${command}`);
+
+  const sides = await diffSides(repo, rel, mode, String(hash ?? ''));
+  void cleanupDiffTemp();
+  const dir = path.join(DIFF_TMP_ROOT, randomUUID());
+  const leftPath = await writeSide(dir, 'left', rel, sides.left);
+  const rightPath = sides.rightPath ?? (await writeSide(dir, 'right', rel, sides.right));
+
+  const vars: Record<string, string> = {
+    left: leftPath,
+    right: rightPath,
+    leftTitle: sides.leftTitle,
+    rightTitle: sides.rightTitle,
+  };
+  const template = Array.isArray(t.args) ? t.args.filter((a): a is string => typeof a === 'string') : [];
+  const args = template.map((a) => a.replace(/\$\{(left|right|leftTitle|rightTitle)\}/g, (_, k: string) => vars[k]));
+  // プレースホルダが無い設定では末尾に左右のパスを渡す
+  if (!template.some((a) => a.includes('${left}') || a.includes('${right}'))) args.push(leftPath, rightPath);
+
+  launch(command, args, repo);
+  res.json({ ok: true, command, left: leftPath, right: rightPath });
 });
 
 gitRouter.get('/diff', async (req, res) => {

@@ -87,7 +87,11 @@ export const api = {
 
   // --- config ---
   uiConfig: () =>
-    get<{ contextMenu: Record<string, boolean>; externalTools: { label: string }[] }>('/api/config'),
+    get<{
+      contextMenu: Record<string, boolean>;
+      externalTools: { label: string }[];
+      diffTools: { label: string; isDefault?: boolean }[];
+    }>('/api/config'),
 
   // --- git ---
   isRepo: (path: string) =>
@@ -126,6 +130,21 @@ export const api = {
     get<{ diff: string }>(
       `/api/git/diff?repo=${q(repo)}${path ? `&path=${q(path)}` : ''}&staged=${staged}`,
     ),
+  /** 外部差分ツール (config.jsonc の diffTools) で比較を開く。tool は設定の index */
+  gitDiffTool: (
+    tool: number,
+    repo: string,
+    path: string,
+    mode: 'commit' | 'staged' | 'worktree',
+    hash?: string,
+  ) =>
+    post<{ ok: true; command: string; left: string; right: string }>('/api/git/difftool', {
+      tool,
+      repo,
+      path,
+      mode,
+      hash,
+    }),
   gitStage: (repo: string, paths: string[]) => post<{ ok: true }>('/api/git/stage', { repo, paths }),
   gitUnstage: (repo: string, paths: string[]) =>
     post<{ ok: true }>('/api/git/unstage', { repo, paths }),

@@ -4,6 +4,7 @@ import { loadGitView, saveGitView } from '../../lib/gitViewMemory';
 import { saveEnteredChild } from '../../lib/focusMemory';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import { useGit, GitTab } from '../../stores/git';
+import { useUi, defaultDiffToolIndex } from '../../stores/ui';
 import { useExplorer } from '../../stores/explorer';
 import { useSettings } from '../../stores/settings';
 import { useToast, toastError } from '../../stores/toast';
@@ -62,6 +63,10 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     if (repoRoot) saveGitView(repoRoot, { focusedFile: p });
   };
   const openMenu = useContextMenu((s) => s.open);
+  /** 差分表示に使う外部ツール (config.jsonc の diffTools。index が識別子) */
+  const diffTools = useUi((s) => s.diffTools);
+  /** 既定の差分ツール (config の default: true)。未設定ならアプリ内の 2 ペイン差分 */
+  const defaultTool = defaultDiffToolIndex(diffTools);
 
   const explorerPath = useExplorer((s) => s.path);
 
@@ -177,6 +182,55 @@ export function GitPanel({ tab }: { tab: GitTab }) {
       .catch(toastError);
   };
 
+  /**
+   * 外部差分ツールで開くメニュー項目 (config.jsonc の diffTools)。
+   * 送るのはツールの index と比較対象だけで、コマンドはサーバ側の設定からのみ解決される。
+   */
+  const diffToolItems = (
+    filePath: string,
+    mode: 'commit' | 'staged' | 'worktree',
+    hash?: string,
+  ): MenuItem[] =>
+    diffTools.map((t, i) => ({
+      label: t.label,
+      action: () => void api.gitDiffTool(i, repoRoot, filePath, mode, hash).catch(toastError),
+    }));
+
+  /** ダブルクリック時の差分表示: 既定ツールがあればそれ、無ければアプリ内の 2 ペイン差分 */
+  const openDefaultCommitDiff = (f: CommitFile, detail: CommitFilesResult) => {
+    if (defaultTool >= 0) {
+      void api.gitDiffTool(defaultTool, repoRoot, f.path, 'commit', detail.hash).catch(toastError);
+      return;
+    }
+    openCommitDiff({
+      repo: repoRoot,
+      hash: detail.hash,
+      path: f.path,
+      subject: detail.message.split('\n')[0],
+    });
+  };
+
+  const openDefaultWorkingDiff = (f: GitFileStatus, stagedSide: boolean) => {
+    if (defaultTool >= 0) {
+      void api
+        .gitDiffTool(defaultTool, repoRoot, f.path, stagedSide ? 'staged' : 'worktree')
+        .catch(toastError);
+      return;
+    }
+    showFileDiff(f, stagedSide);
+  };
+
+  /** 変更ファイル行 (コミットタブ) の右クリックメニュー */
+  const workingFileMenu = (e: React.MouseEvent, f: GitFileStatus, stagedSide: boolean) => {
+    e.preventDefault();
+    const items: MenuItem[] = [
+      { label: '差分を表示', action: () => showFileDiff(f, stagedSide) },
+    ];
+    const tools = diffToolItems(f.path, stagedSide ? 'staged' : 'worktree');
+    if (tools.length > 0) items.push({ separator: true }, ...tools);
+    openMenu(e.clientX, e.clientY, items);
+  };
+
   /** 差分ファイル行の右クリックメニュー。存在チェック後に開く (場所に移動の活性判定) */
   const commitFileMenu = (e: React.MouseEvent, f: CommitFile, detail: CommitFilesResult) => {
     e.preventDefault();
@@ -200,6 +254,8 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                 ev.ctrlKey || ev.metaKey,
               ),
           },
+          // 外部差分ツール (WinMerge / Meld など) でコミット前後を比較
+          ...diffToolItems(f.path, 'commit', hash),
           { separator: true },
           {
             label: 'ログを表示',
@@ -262,8 +318,20 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   };
 
   const fileRow = (f: GitFileStatus, stagedSide: boolean) => (
-    <div key={`${stagedSide}-${f.path}`} className="git-file-row">
-      <button className="git-file-name" title={f.path} onClick={() => showFileDiff(f, stagedSide)}>
+    <div
+      key={`${stagedSide}-${f.path}`}
+      className="git-file-row"
+      onContextMenu={(e) => workingFileMenu(e, f, stagedSide)}
+    >
+      <button
+        className="git-file-name"
+        title={
+          `${f.path}\nクリックで差分表示 / 右クリックでメニュー` +
+          (defaultTool >= 0 ? `\nダブルクリックで ${diffTools[defaultTool].label}` : '')
+        }
+        onClick={() => showFileDiff(f, stagedSide)}
+        onDoubleClick={() => openDefaultWorkingDiff(f, stagedSide)}
+      >
         <span className="git-file-status">{statusLabel(f, stagedSide)}</span> {f.path}
       </button>
       {stagedSide ? (
@@ -596,16 +664,13 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                         <tr
                           key={f.path}
                           className={focusedFile === f.path ? 'focused' : ''}
-                          title="ダブルクリックで差分を表示 / 右クリックでメニュー"
-                          onClick={() => setFocusedFile(f.path)}
-                          onDoubleClick={() =>
-                            openCommitDiff({
-                              repo: repoRoot,
-                              hash: commitDetail.hash,
-                              path: f.path,
-                              subject: commitDetail.message.split('\n')[0],
-                            })
+                          title={
+                            defaultTool >= 0
+                              ? `ダブルクリックで ${diffTools[defaultTool].label} / 右クリックでメニュー`
+                              : 'ダブルクリックで差分を表示 / 右クリックでメニュー'
                           }
+                          onClick={() => setFocusedFile(f.path)}
+                          onDoubleClick={() => openDefaultCommitDiff(f, commitDetail)}
                           onContextMenu={(e) => commitFileMenu(e, f, commitDetail)}
                         >
                           <td className={`cf-status ${st.cls}`}>{st.label}</td>
@@ -627,7 +692,11 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                     commitFilesLimit で変更できます
                   </div>
                 )}
-                <div className="commit-files-hint">行をダブルクリックすると 2 ペインの差分を表示します</div>
+                <div className="commit-files-hint">
+                  {defaultTool >= 0
+                    ? `行をダブルクリックすると ${diffTools[defaultTool].label} で差分を開きます (アプリ内の差分は右クリック →「差分を表示」)`
+                    : '行をダブルクリックすると 2 ペインの差分を表示します'}
+                </div>
               </div>
             ) : (
               <div className="empty-hint">コミットを選択すると差分ファイル一覧を表示します</div>

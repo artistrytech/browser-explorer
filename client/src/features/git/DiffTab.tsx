@@ -81,6 +81,7 @@ interface DiffData {
 export function DiffTab() {
   const current = useDiffTab((s) => s.current);
   const theme = useSettings((s) => s.settings.theme);
+  const diffTools = useUi((s) => s.diffTools);
   const [data, setData] = useState<DiffData | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
@@ -152,6 +153,19 @@ export function DiffTab() {
         <span className="diff-tab-legend">
           左: {short}^ (変更前) / 右: {short} (変更後)
         </span>
+        {/* 外部差分ツール (config.jsonc の diffTools) で同じ比較を開く */}
+        {diffTools.map((t, i) => (
+          <button
+            key={t.label}
+            className="status-btn"
+            title={`${t.label} でこの差分を開く`}
+            onClick={() =>
+              void api.gitDiffTool(i, current.repo, current.path, 'commit', current.hash).catch(toastError)
+            }
+          >
+            {t.label}
+          </button>
+        ))}
         <button className="dialog-close" title="差分タブを閉じる" onClick={closeDiffTab}>
           ✕
         </button>

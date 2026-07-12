@@ -28,7 +28,7 @@ async function resolveDir(p: unknown): Promise<string> {
 }
 
 /** 外部プロセスは引数配列で spawn しシェル文字列補間を避ける (§4.4) */
-function launch(cmd: string, args: string[], cwd?: string): void {
+export function launch(cmd: string, args: string[], cwd?: string): void {
   const child = spawn(cmd, args, { cwd, detached: true, stdio: 'ignore', windowsHide: false });
   child.on('error', () => {});
   child.unref();

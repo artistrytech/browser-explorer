@@ -48,6 +48,7 @@ export default function App() {
       .then((r) => {
         useUi.getState().setMenuConfig(r.contextMenu);
         useUi.getState().setExternalTools(r.externalTools ?? []);
+        useUi.getState().setDiffTools(r.diffTools ?? []);
       })
       .catch(() => {});
     const initial = pathFromUrl();

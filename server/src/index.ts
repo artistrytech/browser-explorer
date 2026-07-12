@@ -60,6 +60,12 @@ app.get('/api/config', (_req, res) => {
     contextMenu: config.contextMenu ?? {},
     // 外部ツールはラベルのみ返す (index が /api/os/run-tool の識別子になる)
     externalTools: (config.externalTools ?? []).map((t) => ({ label: String(t?.label ?? '') })),
+    // 外部差分ツールも同様 (index が /api/git/difftool の識別子)。
+    // isDefault はダブルクリック時に使うツール (先頭の 1 つだけ有効)
+    diffTools: (config.diffTools ?? []).map((t, i, all) => ({
+      label: String(t?.label ?? ''),
+      isDefault: t?.default === true && all.findIndex((x) => x?.default === true) === i,
+    })),
   });
 });
 

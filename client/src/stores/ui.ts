@@ -11,6 +11,17 @@ export function isGitView(v: MainView): boolean {
   return v === 'commit' || v === 'log' || v === 'branches';
 }
 
+/** 外部差分ツール。isDefault はファイルをダブルクリックした際に使うツール (最大 1 つ) */
+export interface DiffTool {
+  label: string;
+  isDefault?: boolean;
+}
+
+/** 既定の差分ツールの index (未設定なら -1 → アプリ内の 2 ペイン差分を使う) */
+export function defaultDiffToolIndex(tools: DiffTool[]): number {
+  return tools.findIndex((t) => t.isDefault);
+}
+
 interface UiStore {
   view: MainView;
   settingsOpen: boolean;
@@ -20,11 +31,14 @@ interface UiStore {
   menuConfig: Record<string, boolean>;
   /** コンテキストメニューから起動する外部ツール (config.jsonc の externalTools。index が識別子) */
   externalTools: { label: string }[];
+  /** 差分表示に使う外部ツール (config.jsonc の diffTools。index が識別子) */
+  diffTools: DiffTool[];
   setView: (v: MainView) => void;
   setSettingsOpen: (open: boolean) => void;
   setPlatform: (p: string) => void;
   setMenuConfig: (m: Record<string, boolean>) => void;
   setExternalTools: (t: { label: string }[]) => void;
+  setDiffTools: (t: DiffTool[]) => void;
 }
 
 export const useUi = create<UiStore>((set) => ({
@@ -33,11 +47,13 @@ export const useUi = create<UiStore>((set) => ({
   platform: 'win32',
   menuConfig: {},
   externalTools: [],
+  diffTools: [],
   setView: (view) => set({ view }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setPlatform: (platform) => set({ platform }),
   setMenuConfig: (menuConfig) => set({ menuConfig }),
   setExternalTools: (externalTools) => set({ externalTools }),
+  setDiffTools: (diffTools) => set({ diffTools }),
 }));
 
 /** URL の ?view= から表示ビューを復元 (無指定は files)。旧 'git' は 'commit' に読み替え */

@@ -20,6 +20,15 @@ export interface AppConfig {
    * (省略時や "${paths}" が無い場合は末尾に選択パスを追加)。
    */
   externalTools?: { label: string; command: string; args?: string[] }[];
+  /**
+   * 差分表示に使う外部ツール (WinMerge / Meld など)。
+   * args のプレースホルダ "${left}" "${right}" が比較対象のファイルパスに、
+   * "${leftTitle}" "${rightTitle}" が表示用の見出しに展開される
+   * (${left}/${right} をどちらも書かない場合は末尾に左右のパスを追加)。
+   * default: true を付けたツールが、ファイルをダブルクリックした際の既定の差分表示になる
+   * (複数指定した場合は先頭のものを使う。未指定ならアプリ内の 2 ペイン差分)。
+   */
+  diffTools?: { label: string; command: string; args?: string[]; default?: boolean }[];
 }
 
 /**
