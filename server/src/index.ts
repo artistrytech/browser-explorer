@@ -58,8 +58,11 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/config', (_req, res) => {
   res.json({
     contextMenu: config.contextMenu ?? {},
-    // 外部ツールはラベルのみ返す (index が /api/os/run-tool の識別子になる)
-    externalTools: (config.externalTools ?? []).map((t) => ({ label: String(t?.label ?? '') })),
+    // 外部ツールはラベルと所属グループのみ返す (index が /api/os/run-tool の識別子になる)
+    externalTools: (config.externalTools ?? []).map((t) => ({
+      label: String(t?.label ?? ''),
+      group: t?.group ? String(t.group) : undefined,
+    })),
     // 外部差分ツールも同様 (index が /api/git/difftool の識別子)。
     // isDefault はダブルクリック時に使うツール (先頭の 1 つだけ有効)
     diffTools: (config.diffTools ?? []).map((t, i, all) => ({

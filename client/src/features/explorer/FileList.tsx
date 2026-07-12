@@ -296,27 +296,54 @@ export function FileList() {
   const menuConfig = useUi((s) => s.menuConfig);
   const externalTools = useUi((s) => s.externalTools);
 
-  /** 外部ツール項目 (config.jsonc の externalTools)。paths を引数にサーバ側で起動する */
-  const externalToolItems = (paths: string[]): MenuItem[] =>
-    externalTools
-      .map((t, i) => ({
-        label: t.label,
-        action: () => void api.osRunTool(i, paths).catch(toastError),
-      }))
-      .filter((t) => t.label);
-
-  /** config.jsonc の contextMenu 設定 (false で非表示、未設定は表示) */
-  type CfgMenuItem = MenuItem & { id?: string };
+  /** config.jsonc の contextMenu 設定 (false で非表示、未設定は表示)。サブメニューも同様に間引く */
+  type CfgMenuItem = Omit<MenuItem, 'submenu'> & { id?: string; submenu?: CfgMenuItem[] };
   const pruneMenu = (items: CfgMenuItem[]): MenuItem[] => {
-    const kept = items.filter((it) => it.separator || !it.id || menuConfig[it.id] !== false);
-    // 非表示により連続/先頭/末尾になった separator を除去
     const out: MenuItem[] = [];
-    for (const it of kept) {
+    for (const it of items) {
+      if (it.id && menuConfig[it.id] === false) continue;
+      if (it.submenu) {
+        const submenu = pruneMenu(it.submenu);
+        if (submenu.length > 0) out.push({ ...it, submenu }); // 中身が空になったグループは出さない
+        continue;
+      }
+      // 非表示により連続/先頭になった separator は除去
       if (it.separator && (out.length === 0 || out[out.length - 1].separator)) continue;
       out.push(it);
     }
     while (out.length > 0 && out[out.length - 1].separator) out.pop();
     return out;
+  };
+
+  /**
+   * カスタム項目 (config.jsonc の externalTools) を group ごとに振り分ける。
+   * group が既定グループ名 (開く/削除/Git) ならそのサブメニューに合流し、
+   * それ以外の名前なら同名のサブメニューを新設する。group 無しはメニュー直下。
+   */
+  const toolItems = (paths: string[]) => {
+    const byGroup = new Map<string, MenuItem[]>();
+    const ungrouped: MenuItem[] = [];
+    externalTools.forEach((t, i) => {
+      if (!t.label) return;
+      const item: MenuItem = {
+        label: t.label,
+        action: () => void api.osRunTool(i, paths).catch(toastError),
+      };
+      if (t.group) byGroup.set(t.group, [...(byGroup.get(t.group) ?? []), item]);
+      else ungrouped.push(item);
+    });
+    /** 既定グループに合流する項目を取り出す (取り出したグループは新設対象から外れる) */
+    const take = (group: string): MenuItem[] => {
+      const items = byGroup.get(group) ?? [];
+      byGroup.delete(group);
+      return items;
+    };
+    /** 既定グループに属さなかったカスタム項目 (新設サブメニュー + group 無しの項目) */
+    const rest = (): CfgMenuItem[] => [
+      ...[...byGroup.entries()].map(([label, submenu]) => ({ label, submenu })),
+      ...ungrouped,
+    ];
+    return { take, rest };
   };
 
   /**
@@ -340,6 +367,42 @@ export function FileList() {
     },
     { id: 'osTerminal', label: osLabels.terminal, action: () => void api.osOpenTerminal(dirPath).catch(toastError) },
   ];
+
+  /** Git 系のリポジトリ操作 (選択パスに対するステージ/解除/破棄) */
+  const gitRepoItems = (sel: string[]): CfgMenuItem[] => {
+    if (!repoRoot || !sel.every((p) => p.startsWith(`${repoRoot}/`))) return [];
+    const rel = sel.map((p) => p.slice(repoRoot.length + 1));
+    return [
+      {
+        id: 'gitStage',
+        label: 'ステージ',
+        action: () =>
+          void api
+            .gitStage(repoRoot, rel)
+            .then(() => useGit.getState().refreshStatus())
+            .catch(toastError),
+      },
+      {
+        id: 'gitUnstage',
+        label: 'ステージ解除',
+        action: () =>
+          void api
+            .gitUnstage(repoRoot, rel)
+            .then(() => useGit.getState().refreshStatus())
+            .catch(toastError),
+      },
+      {
+        id: 'gitDiscard',
+        label: '変更を破棄',
+        danger: true,
+        action: () =>
+          void api
+            .gitDiscard(repoRoot, rel)
+            .then(() => Promise.all([useGit.getState().refreshStatus(), useExplorer.getState().refresh()]))
+            .catch(toastError),
+      },
+    ];
+  };
 
   /** Git 系の文脈依存項目 (ログを表示 / 競合を解消 / Git Clone…) */
   const gitContextItems = (targetPath: string, isFile: boolean, isDir: boolean): CfgMenuItem[] => {
@@ -375,18 +438,47 @@ export function FileList() {
     const sel = selectedSet.has(entry.path) ? selection : [entry.path];
     const single = sel.length === 1;
     const pinned = useSettings.getState().isPinned(entry.path);
-    const items: CfgMenuItem[] = [
+    const isDir = entry.type === 'dir';
+    // 外部ツール: 選択中のパス群 (複数可) を引数に起動。group 指定のものは各グループへ合流
+    const tools = toolItems(sel);
+
+    // 「開く」系統をサブメニューにまとめる
+    const openGroup: CfgMenuItem[] = [
       { id: 'open', label: '開く', action: () => displayed.filter((d) => sel.includes(d.path)).forEach(openEntry) },
-      ...(entry.type !== 'dir'
+      ...(isDir
         ? [
+            // フォルダ: 対象フォルダ自体を別ウィンドウ (ブラウザの別タブ) で開く
+            { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(entry.path) },
+            { separator: true },
+            ...osMenuItems(entry.path),
+          ]
+        : [
             { id: 'openEditor', label: 'エディタで開く', action: () => openEntry(entry) },
             // ファイル: 同じフォルダを別ウィンドウで開いて対象にフォーカス
             { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(path, entry.name) },
-          ]
-        : [
-            // フォルダ: 対象フォルダ自体を別ウィンドウで開く
-            { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(entry.path) },
-            // ピン止め / 解除のトグル (002.md §7.2)。解除は確認フローへ
+          ]),
+      ...tools.take('開く'),
+    ];
+
+    // 「削除」系統
+    const deleteGroup: CfgMenuItem[] = [
+      { id: 'delete', label: 'ゴミ箱に移動', action: () => void deleteSelection(false) },
+      { id: 'deletePermanent', label: '完全に削除', action: () => void deleteSelection(true), danger: true },
+      ...tools.take('削除'),
+    ];
+
+    // 「Git」系統 (文脈依存項目 + リポジトリ操作)
+    const gitGroup: CfgMenuItem[] = [
+      ...gitContextItems(entry.path, !isDir, isDir),
+      ...gitRepoItems(sel),
+      ...tools.take('Git'),
+    ];
+
+    const items: CfgMenuItem[] = [
+      { id: 'groupOpen', label: '開く', submenu: openGroup },
+      // ピン止め / 解除のトグル (002.md §7.2)。解除は確認フローへ
+      ...(isDir
+        ? [
             pinned
               ? { id: 'pin', label: 'ピン止めを解除', action: () => void unpinFolder(entry.path, entry.name) }
               : {
@@ -394,64 +486,28 @@ export function FileList() {
                   label: 'クイックアクセスにピン止め',
                   action: () => void pinFolder(entry.path, entry.name),
                 },
-            { separator: true },
-            ...osMenuItems(entry.path),
-          ]),
+          ]
+        : []),
       { separator: true },
       { id: 'copy', label: 'コピー', action: copySelection },
       { id: 'cut', label: '切り取り', action: cutSelection },
       {
         id: 'paste',
         label: '貼り付け',
-        action: () => void paste(entry.type === 'dir' ? entry.path : undefined),
+        action: () => void paste(isDir ? entry.path : undefined),
         disabled: !clipboard,
       },
       { separator: true },
       { id: 'rename', label: '名前の変更 (F2)', action: () => setRenaming(entry.path), disabled: !single },
-      { id: 'delete', label: '削除 (ゴミ箱)', action: () => void deleteSelection(false) },
-      { id: 'deletePermanent', label: '完全に削除', action: () => void deleteSelection(true), danger: true },
+      { id: 'groupDelete', label: '削除', submenu: deleteGroup },
       { separator: true },
+      { id: 'groupGit', label: 'Git', submenu: gitGroup },
+      { separator: true },
+      // 既定グループに属さないカスタム項目 (独自グループ / group 無し)
+      ...tools.rest(),
+      { separator: true },
+      { id: 'properties', label: 'プロパティ', action: () => void showProperties(entry), disabled: !single },
     ];
-    const gitItems = gitContextItems(entry.path, entry.type === 'file', entry.type === 'dir');
-    if (gitItems.length > 0) items.push(...gitItems, { separator: true });
-    if (repoRoot && entry.path.startsWith(repoRoot)) {
-      const rel = sel.map((p) => p.slice(repoRoot.length + 1));
-      items.push(
-        {
-          id: 'gitStage',
-          label: 'Git: ステージ',
-          action: () =>
-            void api
-              .gitStage(repoRoot, rel)
-              .then(() => useGit.getState().refreshStatus())
-              .catch(toastError),
-        },
-        {
-          id: 'gitUnstage',
-          label: 'Git: ステージ解除',
-          action: () =>
-            void api
-              .gitUnstage(repoRoot, rel)
-              .then(() => useGit.getState().refreshStatus())
-              .catch(toastError),
-        },
-        {
-          id: 'gitDiscard',
-          label: 'Git: 変更を破棄',
-          danger: true,
-          action: () =>
-            void api
-              .gitDiscard(repoRoot, rel)
-              .then(() => Promise.all([useGit.getState().refreshStatus(), useExplorer.getState().refresh()]))
-              .catch(toastError),
-        },
-        { separator: true },
-      );
-    }
-    // 外部ツール: 選択中のパス群 (複数可) を引数に起動
-    const extItems = externalToolItems(sel);
-    if (extItems.length > 0) items.push(...extItems, { separator: true });
-    items.push({ id: 'properties', label: 'プロパティ', action: () => void showProperties(entry), disabled: !single });
     openMenu(e.clientX, e.clientY, pruneMenu(items));
   };
 
@@ -460,12 +516,23 @@ export function FileList() {
     setSelection([]);
     // 空白 = カレントフォルダを対象とする (002.md §4.1 / §8)
     const currentPinned = useSettings.getState().isPinned(path);
+    // 選択が無い場合は表示中のフォルダを引数に起動
+    const tools = toolItems([path]);
+
+    const openGroup: CfgMenuItem[] = [
+      // フォーカス無し: 表示中のフォルダを別ウィンドウで開く
+      { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(path) },
+      { separator: true },
+      ...osMenuItems(path),
+      ...tools.take('開く'),
+    ];
+    const gitGroup: CfgMenuItem[] = [...gitContextItems(path, false, true), ...tools.take('Git')];
+
     const items: CfgMenuItem[] = [
       { id: 'newFolder', label: '新規フォルダ', action: () => void createFolder() },
       { id: 'newFile', label: '新規ファイル', action: () => void createFile() },
       { separator: true },
-      // フォーカス無し: 表示中のフォルダを別ウィンドウで開く
-      { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(path) },
+      { id: 'groupOpen', label: '開く', submenu: openGroup },
       { separator: true },
       { id: 'paste', label: '貼り付け', action: () => void paste(), disabled: !clipboard },
       { separator: true },
@@ -477,15 +544,12 @@ export function FileList() {
             action: () => void pinFolder(path, baseName(path)),
           },
       { separator: true },
-      ...osMenuItems(path),
+      { id: 'groupGit', label: 'Git', submenu: gitGroup },
       { separator: true },
+      ...tools.rest(),
+      { separator: true },
+      { id: 'refresh', label: '最新の情報に更新', action: () => void useExplorer.getState().refresh() },
     ];
-    const gitItems = gitContextItems(path, false, true);
-    if (gitItems.length > 0) items.push(...gitItems, { separator: true });
-    // 外部ツール: 選択が無い場合は表示中のフォルダを引数に起動
-    const extItems = externalToolItems([path]);
-    if (extItems.length > 0) items.push(...extItems, { separator: true });
-    items.push({ id: 'refresh', label: '最新の情報に更新', action: () => void useExplorer.getState().refresh() });
     openMenu(e.clientX, e.clientY, pruneMenu(items));
   };
 

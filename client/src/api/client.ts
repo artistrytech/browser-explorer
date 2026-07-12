@@ -89,7 +89,7 @@ export const api = {
   uiConfig: () =>
     get<{
       contextMenu: Record<string, boolean>;
-      externalTools: { label: string }[];
+      externalTools: { label: string; group?: string }[];
       diffTools: { label: string; isDefault?: boolean }[];
     }>('/api/config'),
 

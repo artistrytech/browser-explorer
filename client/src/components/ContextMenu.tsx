@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 
 export interface MenuItem {
@@ -8,6 +8,8 @@ export interface MenuItem {
   disabled?: boolean;
   danger?: boolean;
   separator?: boolean;
+  /** 指定するとマウスオーバーで開くサブメニューになる (action は無視される) */
+  submenu?: MenuItem[];
 }
 
 interface MenuState {
@@ -27,6 +29,72 @@ export const useContextMenu = create<MenuState>((set) => ({
   open: (x, y, items) => set({ x, y, items, visible: true }),
   close: () => set({ visible: false }),
 }));
+
+/** サブメニュー: 親項目の右側に開く。画面外にはみ出す場合は左側/上方向へ寄せる */
+function Submenu({ items, close }: { items: MenuItem[]; close: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.right > innerWidth) {
+      el.style.left = 'auto';
+      el.style.right = '100%';
+    }
+    if (rect.bottom > innerHeight) {
+      el.style.top = `${Math.min(0, innerHeight - rect.bottom - 8)}px`;
+    }
+  }, []);
+  return (
+    <div ref={ref} className="context-menu submenu">
+      <MenuList items={items} close={close} />
+    </div>
+  );
+}
+
+function MenuList({ items, close }: { items: MenuItem[]; close: () => void }) {
+  // マウスオーバー中のサブメニュー (クリックでも開く: タッチ/キーボード操作向け)
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  return (
+    <>
+      {items.map((item, i) =>
+        item.separator ? (
+          <div key={i} className="menu-separator" />
+        ) : item.submenu ? (
+          <div
+            key={i}
+            className="menu-group"
+            onMouseEnter={() => setOpenIndex(i)}
+            onMouseLeave={() => setOpenIndex((cur) => (cur === i ? null : cur))}
+          >
+            <button
+              className={`menu-item has-submenu${openIndex === i ? ' open' : ''}`}
+              disabled={item.disabled}
+              onClick={() => setOpenIndex(i)}
+            >
+              <span>{item.label}</span>
+              <span className="menu-arrow">▶</span>
+            </button>
+            {openIndex === i && <Submenu items={item.submenu} close={close} />}
+          </div>
+        ) : (
+          <button
+            key={i}
+            className={`menu-item${item.danger ? ' danger' : ''}`}
+            disabled={item.disabled}
+            onClick={(e) => {
+              close();
+              item.action?.(e);
+            }}
+          >
+            {item.label}
+          </button>
+        ),
+      )}
+    </>
+  );
+}
 
 export function ContextMenuHost() {
   const { x, y, items, visible, close } = useContextMenu();
@@ -67,23 +135,7 @@ export function ContextMenuHost() {
 
   return (
     <div ref={ref} className="context-menu" style={{ left: x, top: y }}>
-      {items.map((item, i) =>
-        item.separator ? (
-          <div key={i} className="menu-separator" />
-        ) : (
-          <button
-            key={i}
-            className={`menu-item${item.danger ? ' danger' : ''}`}
-            disabled={item.disabled}
-            onClick={(e) => {
-              close();
-              item.action?.(e);
-            }}
-          >
-            {item.label}
-          </button>
-        ),
-      )}
+      <MenuList items={items} close={close} />
     </div>
   );
 }

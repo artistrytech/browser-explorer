@@ -11,6 +11,12 @@ export function isGitView(v: MainView): boolean {
   return v === 'commit' || v === 'log' || v === 'branches';
 }
 
+/** コンテキストメニューのカスタム項目。group を指定するとその名前のサブメニューに入る */
+export interface ExternalTool {
+  label: string;
+  group?: string;
+}
+
 /** 外部差分ツール。isDefault はファイルをダブルクリックした際に使うツール (最大 1 つ) */
 export interface DiffTool {
   label: string;
@@ -30,14 +36,14 @@ interface UiStore {
   /** コンテキストメニューの表示設定 (config.jsonc の contextMenu。false で非表示) */
   menuConfig: Record<string, boolean>;
   /** コンテキストメニューから起動する外部ツール (config.jsonc の externalTools。index が識別子) */
-  externalTools: { label: string }[];
+  externalTools: ExternalTool[];
   /** 差分表示に使う外部ツール (config.jsonc の diffTools。index が識別子) */
   diffTools: DiffTool[];
   setView: (v: MainView) => void;
   setSettingsOpen: (open: boolean) => void;
   setPlatform: (p: string) => void;
   setMenuConfig: (m: Record<string, boolean>) => void;
-  setExternalTools: (t: { label: string }[]) => void;
+  setExternalTools: (t: ExternalTool[]) => void;
   setDiffTools: (t: DiffTool[]) => void;
 }
 

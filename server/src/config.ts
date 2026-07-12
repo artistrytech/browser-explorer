@@ -18,8 +18,9 @@ export interface AppConfig {
    * コンテキストメニューから起動する外部ツール。
    * command は実行ファイル (絶対パス推奨)。args の "${paths}" が選択パス群に展開される
    * (省略時や "${paths}" が無い場合は末尾に選択パスを追加)。
+   * group を指定するとその名前のサブメニューに入る (既存グループ名なら合流)。
    */
-  externalTools?: { label: string; command: string; args?: string[] }[];
+  externalTools?: { label: string; command: string; args?: string[]; group?: string }[];
   /**
    * 差分表示に使う外部ツール (WinMerge / Meld など)。
    * args のプレースホルダ "${left}" "${right}" が比較対象のファイルパスに、

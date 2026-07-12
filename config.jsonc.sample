@@ -12,26 +12,31 @@
   "commitFilesLimit": 100,
 
   // Explorer のコンテキストメニュー表示設定。
-  // false にすると該当メニューを非表示にする (キーを省略した場合は表示)
+  // false にすると該当メニューを非表示にする (キーを省略した場合は表示)。
+  // groupXxx はサブメニュー (マウスオーバーで展開) 自体の表示設定。
+  // グループを false にするか、中身が全て false / 対象外になった場合はグループごと出さない。
   "contextMenu": {
-    "open": true,             // 開く
-    "openEditor": true,       // エディタで開く
-    "openNewWindow": true,    // 別ウィンドウで開く
+    "groupOpen": true,        // 「開く」サブメニュー
+    "open": true,             //   開く
+    "openEditor": true,       //   エディタで開く
+    "openNewWindow": true,    //   別ウィンドウで開く
+    "osFileManager": true,    //   Explorer / Finder で開く
+    "osTerminal": true,       //   コマンドプロンプト / ターミナルで開く
     "pin": true,              // クイックアクセスにピン止め / ピン止めを解除
-    "osFileManager": true,    // Explorer / Finder で開く
-    "osTerminal": true,       // コマンドプロンプト / ターミナルで開く
     "copy": true,             // コピー
     "cut": true,              // 切り取り
     "paste": true,            // 貼り付け
     "rename": true,           // 名前の変更 (F2)
-    "delete": true,           // 削除 (ゴミ箱)
-    "deletePermanent": true,  // 完全に削除
-    "gitLog": true,           // Gitログ
-    "resolveConflict": true,  // 競合を解消…
-    "gitClone": true,         // Git Clone…
-    "gitStage": true,         // Git: ステージ
-    "gitUnstage": true,       // Git: ステージ解除
-    "gitDiscard": true,       // Git: 変更を破棄
+    "groupDelete": true,      // 「削除」サブメニュー
+    "delete": true,           //   ゴミ箱に移動
+    "deletePermanent": true,  //   完全に削除
+    "groupGit": true,         // 「Git」サブメニュー
+    "gitLog": true,           //   Gitログ
+    "resolveConflict": true,  //   競合を解消…
+    "gitClone": true,         //   Git Clone…
+    "gitStage": true,         //   ステージ
+    "gitUnstage": true,       //   ステージ解除
+    "gitDiscard": true,       //   変更を破棄
     "properties": true,       // プロパティ
     "newFolder": true,        // 新規フォルダ (空白右クリック)
     "newFile": true,          // 新規ファイル (空白右クリック)
@@ -43,12 +48,17 @@
   // - command: 実行ファイル (絶対パス推奨。PATH 上の .exe 名も可。.cmd/.bat は不可)
   // - args:    オプション引数 (省略可)。"${paths}" と書いた位置に選択中のパス群が展開される。
   //            "${paths}" が無い場合は末尾に選択パスを追加する。
+  // - group:   親グループ名 (省略可)。指定するとその名前のサブメニューに入る。
+  //            既定グループ名 ("開く" / "削除" / "Git") を指定するとそのサブメニューに合流し、
+  //            それ以外の名前なら同名のサブメニューを新設する。省略時はメニュー直下に並ぶ。
   // ファイルを複数選択して実行するとまとめて引数に渡る。選択が無い空白右クリックでは表示中フォルダが渡る。
   // ここに設定したツール以外はサーバ側で実行を拒否する。
   "externalTools": [
-    { "label": "メモ帳で開く", "command": "notepad.exe" }
-    // 例: VSCode で開く (新しいウィンドウ)
-    // { "label": "VSCode で開く", "command": "C:/Users/you/AppData/Local/Programs/Microsoft VS Code/Code.exe", "args": ["-n", "${paths}"] }
+    { "label": "メモ帳で開く", "command": "notepad.exe", "group": "開く" }
+    // 例: VSCode で開く (新しいウィンドウ) — 「開く」サブメニューに合流させる
+    // { "label": "VSCode で開く", "command": "C:/Users/you/AppData/Local/Programs/Microsoft VS Code/Code.exe", "args": ["-n", "${paths}"], "group": "開く" }
+    // 例: 独自グループ「ツール」を新設する
+    // { "label": "ハッシュを計算", "command": "C:/tools/hash.exe", "group": "ツール" }
   ],
 
   // 差分表示に使う外部ツール (WinMerge / Meld など)。
