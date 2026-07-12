@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, createLogger } from 'vite';
 import react from '@vitejs/plugin-react';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
@@ -64,8 +64,23 @@ const config = JSON.parse(
 
 const serverOrigin = `http://127.0.0.1:${config.port}`;
 
+/**
+ * WS プロキシのログ抑制。
+ * ブラウザがタブを閉じる/リロードすると WebSocket の TCP が RST で終わることがあり、
+ * vite が "ws proxy error: ECONNRESET" を出す。切断は正常系で実害が無いうえ、
+ * 本当のエラーが埋もれるのでこのケースだけログから除外する (プロキシ側の後始末は vite が行う)。
+ */
+const logger = createLogger();
+const baseError = logger.error;
+logger.error = (msg, opts) => {
+  const code = (opts?.error as NodeJS.ErrnoException | undefined)?.code;
+  if ((code === 'ECONNRESET' || code === 'EPIPE') && /ws proxy/.test(msg)) return;
+  baseError(msg, opts);
+};
+
 export default defineConfig({
   plugins: [react()],
+  customLogger: logger,
   define: {
     __APP_TOKEN__: JSON.stringify(config.token),
   },

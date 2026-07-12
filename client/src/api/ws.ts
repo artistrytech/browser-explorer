@@ -10,6 +10,8 @@ type EventListener = (data: unknown) => void;
 
 let socket: WebSocket | null = null;
 let watchedPath: string | null = null;
+/** ページ離脱による切断か (再接続を止めるフラグ) */
+let leaving = false;
 const listeners = new Set<Listener>();
 const eventListeners = new Map<string, Set<EventListener>>();
 
@@ -18,6 +20,9 @@ function connect(): WebSocket {
   const ws = new WebSocket(`${proto}://${location.host}/ws?token=${APP_TOKEN}`);
   ws.onopen = () => {
     if (watchedPath) ws.send(JSON.stringify({ type: 'watch', path: watchedPath }));
+  };
+  ws.onerror = () => {
+    /* 切断は onclose 側で再接続するため、ここでは握りつぶす */
   };
   ws.onmessage = (ev) => {
     try {
@@ -33,12 +38,30 @@ function connect(): WebSocket {
   };
   ws.onclose = () => {
     socket = null;
+    if (leaving) return; // ページ離脱時は再接続しない
     setTimeout(() => {
-      if (!socket) socket = connect();
+      if (!socket && !leaving) socket = connect();
     }, 2000);
   };
   return ws;
 }
+
+/**
+ * ページ離脱 (タブを閉じる/リロード/別ページへ遷移) の直前に close ハンドシェイクを行う。
+ * これをしないと TCP がリセットされ、開発時に vite の WS プロキシが ECONNRESET を吐く。
+ */
+window.addEventListener('pagehide', () => {
+  leaving = true;
+  socket?.close(1000);
+  socket = null;
+});
+
+// bfcache から復帰した場合は監視を張り直す
+window.addEventListener('pageshow', (e) => {
+  if (!e.persisted) return;
+  leaving = false;
+  if (watchedPath || eventListeners.size > 0) socket = connect();
+});
 
 export function watchPath(path: string): void {
   watchedPath = path;

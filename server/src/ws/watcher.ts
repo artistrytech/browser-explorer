@@ -28,6 +28,8 @@ export function attachWatcher(server: Server): void {
   const clients = new Map<WebSocket, ClientState>();
 
   server.on('upgrade', (req, socket, head) => {
+    // 切断 (ECONNRESET 等) で未処理の 'error' が投げられないようにしておく
+    socket.on('error', () => {});
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname !== '/ws' || url.searchParams.get('token') !== config.token) {
       socket.destroy();
@@ -39,6 +41,8 @@ export function attachWatcher(server: Server): void {
   wss.on('connection', (ws) => {
     clients.set(ws, { watcher: null, watchedPath: null });
     sockets.add(ws);
+    // クライアントが切断すると 'error' が飛ぶことがある。リスナが無いと例外になるため受けておく
+    ws.on('error', () => {});
 
     ws.on('message', async (raw) => {
       let msg: { type: string; path?: string };
