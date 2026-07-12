@@ -12,6 +12,12 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS favorites (id INTEGER PRIMARY KEY, path TEXT NOT NULL, label TEXT NOT NULL, sort INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS repositories (id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL, added_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS recents (id INTEGER PRIMARY KEY, path TEXT NOT NULL, kind TEXT NOT NULL, opened_at TEXT NOT NULL);
+-- リポジトリ単位の認証設定。秘密情報は持たず「どの認証を使うか」の参照のみ保存する
+CREATE TABLE IF NOT EXISTS git_auth (
+  repo TEXT PRIMARY KEY,
+  ssh_key TEXT,            -- SSH 秘密鍵ファイルのパス (空なら既定の鍵)
+  credential_helper TEXT   -- HTTPS の資格情報ヘルパー名 (空なら git の既定)
+);
 `);
 
 export interface Favorite {
@@ -110,6 +116,36 @@ export function reorderFavorites(paths: string[]): void {
     paths.forEach((p, i) => stmt.run(i, p));
   });
   tx();
+}
+
+// --- リポジトリ単位の認証設定 (A 案: 秘密情報は保持せず参照のみ) ---
+
+export interface GitAuth {
+  /** SSH 秘密鍵ファイルのパス (空文字なら既定の鍵を使う) */
+  sshKey: string;
+  /** HTTPS の資格情報ヘルパー名 (空文字なら git の既定設定に従う) */
+  credentialHelper: string;
+}
+
+const NO_AUTH: GitAuth = { sshKey: '', credentialHelper: '' };
+
+export function getGitAuth(repo: string): GitAuth {
+  const row = db.prepare('SELECT ssh_key, credential_helper FROM git_auth WHERE repo = ?').get(repo) as
+    | { ssh_key: string | null; credential_helper: string | null }
+    | undefined;
+  if (!row) return { ...NO_AUTH };
+  return { sshKey: row.ssh_key ?? '', credentialHelper: row.credential_helper ?? '' };
+}
+
+export function setGitAuth(repo: string, auth: GitAuth): void {
+  if (!auth.sshKey && !auth.credentialHelper) {
+    db.prepare('DELETE FROM git_auth WHERE repo = ?').run(repo);
+    return;
+  }
+  db.prepare(
+    `INSERT INTO git_auth (repo, ssh_key, credential_helper) VALUES (?, ?, ?)
+     ON CONFLICT(repo) DO UPDATE SET ssh_key = excluded.ssh_key, credential_helper = excluded.credential_helper`,
+  ).run(repo, auth.sshKey, auth.credentialHelper);
 }
 
 export function importState(state: Partial<AppState>): void {

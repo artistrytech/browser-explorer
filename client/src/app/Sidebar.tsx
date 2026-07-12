@@ -28,6 +28,23 @@ export function Sidebar() {
       .catch(() => {});
   }, []);
 
+  /**
+   * サイドバーのリンク遷移。Ctrl (mac は ⌘) + クリックはブラウザの別タブで開く。
+   * view を指定するとその最上位タブ (リポジトリなら commit) で開く。
+   */
+  const go = (e: React.MouseEvent, target: string, view?: 'commit') => {
+    if (e.ctrlKey || e.metaKey) {
+      const params = new URLSearchParams();
+      params.set('path', target);
+      if (view) params.set('view', view);
+      window.open(`${location.pathname}?${params}`, '_blank');
+      return;
+    }
+    const p = navigate(target);
+    if (view) void p.then(() => switchView(view));
+    else void p;
+  };
+
   const item = (
     key: string,
     label: string,
@@ -38,14 +55,14 @@ export function Sidebar() {
     <button
       key={key}
       className={`side-item${path === target ? ' active' : ''}`}
-      onClick={() => void navigate(target)}
+      onClick={(e) => go(e, target)}
       onContextMenu={(e) => {
         if (onContext) {
           e.preventDefault();
           onContext(e);
         }
       }}
-      title={target}
+      title={`${target}\n(Ctrl+クリックで別タブ)`}
     >
       <span className="side-icon">{icon}</span>
       <span className="side-label">{label}</span>
@@ -62,14 +79,14 @@ export function Sidebar() {
           <div key={f.path} className="side-item-wrap">
             <button
               className={`side-item${path === f.path ? ' active' : ''}`}
-              onClick={() => void navigate(f.path)}
+              onClick={(e) => go(e, f.path)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 openMenu(e.clientX, e.clientY, [
                   { label: 'ピン止めを解除', action: () => void unpinFolder(f.path, f.label) },
                 ]);
               }}
-              title={f.path}
+              title={`${f.path}\n(Ctrl+クリックで別タブ)`}
             >
               <span className="side-icon">★</span>
               <span className="side-label">{f.label}</span>
@@ -99,10 +116,8 @@ export function Sidebar() {
           <button
             key={r}
             className={`side-item${repoRoot === r ? ' active' : ''}`}
-            title={r}
-            onClick={() => {
-              void navigate(r).then(() => switchView('commit'));
-            }}
+            title={`${r}\n(Ctrl+クリックで別タブ)`}
+            onClick={(e) => go(e, r, 'commit')}
             onContextMenu={(e) => {
               e.preventDefault();
               openMenu(e.clientX, e.clientY, [

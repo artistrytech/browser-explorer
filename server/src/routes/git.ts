@@ -5,10 +5,12 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { norm } from '../services/fsService.js';
 import { broadcastEvent } from '../ws/watcher.js';
 import { config } from '../config.js';
+import { getGitAuth, setGitAuth } from '../services/stateStore.js';
 
 export const gitRouter = Router();
 
@@ -456,6 +458,68 @@ gitRouter.post('/conflict/take', async (req, res) => {
 
 const execFileAsync = promisify(execFile);
 
+/** ssh の引数として安全に使える鍵パスか (クォート/改行等を含まないこと) */
+function safeKeyPath(p: string): boolean {
+  return p.length > 0 && !/["'\r\n]/.test(p);
+}
+
+/**
+ * git を非対話で実行するための環境変数。
+ * 認証が必要になった場合、プロンプトで待ち続けずその場で失敗させる (ロックアウト防止)。
+ * - GIT_TERMINAL_PROMPT=0 : ターミナルでのユーザー名/パスワード入力を無効化
+ * - GIT_ASKPASS/SSH_ASKPASS : GUI のパスワード入力ダイアログを起動させない
+ * - GIT_SSH_COMMAND : SSH の対話 (パスフレーズ/ホスト鍵確認) を禁止し、接続もタイムアウトさせる
+ *
+ * repo を渡すと、そのリポジトリに設定された SSH 鍵を使う (A 案: 鍵のパスのみ保存)。
+ */
+export function gitEnv(repo?: string): NodeJS.ProcessEnv {
+  const base = 'ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15';
+  let sshCommand = process.env.GIT_SSH_COMMAND ?? base;
+  if (repo) {
+    const { sshKey } = getGitAuth(repo);
+    // 指定鍵のみを使う (IdentitiesOnly=yes)。パスフレーズ付き鍵は ssh-agent 経由で解錠される
+    if (safeKeyPath(sshKey)) sshCommand = `${base} -o IdentitiesOnly=yes -i "${sshKey}"`;
+  }
+  return {
+    ...process.env,
+    GIT_EDITOR: 'true',
+    GIT_PAGER: 'cat',
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_ASKPASS: '',
+    SSH_ASKPASS: '',
+    SSH_ASKPASS_REQUIRE: 'never',
+    GCM_INTERACTIVE: 'never', // Git Credential Manager の GUI を抑止 (保存済み資格情報は使える)
+    GIT_SSH_COMMAND: sshCommand,
+  };
+}
+
+/**
+ * 認証プロンプトを出さない git 設定 (サブコマンドの前に置く)。
+ * repo に資格情報ヘルパーが設定されていれば HTTPS 認証にそれを使う。
+ */
+function noninteractiveArgs(repo?: string): string[] {
+  const args = ['-c', 'credential.interactive=false', '-c', 'core.askPass='];
+  if (repo) {
+    const { credentialHelper } = getGitAuth(repo);
+    // ヘルパー名に改行等が混じらないよう検証 (-c の値として渡す)
+    if (credentialHelper && !/[\r\n]/.test(credentialHelper)) {
+      args.push('-c', `credential.helper=${credentialHelper}`);
+    }
+  }
+  return args;
+}
+
+/** 出力から認証エラーを検出し、ユーザー向けの補足メッセージを返す */
+function authHint(output: string): string | null {
+  const re =
+    /could not read (Username|Password)|terminal prompts disabled|Authentication failed|Permission denied \(publickey|Host key verification failed|Repository not found|no such identity|sign_and_send_pubkey/i;
+  if (!re.test(output)) return null;
+  return (
+    '(リモートの認証に失敗したため中断しました。' +
+    'HTTPS は資格情報マネージャー、SSH は鍵/ssh-agent の設定を確認してください)'
+  );
+}
+
 /** /exec で許可する git サブコマンド (読み書き系の操作コマンドのみ) */
 const EXEC_ALLOWED = new Set([
   'push', 'pull', 'fetch', 'merge', 'commit', 'checkout', 'switch', 'branch',
@@ -481,10 +545,10 @@ gitRouter.post('/exec', (req, res) => {
 
   const command = `git ${args.join(' ')}`;
   // 引数配列で spawn (シェル補間なし)。認証プロンプトで固まらないよう対話は無効化
-  const child = spawn('git', args, {
+  const child = spawn('git', [...noninteractiveArgs(repo), ...args], {
     cwd: repo,
     windowsHide: true,
-    env: { ...process.env, GIT_EDITOR: 'true', GIT_TERMINAL_PROMPT: '0', GIT_PAGER: 'cat' },
+    env: gitEnv(repo),
   });
   let output = '';
   const cap = (c: Buffer) => {
@@ -499,7 +563,9 @@ gitRouter.post('/exec', (req, res) => {
     if (sent) return;
     sent = true;
     clearTimeout(timer);
-    res.json({ ok, code, command, output: extra ? `${output}${output ? '\n' : ''}${extra}` : output });
+    const hint = ok ? null : authHint(output);
+    const tail = [extra, hint].filter(Boolean).join('\n');
+    res.json({ ok, code, command, output: tail ? `${output}${output ? '\n' : ''}${tail}` : output });
   };
   const timer = setTimeout(() => {
     child.kill();
@@ -507,6 +573,99 @@ gitRouter.post('/exec', (req, res) => {
   }, 120_000);
   child.on('error', (err) => reply(false, -1, err.message));
   child.on('close', (code) => reply(code === 0, code ?? -1));
+});
+
+// --- リポジトリ単位の認証設定 (A 案: 鍵ファイルのパス等の「参照」のみ保存し、秘密情報は持たない) ---
+
+/** ~/.ssh 配下の秘密鍵候補を列挙する (.pub / known_hosts / config 等は除外) */
+async function listSshKeys(): Promise<string[]> {
+  const dir = path.join(os.homedir(), '.ssh');
+  const skip = new Set(['known_hosts', 'known_hosts.old', 'config', 'authorized_keys', 'agent.env']);
+  try {
+    const names = await fs.readdir(dir);
+    const keys: string[] = [];
+    for (const n of names) {
+      if (n.endsWith('.pub') || skip.has(n)) continue;
+      const p = path.join(dir, n);
+      try {
+        const st = await fs.stat(p);
+        if (!st.isFile()) continue;
+        // 秘密鍵ヘッダを持つファイルのみを候補にする
+        const head = (await fs.readFile(p, 'utf-8').catch(() => '')).slice(0, 200);
+        if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(head)) keys.push(norm(p));
+      } catch {
+        /* 読めないファイルは無視 */
+      }
+    }
+    return keys;
+  } catch {
+    return [];
+  }
+}
+
+/** 認証設定 + 選択肢 (SSH 鍵候補・リモート URL) を返す */
+gitRouter.get('/auth', async (req, res) => {
+  const repo = req.query.repo;
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  const g = git(repo);
+  const remotes = await g.getRemotes(true).catch(() => []);
+  res.json({
+    auth: getGitAuth(repo),
+    sshKeys: await listSshKeys(),
+    remotes: remotes.map((r) => ({ name: r.name, url: r.refs.fetch || r.refs.push })),
+  });
+});
+
+/** 認証設定の保存。鍵は実在する読み取り可能なファイルのみ受け付ける */
+gitRouter.post('/auth', async (req, res) => {
+  const { repo, sshKey, credentialHelper } = (req.body ?? {}) as Record<string, unknown>;
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  const key = typeof sshKey === 'string' ? sshKey.trim() : '';
+  const helper = typeof credentialHelper === 'string' ? credentialHelper.trim() : '';
+  if (key) {
+    if (!safeKeyPath(key)) badRequest('鍵のパスに使用できない文字が含まれています');
+    const st = await fs.stat(key).catch(() => null);
+    if (!st?.isFile()) badRequest('鍵ファイルが見つかりません');
+  }
+  if (/[\r\n]/.test(helper)) badRequest('資格情報ヘルパー名が不正です');
+  setGitAuth(repo, { sshKey: key, credentialHelper: helper });
+  res.json({ ok: true, auth: getGitAuth(repo) });
+});
+
+/** 接続テスト: 設定した認証で ls-remote を実行し、成否と出力を返す */
+gitRouter.post('/auth/test', (req, res) => {
+  const { repo, remote } = (req.body ?? {}) as Record<string, unknown>;
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  const name = typeof remote === 'string' && remote.length > 0 ? remote : 'origin';
+  if (/[\r\n]/.test(name)) badRequest('remote が不正です');
+  const args = [...noninteractiveArgs(repo), 'ls-remote', '--heads', name];
+  const child = spawn('git', args, { cwd: repo, windowsHide: true, env: gitEnv(repo) });
+  let output = '';
+  const cap = (c: Buffer) => {
+    output += c.toString('utf8');
+    if (output.length > 20_000) output = output.slice(-20_000);
+  };
+  child.stdout.on('data', cap);
+  child.stderr.on('data', cap);
+  let sent = false;
+  const reply = (ok: boolean, extra?: string) => {
+    if (sent) return;
+    sent = true;
+    clearTimeout(timer);
+    const hint = ok ? null : authHint(output);
+    const tail = [extra, hint].filter(Boolean).join('\n');
+    res.json({
+      ok,
+      command: `git ls-remote --heads ${name}`,
+      output: tail ? `${output}${output ? '\n' : ''}${tail}` : output,
+    });
+  };
+  const timer = setTimeout(() => {
+    child.kill();
+    reply(false, '(タイムアウトのため中断しました)');
+  }, 30_000);
+  child.on('error', (err) => reply(false, err.message));
+  child.on('close', (code) => reply(code === 0));
 });
 
 gitRouter.post('/merge/continue', async (req, res) => {
@@ -622,13 +781,21 @@ gitRouter.post('/clone', (req, res) => {
   if (recursive) args.push('--recurse-submodules');
   args.push(url, dir);
 
-  const child = spawn('git', args, { windowsHide: true });
+  // 認証が必要な場合はプロンプトで待たずに失敗させる (ロックアウト防止)
+  const child = spawn('git', [...noninteractiveArgs(), ...args], {
+    windowsHide: true,
+    env: gitEnv(),
+  });
+  let all = '';
   const emit = (line: string) => {
     if (line.trim()) broadcastEvent('git:clone-progress', { id, line: line.trim() });
   };
   let buf = '';
   const onData = (chunk: Buffer) => {
-    buf += chunk.toString('utf8');
+    const s = chunk.toString('utf8');
+    all += s;
+    if (all.length > 200_000) all = all.slice(-200_000);
+    buf += s;
     // \r (進捗の上書き行) と \n の両方を行区切りとして扱う
     const parts = buf.split(/[\r\n]/);
     buf = parts.pop() ?? '';
@@ -636,17 +803,24 @@ gitRouter.post('/clone', (req, res) => {
   };
   child.stderr.on('data', onData);
   child.stdout.on('data', onData);
-  child.on('error', (err) => {
-    broadcastEvent('git:clone-progress', { id, done: true, ok: false, error: err.message });
-  });
+
+  let done = false;
+  const finish = (ok: boolean, error?: string) => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    broadcastEvent('git:clone-progress', { id, done: true, ok, error });
+  };
+  const timer = setTimeout(() => {
+    child.kill();
+    finish(false, 'タイムアウトのため中断しました');
+  }, 600_000);
+
+  child.on('error', (err) => finish(false, err.message));
   child.on('close', (code) => {
     emit(buf);
-    broadcastEvent('git:clone-progress', {
-      id,
-      done: true,
-      ok: code === 0,
-      error: code === 0 ? undefined : `git clone exited with code ${code}`,
-    });
+    if (code === 0) finish(true);
+    else finish(false, authHint(all) ?? `git clone exited with code ${code}`);
   });
 
   res.json({ ok: true, id });

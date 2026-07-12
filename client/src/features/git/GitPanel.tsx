@@ -16,6 +16,7 @@ import { runGitCommands } from './GitCommandDialog';
 import { openPushDialog, defaultPushArgs } from './PushDialog';
 import { openFetchDialog } from './FetchDialog';
 import { openStashDialog } from './StashDialog';
+import { openAuthDialog } from './AuthDialog';
 import { openCommitDiff } from './DiffTab';
 import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
 
@@ -54,6 +55,12 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const [commitDetail, setCommitDetail] = useState<CommitFilesResult | null>(null);
   /** 差分ファイル一覧のフィルタ (パス部分一致)。sessionStorage に保持 */
   const [fileFilter, setFileFilter] = useState('');
+  /** 差分ファイル一覧のフォーカス行 (マーキングのみ。履歴には積まず sessionStorage に保持) */
+  const [focusedFile, setFocusedFileState] = useState<string | null>(null);
+  const setFocusedFile = (p: string | null) => {
+    setFocusedFileState(p);
+    if (repoRoot) saveGitView(repoRoot, { focusedFile: p });
+  };
   const openMenu = useContextMenu((s) => s.open);
 
   const explorerPath = useExplorer((s) => s.path);
@@ -61,19 +68,23 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   /** コミット選択: 詳細を取得しつつ sessionStorage に保持 (タブ復帰時に復元) */
   const selectCommit = (hash: string) => {
     if (!repoRoot) return;
-    saveGitView(repoRoot, { hash });
+    // コミットが変われば以前のフォーカスは無効
+    saveGitView(repoRoot, { hash, focusedFile: null });
+    setFocusedFileState(null);
     api.gitCommitFiles(repoRoot, hash).then(setCommitDetail).catch(toastError);
   };
 
-  // タブ復帰/リポジトリ切替時: 保存済みの選択コミット・ファイルフィルタを復元
+  // タブ復帰/リポジトリ切替時: 保存済みの選択コミット・ファイルフィルタ・フォーカス行を復元
   useEffect(() => {
     setCommitDetail(null);
+    setFocusedFileState(null);
     if (!repoRoot) return;
     const saved = loadGitView(repoRoot);
     setFileFilter(saved?.filesFilter ?? '');
+    setFocusedFileState(saved?.focusedFile ?? null);
     if (saved?.hash) {
       api.gitCommitFiles(repoRoot, saved.hash).then(setCommitDetail).catch(() => {
-        saveGitView(repoRoot, { hash: null }); // 消えたコミット (reset 等) は破棄
+        saveGitView(repoRoot, { hash: null, focusedFile: null }); // 消えたコミット (reset 等) は破棄
       });
     }
   }, [repoRoot]);
@@ -167,8 +178,10 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   };
 
   /** 差分ファイル行の右クリックメニュー。存在チェック後に開く (場所に移動の活性判定) */
-  const commitFileMenu = (e: React.MouseEvent, f: CommitFile, hash: string) => {
+  const commitFileMenu = (e: React.MouseEvent, f: CommitFile, detail: CommitFilesResult) => {
     e.preventDefault();
+    const hash = detail.hash;
+    setFocusedFile(f.path); // 右クリックでもフォーカスを当てる
     const { clientX: x, clientY: y } = e;
     const abs = `${repoRoot}/${f.path}`;
     void api
@@ -178,6 +191,16 @@ export function GitPanel({ tab }: { tab: GitTab }) {
       .then((exists) => {
         const short = hash.slice(0, 7);
         const items: MenuItem[] = [
+          {
+            label: '差分を表示',
+            // Ctrl+クリック (mac は ⌘) はブラウザの別タブで開く
+            action: (ev) =>
+              openCommitDiff(
+                { repo: repoRoot, hash, path: f.path, subject: detail.message.split('\n')[0] },
+                ev.ctrlKey || ev.metaKey,
+              ),
+          },
+          { separator: true },
           {
             label: 'ログを表示',
             // Ctrl+クリック (mac は ⌘) はブラウザの別タブで開く
@@ -307,6 +330,13 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         </button>
         <button className="status-btn" disabled={busy} onClick={openStashDialog}>
           Stash
+        </button>
+        <button
+          className="status-btn"
+          title="このリポジトリの認証設定 (SSH 鍵 / 資格情報ヘルパー)"
+          onClick={openAuthDialog}
+        >
+          🔑 認証
         </button>
         {!repositories.includes(repoRoot) && (
           <button className="status-btn" onClick={() => addRepository(repoRoot)} title="サイドバーに登録">
@@ -565,7 +595,9 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                       return (
                         <tr
                           key={f.path}
+                          className={focusedFile === f.path ? 'focused' : ''}
                           title="ダブルクリックで差分を表示 / 右クリックでメニュー"
+                          onClick={() => setFocusedFile(f.path)}
                           onDoubleClick={() =>
                             openCommitDiff({
                               repo: repoRoot,
@@ -574,7 +606,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                               subject: commitDetail.message.split('\n')[0],
                             })
                           }
-                          onContextMenu={(e) => commitFileMenu(e, f, commitDetail.hash)}
+                          onContextMenu={(e) => commitFileMenu(e, f, commitDetail)}
                         >
                           <td className={`cf-status ${st.cls}`}>{st.label}</td>
                           <td className="cf-path" title={f.path}>{f.path}</td>

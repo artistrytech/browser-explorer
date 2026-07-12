@@ -1610,6 +1610,11 @@ button {
   background: var(--bg-hover);
 }
 
+/* フォーカス行 (マーキングのみ) */
+.commit-files tbody tr.focused {
+  background: var(--bg-selected);
+}
+
 .commit-files .num {
   text-align: right;
   width: 60px;
@@ -1664,6 +1669,18 @@ button {
   color: var(--text-dim);
   font-size: 11px;
   white-space: nowrap;
+}
+
+/* 認証設定ダイアログ */
+.auth-dialog {
+  width: 640px;
+  max-width: 92vw;
+}
+
+.auth-note {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 /* Stash ダイアログ */

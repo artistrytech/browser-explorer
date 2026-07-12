@@ -145,6 +145,22 @@ export const api = {
     post<{ ok: true; list?: unknown[] }>('/api/git/stash', { repo, action }),
   gitInit: (path: string) => post<{ ok: true }>('/api/git/init', { path }),
   /** git コマンド実行: 非 0 終了でも HTTP 200 で ok:false が返る */
+  // --- リポジトリ単位の認証設定 (鍵のパス等の参照のみ保存。秘密情報は保持しない) ---
+  gitAuthGet: (repo: string) =>
+    get<{
+      auth: { sshKey: string; credentialHelper: string };
+      sshKeys: string[];
+      remotes: { name: string; url: string }[];
+    }>(`/api/git/auth?repo=${q(repo)}`),
+  gitAuthSet: (repo: string, sshKey: string, credentialHelper: string) =>
+    post<{ ok: true; auth: { sshKey: string; credentialHelper: string } }>('/api/git/auth', {
+      repo,
+      sshKey,
+      credentialHelper,
+    }),
+  gitAuthTest: (repo: string, remote: string) =>
+    post<{ ok: boolean; command: string; output: string }>('/api/git/auth/test', { repo, remote }),
+
   gitExec: (repo: string, args: string[]) =>
     post<{ ok: boolean; code: number; command: string; output: string }>('/api/git/exec', {
       repo,

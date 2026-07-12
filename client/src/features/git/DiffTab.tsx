@@ -22,23 +22,53 @@ interface DiffViewStore {
   current: CommitDiffTarget | null;
   open: (t: CommitDiffTarget) => void;
   close: () => void;
+  setSubject: (subject: string) => void;
 }
 
 export const useDiffTab = create<DiffViewStore>((set) => ({
   current: null,
   open: (current) => set({ current }),
   close: () => set({ current: null }),
+  setSubject: (subject) => set((s) => (s.current ? { current: { ...s.current, subject } } : s)),
 }));
 
-/** 差分タブを開く (ブラウザ履歴に追加) */
-export function openCommitDiff(target: CommitDiffTarget): void {
+/** 差分タブの対象を URL パラメータへ (リロード/別タブでも復元できるように) */
+function diffParams(target: CommitDiffTarget): URLSearchParams {
+  const params = new URLSearchParams(location.search);
+  params.set('view', 'diff');
+  params.set('drepo', target.repo);
+  params.set('dhash', target.hash);
+  params.set('dpath', target.path);
+  return params;
+}
+
+/** URL の ?drepo=&dhash=&dpath= から差分タブの対象を復元 (subject は後から取得) */
+export function diffTargetFromUrl(): CommitDiffTarget | null {
+  const params = new URLSearchParams(location.search);
+  const repo = params.get('drepo');
+  const hash = params.get('dhash');
+  const path = params.get('dpath');
+  return repo && hash && path ? { repo, hash, path, subject: '' } : null;
+}
+
+/** 差分タブを開く (ブラウザ履歴に追加)。newTab でブラウザの別タブに開く */
+export function openCommitDiff(target: CommitDiffTarget, newTab = false): void {
+  const params = diffParams(target);
+  if (newTab) {
+    window.open(`${location.pathname}?${params}`, '_blank');
+    return;
+  }
   useDiffTab.getState().open(target);
-  switchView('diff');
+  history.pushState({ path: params.get('path'), view: 'diff' }, '', `${location.pathname}?${params}`);
+  useUi.getState().setView('diff');
 }
 
 /** 差分タブを閉じる。表示中だった場合は「ログ」タブへ戻す (履歴は積まない) */
 export function closeDiffTab(): void {
   useDiffTab.getState().close();
+  const params = new URLSearchParams(location.search);
+  ['drepo', 'dhash', 'dpath'].forEach((k) => params.delete(k));
+  history.replaceState(history.state, '', `${location.pathname}?${params}`);
   if (useUi.getState().view === 'diff') replaceView('log');
 }
 
@@ -63,6 +93,15 @@ export function DiffTab() {
       .gitCommitFileDiff(current.repo, current.hash, current.path)
       .then(setData)
       .catch(toastError);
+  }, [current]);
+
+  // URL から復元した場合はコミットの件名が無いので取得する
+  useEffect(() => {
+    if (!current || current.subject) return;
+    api
+      .gitCommitFiles(current.repo, current.hash)
+      .then((r) => useDiffTab.getState().setSubject(r.message.split('\n')[0]))
+      .catch(() => {});
   }, [current]);
 
   const isText = data !== null && !data.binary && (data.before !== null || data.after !== null);

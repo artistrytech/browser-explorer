@@ -13,7 +13,8 @@ import { GitCommandDialog } from './features/git/GitCommandDialog';
 import { PushDialog } from './features/git/PushDialog';
 import { FetchDialog } from './features/git/FetchDialog';
 import { StashDialog } from './features/git/StashDialog';
-import { DiffTab, useDiffTab, closeDiffTab } from './features/git/DiffTab';
+import { AuthDialog } from './features/git/AuthDialog';
+import { DiffTab, useDiffTab, closeDiffTab, diffTargetFromUrl } from './features/git/DiffTab';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
 import { ToastHost } from './components/ToastHost';
@@ -53,6 +54,7 @@ export default function App() {
     const initialView = viewFromUrl();
     const initialLogFilter = logFilterFromUrl();
     const initialSearch = searchFromUrl();
+    const initialDiff = diffTargetFromUrl();
     const params = new URLSearchParams();
     params.set('path', initial);
     if (initialView !== 'files') params.set('view', initialView);
@@ -61,9 +63,15 @@ export default function App() {
       if (initialLogFilter.follow) params.set('follow', '1');
     }
     if (initialSearch) params.set('q', initialSearch);
+    if (initialDiff) {
+      params.set('drepo', initialDiff.repo);
+      params.set('dhash', initialDiff.hash);
+      params.set('dpath', initialDiff.path);
+    }
     history.replaceState({ path: initial, view: initialView }, '', `${location.pathname}?${params}`);
     useUi.getState().setView(initialView);
     useGit.getState().setLogFilter(initialLogFilter);
+    if (initialDiff) useDiffTab.getState().open(initialDiff);
     void navigate(initial, false).then(() => {
       if (initialSearch) void useExplorer.getState().runSearch(initialSearch, false);
     });
@@ -80,6 +88,12 @@ export default function App() {
       // 内容が同じなら参照を維持 (不要な再読込を避ける)
       if (!(cur && next && cur.path === next.path && cur.follow === next.follow)) {
         useGit.getState().setLogFilter(next);
+      }
+      // 差分タブの対象も URL から復元 (同一対象なら参照を維持)
+      const curDiff = useDiffTab.getState().current;
+      const nextDiff = diffTargetFromUrl();
+      if (nextDiff && (curDiff?.hash !== nextDiff.hash || curDiff?.path !== nextDiff.path)) {
+        useDiffTab.getState().open(nextDiff);
       }
     };
     window.addEventListener('popstate', onPop);
@@ -224,6 +238,7 @@ export default function App() {
       <PushDialog />
       <FetchDialog />
       <StashDialog />
+      <AuthDialog />
       {/* 実行結果ダイアログは他ダイアログより手前に出すため最後にマウント */}
       <GitCommandDialog />
     </div>

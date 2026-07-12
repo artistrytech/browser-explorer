@@ -16,6 +16,8 @@ export interface GitViewRecord {
   graphAll: boolean;
   /** コミット差分ファイル一覧のフィルタテキスト */
   filesFilter: string;
+  /** コミット差分ファイル一覧のフォーカス行 (マーキングのみ) */
+  focusedFile: string | null;
   ts: number;
 }
 
@@ -31,8 +33,14 @@ export function loadGitView(repo: string): GitViewRecord | null {
 /** 部分更新でマージ保存する */
 export function saveGitView(repo: string, partial: Partial<Omit<GitViewRecord, 'ts'>>): void {
   try {
-    const prev =
-      loadGitView(repo) ?? { hash: null, logScrollTop: 0, graphScrollTop: 0, graphAll: false, filesFilter: '' };
+    const prev = loadGitView(repo) ?? {
+      hash: null,
+      logScrollTop: 0,
+      graphScrollTop: 0,
+      graphAll: false,
+      filesFilter: '',
+      focusedFile: null,
+    };
     sessionStorage.setItem(PREFIX + repo, JSON.stringify({ ...prev, ...partial, ts: Date.now() }));
   } catch {
     /* storage full 等は無視 */
