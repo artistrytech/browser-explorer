@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useExplorer } from '../../stores/explorer';
-import { useSettings, isMod } from '../../stores/settings';
+import {
+  useSettings,
+  isMod,
+  DEFAULT_COLUMN_WIDTHS,
+  MIN_COLUMN_WIDTH,
+  MAX_COLUMN_WIDTH,
+  type ColumnWidths,
+} from '../../stores/settings';
 import { useGit, OverlayCode } from '../../stores/git';
 import { useUi, osMenuLabels } from '../../stores/ui';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
@@ -23,6 +30,14 @@ import { openConflictResolver } from '../git/ConflictResolver';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
 import type { FsEntry, SortKey } from '../../types';
+
+/** 詳細表示のカラム定義 (「一覧」表示では先頭の「名前」のみ使う) */
+const COLUMNS: { key: SortKey; label: string }[] = [
+  { key: 'name', label: '名前' },
+  { key: 'type', label: '種類' },
+  { key: 'size', label: 'サイズ' },
+  { key: 'mtime', label: '更新日時' },
+];
 
 const OVERLAY_MARK: Record<OverlayCode, { mark: string; cls: string; title: string }> = {
   normal: { mark: '✔', cls: 'ov-normal', title: '変更なし' },
@@ -511,14 +526,56 @@ export function FileList() {
     }
   };
 
-  const sortHeader = (key: SortKey, label: string) => (
+  // --- カラム幅 (一覧はフル幅ではなく既定幅の合計で表示し、右側は余白にする) ---
+  const columns = settings.viewMode === 'details' ? COLUMNS : COLUMNS.slice(0, 1);
+  // ドラッグ中だけローカル値を使い、確定時に設定へ保存する
+  const [dragWidths, setDragWidths] = useState<ColumnWidths | null>(null);
+  const widths = dragWidths ?? settings.columnWidths;
+  const tableWidth = columns.reduce((sum, c) => sum + widths[c.key], 0);
+
+  const startResize = (e: React.MouseEvent, key: SortKey) => {
+    e.preventDefault();
+    e.stopPropagation(); // ヘッダのソートを発火させない
+    const startX = e.clientX;
+    const startW = widths[key];
+    let next = widths;
+    const onMove = (ev: MouseEvent) => {
+      const w = Math.round(startW + ev.clientX - startX);
+      next = { ...widths, [key]: Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, w)) };
+      setDragWidths(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.classList.remove('col-resizing');
+      setDragWidths(null);
+      update({ columnWidths: next });
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    document.body.classList.add('col-resizing');
+  };
+
+  const columnHeader = ({ key, label }: { key: SortKey; label: string }) => (
     <th
+      key={key}
+      style={{ width: widths[key] }}
       onClick={() =>
         update(settings.sortKey === key ? { sortAsc: !settings.sortAsc } : { sortKey: key, sortAsc: true })
       }
     >
       {label}
       {settings.sortKey === key && <span className="sort-arrow">{settings.sortAsc ? ' ▲' : ' ▼'}</span>}
+      <span
+        className="col-resizer"
+        title="ドラッグで幅を変更 (ダブルクリックで既定幅)"
+        onMouseDown={(e) => startResize(e, key)}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          update({ columnWidths: { ...widths, [key]: DEFAULT_COLUMN_WIDTHS[key] } });
+        }}
+      />
     </th>
   );
 
@@ -547,7 +604,9 @@ export function FileList() {
           {fileIcon(entry)}
           <GitOverlay path={entry.path} dirCode={dirOverlay[entry.path]} />
         </span>
-        <span className={clipboard?.op === 'cut' && clipboard.paths.includes(entry.path) ? 'cut-pending' : ''}>
+        <span
+          className={`entry-label${clipboard?.op === 'cut' && clipboard.paths.includes(entry.path) ? ' cut-pending' : ''}`}
+        >
           {entry.name}
         </span>
       </span>
@@ -611,14 +670,14 @@ export function FileList() {
           ))}
         </div>
       ) : (
-        <table className="details-table">
+        <table className="details-table" style={{ width: tableWidth }}>
+          <colgroup>
+            {columns.map((c) => (
+              <col key={c.key} style={{ width: widths[c.key] }} />
+            ))}
+          </colgroup>
           <thead>
-            <tr>
-              {sortHeader('name', '名前')}
-              {settings.viewMode === 'details' && sortHeader('type', '種類')}
-              {settings.viewMode === 'details' && sortHeader('size', 'サイズ')}
-              {settings.viewMode === 'details' && sortHeader('mtime', '更新日時')}
-            </tr>
+            <tr>{columns.map(columnHeader)}</tr>
           </thead>
           <tbody>
             {displayed.map((entry) => (

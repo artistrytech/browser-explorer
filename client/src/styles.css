@@ -325,8 +325,9 @@ button {
   }
 }
 
+/* 幅はカラム幅の合計 (フル幅にはしない)。余った右側は余白として背景クリック領域になる */
 .details-table {
-  width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   user-select: none;
 }
@@ -341,10 +342,33 @@ button {
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .details-table th:hover {
   background: var(--bg-hover);
+}
+
+/* カラム境界のリサイズハンドル (ヘッダの右端) */
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  border-right: 1px solid var(--border);
+}
+
+.col-resizer:hover {
+  border-right-color: var(--accent);
+}
+
+/* リサイズ中はカーソルを維持し、テキスト選択を抑止する */
+body.col-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .sort-arrow {
@@ -357,7 +381,6 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 380px;
 }
 
 .details-table tbody tr {
@@ -389,6 +412,14 @@ button {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+
+/* カラム幅を超える名前は省略記号にする (幅は colgroup 固定) */
+.entry-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .entry-icon {

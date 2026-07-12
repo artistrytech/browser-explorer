@@ -3,12 +3,30 @@ import { api } from '../api/client';
 import { useToast, toastError } from './toast';
 import type { Favorite, RecentItem, SortKey, ViewMode } from '../types';
 
+/** 修飾キー基準。auto = OS に合わせる (Mac は ⌘、それ以外は Ctrl) */
+export type ModKey = 'auto' | 'ctrl' | 'meta';
+
+/** 詳細表示のカラム幅 (px)。キーは SortKey と同じ */
+export type ColumnWidths = Record<SortKey, number>;
+
+/** カラム幅の既定値: 一覧はフル幅ではなくこの合計幅で表示する */
+export const DEFAULT_COLUMN_WIDTHS: ColumnWidths = {
+  name: 360,
+  type: 140,
+  size: 100,
+  mtime: 170,
+};
+
+export const MIN_COLUMN_WIDTH = 60;
+export const MAX_COLUMN_WIDTH = 1200;
+
 export interface Settings {
-  modKey: 'ctrl' | 'meta';
+  modKey: ModKey;
   showHidden: boolean;
   viewMode: ViewMode;
   sortKey: SortKey;
   sortAsc: boolean;
+  columnWidths: ColumnWidths;
   theme: 'light' | 'dark';
   fontSize: number;
   wordWrap: boolean;
@@ -18,11 +36,12 @@ export interface Settings {
 }
 
 const DEFAULT_SETTINGS: Settings = {
-  modKey: 'ctrl',
+  modKey: 'auto',
   showHidden: false,
   viewMode: 'details',
   sortKey: 'name',
   sortAsc: true,
+  columnWidths: DEFAULT_COLUMN_WIDTHS,
   theme: 'light',
   fontSize: 14,
   wordWrap: false,
@@ -68,7 +87,12 @@ export const useSettings = create<SettingsStore>((set, get) => ({
       const state = await api.getState();
       const saved = (state.settings.app ?? {}) as Partial<Settings>;
       set({
-        settings: { ...DEFAULT_SETTINGS, ...saved },
+        settings: {
+          ...DEFAULT_SETTINGS,
+          ...saved,
+          // 旧バージョンの保存値にはカラム幅が無い / 一部しか無いので既定で補完する
+          columnWidths: { ...DEFAULT_COLUMN_WIDTHS, ...(saved.columnWidths ?? {}) },
+        },
         favorites: state.favorites,
         repositories: state.repositories,
         recents: state.recents,
@@ -141,7 +165,18 @@ export const useSettings = create<SettingsStore>((set, get) => ({
   },
 }));
 
-/** 設定に応じた修飾キー判定 (Ctrl 基準 / ⌘ 基準) */
+/** ブラウザが Mac 上で動作しているか (⌘ を修飾キーにするかの判定) */
+export function isMacBrowser(): boolean {
+  return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
+}
+
+/**
+ * 設定に応じた修飾キー判定 (自動 / Ctrl 基準 / ⌘ 基準)。
+ * 自動時、Mac では ⌘ のみを見る (Mac の Ctrl+クリックは右クリック相当のため両対応にしない)。
+ */
 export function isMod(e: { ctrlKey: boolean; metaKey: boolean }): boolean {
-  return useSettings.getState().settings.modKey === 'meta' ? e.metaKey : e.ctrlKey;
+  const modKey = useSettings.getState().settings.modKey;
+  if (modKey === 'meta') return e.metaKey;
+  if (modKey === 'ctrl') return e.ctrlKey;
+  return isMacBrowser() ? e.metaKey : e.ctrlKey;
 }

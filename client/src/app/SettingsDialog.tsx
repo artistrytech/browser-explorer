@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { useUi } from '../stores/ui';
-import { useSettings } from '../stores/settings';
+import { useSettings, DEFAULT_COLUMN_WIDTHS, type ModKey } from '../stores/settings';
 import { api, APP_TOKEN } from '../api/client';
 import { useToast, toastError } from '../stores/toast';
 
@@ -51,11 +51,9 @@ export function SettingsDialog() {
 
         {row(
           'キーバインド基準',
-          <select
-            value={settings.modKey}
-            onChange={(e) => update({ modKey: e.target.value as 'ctrl' | 'meta' })}
-          >
-            <option value="ctrl">Ctrl 基準 (既定)</option>
+          <select value={settings.modKey} onChange={(e) => update({ modKey: e.target.value as ModKey })}>
+            <option value="auto">自動 (既定) — Mac は ⌘、他は Ctrl</option>
+            <option value="ctrl">Ctrl 基準</option>
             <option value="meta">⌘ 基準</option>
           </select>,
         )}
@@ -69,6 +67,12 @@ export function SettingsDialog() {
             <option value="list">一覧</option>
             <option value="icons">大アイコン</option>
           </select>,
+        )}
+        {row(
+          '一覧のカラム幅',
+          <button className="btn" onClick={() => update({ columnWidths: DEFAULT_COLUMN_WIDTHS })}>
+            既定に戻す
+          </button>,
         )}
         {row(
           '隠しファイル',
