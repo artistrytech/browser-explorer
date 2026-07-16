@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { config } from '../config.js';
 import { db } from './stateStore.js';
 
 /**
- * config.jsonc の一部設定 (再起動不要・画面で編集可能) を DB (settings テーブル) へ移行して保持する。
- * 初回アクセス時に config.jsonc の該当値で seed し、以後は設定画面 (GUI) からの編集が正となる。
+ * 画面で編集可能な設定 (commitFilesLimit / contextMenu / externalTools / diffTools / extDefaults) を
+ * DB (settings テーブル) に保持する。設定は設定画面 (GUI) からのみ編集する (config.jsonc からは取り込まない)。
  * run-tool / difftool の実行コマンドはここ (サーバ側 DB) からのみ参照する → allowlist 境界を維持。
  */
 
@@ -106,51 +105,26 @@ function sanitizeDiffTool(raw: unknown): DiffToolDef | null {
 }
 
 function getExternalTools(): ExternalToolDef[] {
-  let v = readSetting<ExternalToolDef[]>('externalTools');
-  if (v === undefined) {
-    v = (config.externalTools ?? []).map(sanitizeTool).filter((t): t is ExternalToolDef => t !== null);
-    writeSetting('externalTools', v);
-  }
-  return v;
+  return readSetting<ExternalToolDef[]>('externalTools') ?? [];
 }
 
 function getDiffTools(): DiffToolDef[] {
-  let v = readSetting<DiffToolDef[]>('diffTools');
-  if (v === undefined) {
-    v = (config.diffTools ?? []).map(sanitizeDiffTool).filter((t): t is DiffToolDef => t !== null);
-    writeSetting('diffTools', v);
-  }
-  return v;
+  return readSetting<DiffToolDef[]>('diffTools') ?? [];
 }
 
 function getContextMenu(): Record<string, boolean> {
-  let v = readSetting<Record<string, boolean>>('contextMenu');
-  if (v === undefined) {
-    v = config.contextMenu ?? {};
-    writeSetting('contextMenu', v);
-  }
-  return v;
+  return readSetting<Record<string, boolean>>('contextMenu') ?? {};
 }
 
 function getCommitFilesLimit(): number {
-  let v = readSetting<number>('commitFilesLimit');
-  if (v === undefined) {
-    v = typeof config.commitFilesLimit === 'number' ? config.commitFilesLimit : 100;
-    writeSetting('commitFilesLimit', v);
-  }
-  return v;
+  return readSetting<number>('commitFilesLimit') ?? 100;
 }
 
 function getExtDefaults(): Record<string, string> {
-  let v = readSetting<Record<string, string>>('extDefaults');
-  if (v === undefined) {
-    v = {};
-    writeSetting('extDefaults', v);
-  }
-  return v;
+  return readSetting<Record<string, string>>('extDefaults') ?? {};
 }
 
-/** 現在有効な設定 (初回は config.jsonc から seed) をまとめて返す */
+/** 現在有効な設定 (未設定の項目は既定値) をまとめて返す */
 export function getAppConfig(): AppConfig {
   return {
     commitFilesLimit: getCommitFilesLimit(),

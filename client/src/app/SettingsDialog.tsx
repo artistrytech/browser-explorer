@@ -8,7 +8,7 @@ import type { AppSettings, DiffToolDef, ExternalToolDef } from '../types';
 
 type Tab = 'general' | 'menu' | 'tools' | 'diff';
 
-/** contextMenu の各キーと日本語ラベル (config.jsonc のコメントが対応表) */
+/** contextMenu の各キーと日本語ラベル */
 const MENU_ITEMS: { key: string; label: string }[] = [
   { key: 'groupOpen', label: '「開く」サブメニュー' },
   { key: 'open', label: '  開く' },
@@ -38,6 +38,181 @@ const MENU_ITEMS: { key: string; label: string }[] = [
 ];
 
 const normExt = (s: string) => s.trim().replace(/^\.+/, '').toLowerCase();
+const parseExts = (text: string) => [...new Set(text.split(/[\s,]+/).map(normExt).filter(Boolean))];
+const parseArgs = (text: string) => text.split('\n').filter((s) => s.length > 0);
+
+/** ラベル + コントロールを 2 カラムグリッドで揃えて並べる */
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="settings-field">
+      <span className="settings-field-label">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+/** 外部ツールの編集ダイアログ (設定ダイアログに重ねて表示) */
+function ExternalToolEditor({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial: ExternalToolDef;
+  onSave: (tool: ExternalToolDef) => void;
+  onCancel: () => void;
+}) {
+  const [label, setLabel] = useState(initial.label);
+  const [command, setCommand] = useState(initial.command);
+  const [argsText, setArgsText] = useState((initial.args ?? []).join('\n'));
+  const [group, setGroup] = useState(initial.group ?? '');
+  const [kind, setKind] = useState<'file' | 'dir' | 'any'>(initial.kind ?? 'any');
+  const [extText, setExtText] = useState((initial.extensions ?? []).join(', '));
+  const [confirm, setConfirm] = useState(initial.confirm === true);
+
+  const save = () => {
+    const exts = parseExts(extText);
+    const args = parseArgs(argsText);
+    onSave({
+      id: initial.id,
+      label: label.trim() || '(無題)',
+      command: command.trim(),
+      ...(args.length ? { args } : {}),
+      ...(group.trim() ? { group: group.trim() } : {}),
+      kind,
+      ...(exts.length ? { extensions: exts } : {}),
+      ...(confirm ? { confirm: true } : {}),
+    });
+  };
+
+  return (
+    <div className="dialog-backdrop nested" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
+      <div className="dialog tool-edit-dialog" role="dialog">
+        <div className="dialog-title">外部ツールの編集</div>
+        <Field label="ラベル">
+          <input className="dialog-input" value={label} onChange={(e) => setLabel(e.target.value)} />
+        </Field>
+        <Field label="コマンド">
+          <input
+            className="dialog-input"
+            placeholder="notepad.exe / 絶対パス"
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+          />
+        </Field>
+        <Field label="引数 (1 行 1 つ)">
+          <textarea className="dialog-input" rows={3} value={argsText} onChange={(e) => setArgsText(e.target.value)} />
+        </Field>
+        <Field label="グループ">
+          <input
+            className="dialog-input"
+            placeholder="開く / 削除 / Git / 任意名 (空=直下)"
+            value={group}
+            onChange={(e) => setGroup(e.target.value)}
+          />
+        </Field>
+        <Field label="対象種別">
+          <select value={kind} onChange={(e) => setKind(e.target.value as 'file' | 'dir' | 'any')}>
+            <option value="any">両方</option>
+            <option value="file">ファイルのみ</option>
+            <option value="dir">フォルダのみ</option>
+          </select>
+        </Field>
+        <Field label="対象拡張子">
+          <input
+            className="dialog-input"
+            placeholder="sh, bat, png (カンマ区切り・空=全部)"
+            value={extText}
+            onChange={(e) => setExtText(e.target.value)}
+          />
+        </Field>
+        <Field label="起動前に確認">
+          <label className="inline-check">
+            <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />
+            確認ダイアログを出す
+          </label>
+        </Field>
+        <p className="settings-hint">
+          args の <code>{'${paths}'}</code> が選択パスに展開されます (無ければ末尾に追加)。
+        </p>
+        <div className="dialog-buttons">
+          <button className="btn primary" onClick={save}>
+            OK
+          </button>
+          <button className="btn" onClick={onCancel}>
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 差分ツールの編集ダイアログ */
+function DiffToolEditor({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial: DiffToolDef;
+  onSave: (tool: DiffToolDef) => void;
+  onCancel: () => void;
+}) {
+  const [label, setLabel] = useState(initial.label);
+  const [command, setCommand] = useState(initial.command);
+  const [argsText, setArgsText] = useState((initial.args ?? []).join('\n'));
+  const [isDefault, setIsDefault] = useState(initial.default === true);
+
+  const save = () => {
+    const args = parseArgs(argsText);
+    onSave({
+      id: initial.id,
+      label: label.trim() || '(無題)',
+      command: command.trim(),
+      ...(args.length ? { args } : {}),
+      ...(isDefault ? { default: true } : {}),
+    });
+  };
+
+  return (
+    <div className="dialog-backdrop nested" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
+      <div className="dialog tool-edit-dialog" role="dialog">
+        <div className="dialog-title">差分ツールの編集</div>
+        <Field label="ラベル">
+          <input className="dialog-input" value={label} onChange={(e) => setLabel(e.target.value)} />
+        </Field>
+        <Field label="コマンド">
+          <input
+            className="dialog-input"
+            placeholder="絶対パス推奨"
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+          />
+        </Field>
+        <Field label="引数 (1 行 1 つ)">
+          <textarea className="dialog-input" rows={4} value={argsText} onChange={(e) => setArgsText(e.target.value)} />
+        </Field>
+        <Field label="既定にする">
+          <label className="inline-check">
+            <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
+            ダブルクリック時にこのツールで開く
+          </label>
+        </Field>
+        <p className="settings-hint">
+          args の <code>{'${left}'}</code> / <code>{'${right}'}</code> が比較対象、
+          <code>{'${leftTitle}'}</code> / <code>{'${rightTitle}'}</code> が見出しに展開されます。
+        </p>
+        <div className="dialog-buttons">
+          <button className="btn primary" onClick={save}>
+            OK
+          </button>
+          <button className="btn" onClick={onCancel}>
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function SettingsDialog() {
   const { settingsOpen, setSettingsOpen } = useUi();
@@ -46,20 +221,25 @@ export function SettingsDialog() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [tab, setTab] = useState<Tab>('general');
-  // サーバ設定 (commitFilesLimit / contextMenu / externalTools / diffTools / extDefaults) の編集ドラフト
   const [draft, setDraft] = useState<AppSettings | null>(null);
+  const [extRows, setExtRows] = useState<{ ext: string; toolId: string }[]>([]);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  // 拡張子ごとの既定ツール追加フォームの入力値 (フックは早期 return より前で宣言する)
-  const [newExt, setNewExt] = useState('');
-  const [newExtTool, setNewExtTool] = useState('');
+  // 重ねて開く編集ダイアログ (index -1 = 新規追加)
+  const [editingTool, setEditingTool] = useState<{ index: number; tool: ExternalToolDef } | null>(null);
+  const [editingDiff, setEditingDiff] = useState<{ index: number; tool: DiffToolDef } | null>(null);
 
   useEffect(() => {
     if (!settingsOpen) return;
     setDirty(false);
+    setEditingTool(null);
+    setEditingDiff(null);
     api
       .getSettings()
-      .then(setDraft)
+      .then((s) => {
+        setDraft(s);
+        setExtRows(Object.entries(s.extDefaults).map(([ext, toolId]) => ({ ext, toolId })));
+      })
       .catch((e) => {
         setDraft(null);
         toastError(e);
@@ -68,7 +248,6 @@ export function SettingsDialog() {
 
   if (!settingsOpen) return null;
 
-  /** ドラフトを一部更新 (dirty を立てる) */
   const patch = (p: Partial<AppSettings>) => {
     setDraft((d) => (d ? { ...d, ...p } : d));
     setDirty(true);
@@ -78,8 +257,14 @@ export function SettingsDialog() {
     if (!draft) return;
     setSaving(true);
     try {
-      const saved = await api.putSettings(draft);
+      const extDefaults: Record<string, string> = {};
+      for (const { ext, toolId } of extRows) {
+        const e = normExt(ext);
+        if (e && toolId) extDefaults[e] = toolId;
+      }
+      const saved = await api.putSettings({ ...draft, extDefaults });
       setDraft(saved);
+      setExtRows(Object.entries(saved.extDefaults).map(([ext, toolId]) => ({ ext, toolId })));
       setDirty(false);
       await refreshUiConfig(); // 再起動なしでメニュー等に即時反映
       useToast.getState().show('success', '設定を保存しました');
@@ -113,6 +298,7 @@ export function SettingsDialog() {
       await refreshUiConfig();
       const fresh = await api.getSettings();
       setDraft(fresh);
+      setExtRows(Object.entries(fresh.extDefaults).map(([ext, toolId]) => ({ ext, toolId })));
       setDirty(false);
       useToast.getState().show('success', '設定をインポートしました');
     } catch (e) {
@@ -127,11 +313,13 @@ export function SettingsDialog() {
     </div>
   );
 
-  // --- 外部ツール編集 ---
-  const updateTool = (i: number, p: Partial<ExternalToolDef>) => {
+  // --- 外部ツール ---
+  const commitTool = (index: number, tool: ExternalToolDef) => {
     if (!draft) return;
-    const externalTools = draft.externalTools.map((t, idx) => (idx === i ? { ...t, ...p } : t));
+    const externalTools =
+      index < 0 ? [...draft.externalTools, tool] : draft.externalTools.map((t, i) => (i === index ? tool : t));
     patch({ externalTools });
+    setEditingTool(null);
   };
   const removeTool = (i: number) => {
     if (!draft) return;
@@ -145,57 +333,42 @@ export function SettingsDialog() {
     [arr[i], arr[j]] = [arr[j], arr[i]];
     patch({ externalTools: arr });
   };
-  const addTool = (preset?: Omit<ExternalToolDef, 'id'>) => {
-    if (!draft) return;
-    const id = crypto.randomUUID();
-    const tool: ExternalToolDef = preset
-      ? { id, ...preset }
-      : { id, label: '新しいツール', command: '', kind: 'any' };
-    patch({ externalTools: [...draft.externalTools, tool] });
-  };
 
-  // --- 差分ツール編集 ---
-  const updateDiff = (i: number, p: Partial<DiffToolDef>) => {
+  // --- 差分ツール ---
+  const commitDiff = (index: number, tool: DiffToolDef) => {
     if (!draft) return;
-    let diffTools = draft.diffTools.map((t, idx) => (idx === i ? { ...t, ...p } : t));
-    // default は 1 つだけ
-    if (p.default) diffTools = diffTools.map((t, idx) => (idx === i ? t : { ...t, default: false }));
+    let diffTools =
+      index < 0 ? [...draft.diffTools, tool] : draft.diffTools.map((t, i) => (i === index ? tool : t));
+    if (tool.default) diffTools = diffTools.map((t) => (t.id === tool.id ? t : { ...t, default: false }));
     patch({ diffTools });
+    setEditingDiff(null);
   };
   const removeDiff = (i: number) => {
     if (!draft) return;
     patch({ diffTools: draft.diffTools.filter((_, idx) => idx !== i) });
   };
-  const addDiff = (preset?: Omit<DiffToolDef, 'id'>) => {
-    if (!draft) return;
-    const id = crypto.randomUUID();
-    const tool: DiffToolDef = preset ? { id, ...preset } : { id, label: '新しい差分ツール', command: '' };
-    patch({ diffTools: [...draft.diffTools, tool] });
-  };
 
-  // --- 拡張子ごとの既定ツール (extDefaults) ---
-  const extRows = draft ? Object.entries(draft.extDefaults) : [];
-  const setExtRow = (oldExt: string, newExt: string, toolId: string) => {
-    if (!draft) return;
-    const map: Record<string, string> = {};
-    for (const [k, v] of Object.entries(draft.extDefaults)) if (k !== oldExt) map[k] = v;
-    const e = normExt(newExt);
-    if (e && toolId) map[e] = toolId;
-    patch({ extDefaults: map });
-  };
-  const removeExtRow = (ext: string) => {
-    if (!draft) return;
-    const map = { ...draft.extDefaults };
-    delete map[ext];
-    patch({ extDefaults: map });
+  // --- 拡張子ごとの既定ツール (ローカル配列で編集し、保存時に record 化) ---
+  const updateExtRow = (i: number, p: Partial<{ ext: string; toolId: string }>) => {
+    setExtRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...p } : r)));
+    setDirty(true);
   };
   const addExtRow = () => {
-    if (!draft) return;
-    const e = normExt(newExt);
-    if (!e || !newExtTool) return;
-    patch({ extDefaults: { ...draft.extDefaults, [e]: newExtTool } });
-    setNewExt('');
-    setNewExtTool('');
+    setExtRows((rows) => [...rows, { ext: '', toolId: '' }]);
+    setDirty(true);
+  };
+  const removeExtRow = (i: number) => {
+    setExtRows((rows) => rows.filter((_, idx) => idx !== i));
+    setDirty(true);
+  };
+
+  const toolSummary = (t: ExternalToolDef) => {
+    const parts = [t.command || '(コマンド未設定)'];
+    if (t.kind && t.kind !== 'any') parts.push(t.kind === 'dir' ? 'フォルダ' : 'ファイル');
+    if (t.extensions?.length) parts.push('.' + t.extensions.join(' .'));
+    if (t.group) parts.push('→' + t.group);
+    if (t.confirm) parts.push('確認');
+    return parts.join(' / ');
   };
 
   const tabBtn = (id: Tab, label: string) => (
@@ -306,7 +479,7 @@ export function SettingsDialog() {
           )}
 
           {tab === 'menu' && (
-            <div className="settings-hint-wrap">
+            <div>
               <p className="settings-hint">チェックを外した項目はコンテキストメニューに表示されません。</p>
               {draft &&
                 MENU_ITEMS.map(({ key, label }) => (
@@ -325,107 +498,44 @@ export function SettingsDialog() {
           {tab === 'tools' && draft && (
             <div className="tool-editor">
               <p className="settings-hint">
-                コンテキストメニューから起動するツール。args の <code>{'${paths}'}</code> が選択パスに展開されます
-                (無ければ末尾に追加)。対象種別/拡張子を指定するとその条件のときだけメニューに表示します。
+                コンテキストメニューから起動するツール。行をクリックすると編集ダイアログを開きます。
               </p>
+              {draft.externalTools.length === 0 && <p className="settings-empty">ツールがありません。</p>}
               {draft.externalTools.map((t, i) => (
-                <div className="tool-card" key={t.id}>
-                  <div className="tool-card-head">
-                    <input
-                      className="dialog-input"
-                      placeholder="ラベル"
-                      value={t.label}
-                      onChange={(e) => updateTool(i, { label: e.target.value })}
-                    />
-                    <div className="tool-card-actions">
-                      <button className="btn" title="上へ" onClick={() => moveTool(i, -1)}>
-                        ▲
-                      </button>
-                      <button className="btn" title="下へ" onClick={() => moveTool(i, 1)}>
-                        ▼
-                      </button>
-                      <button className="btn danger" title="削除" onClick={() => removeTool(i)}>
-                        ✕
-                      </button>
-                    </div>
+                <div className="tool-list-row" key={t.id}>
+                  <button className="tool-list-main" onClick={() => setEditingTool({ index: i, tool: t })}>
+                    <span className="tool-list-label">{t.label || '(無題)'}</span>
+                    <span className="tool-list-sub">{toolSummary(t)}</span>
+                  </button>
+                  <div className="tool-list-actions">
+                    <button className="btn" title="上へ" onClick={() => moveTool(i, -1)}>
+                      ▲
+                    </button>
+                    <button className="btn" title="下へ" onClick={() => moveTool(i, 1)}>
+                      ▼
+                    </button>
+                    <button className="btn danger" title="削除" onClick={() => removeTool(i)}>
+                      ✕
+                    </button>
                   </div>
-                  {row(
-                    'コマンド',
-                    <input
-                      className="dialog-input"
-                      placeholder="notepad.exe / 絶対パス"
-                      value={t.command}
-                      onChange={(e) => updateTool(i, { command: e.target.value })}
-                    />,
-                  )}
-                  {row(
-                    '引数 (1 行 1 つ)',
-                    <textarea
-                      className="dialog-input"
-                      rows={2}
-                      value={(t.args ?? []).join('\n')}
-                      onChange={(e) =>
-                        updateTool(i, { args: e.target.value.split('\n').filter((s) => s.length > 0) })
-                      }
-                    />,
-                  )}
-                  {row(
-                    'グループ',
-                    <input
-                      className="dialog-input"
-                      placeholder="開く / 削除 / Git / 任意名 (空=直下)"
-                      value={t.group ?? ''}
-                      onChange={(e) => updateTool(i, { group: e.target.value || undefined })}
-                    />,
-                  )}
-                  {row(
-                    '対象種別',
-                    <select value={t.kind ?? 'any'} onChange={(e) => updateTool(i, { kind: e.target.value as ExternalToolDef['kind'] })}>
-                      <option value="any">両方</option>
-                      <option value="file">ファイルのみ</option>
-                      <option value="dir">フォルダのみ</option>
-                    </select>,
-                  )}
-                  {row(
-                    '対象拡張子 (カンマ区切り・空=全部)',
-                    <input
-                      className="dialog-input"
-                      placeholder="sh, bat, png"
-                      value={(t.extensions ?? []).join(', ')}
-                      onChange={(e) =>
-                        updateTool(i, {
-                          extensions: e.target.value
-                            .split(/[\s,]+/)
-                            .map(normExt)
-                            .filter(Boolean),
-                        })
-                      }
-                    />,
-                  )}
-                  {row(
-                    '起動前に確認',
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={t.confirm === true}
-                        onChange={(e) => updateTool(i, { confirm: e.target.checked })}
-                      />
-                      確認ダイアログを出す
-                    </label>,
-                  )}
                 </div>
               ))}
 
               <div className="tool-add-row">
-                <button className="btn" onClick={() => addTool()}>
-                  + 空のツールを追加
+                <button
+                  className="btn"
+                  onClick={() =>
+                    setEditingTool({ index: -1, tool: { id: crypto.randomUUID(), label: '新しいツール', command: '', kind: 'any' } })
+                  }
+                >
+                  + ツールを追加
                 </button>
                 <select
-                  defaultValue=""
+                  value=""
                   onChange={(e) => {
                     const idx = Number(e.target.value);
-                    const presets = externalToolPresets(platform);
-                    if (presets[idx]) addTool(presets[idx]);
+                    const p = externalToolPresets(platform)[idx];
+                    if (p) setEditingTool({ index: -1, tool: { id: crypto.randomUUID(), ...p } });
                     e.target.value = '';
                   }}
                 >
@@ -444,43 +554,33 @@ export function SettingsDialog() {
               <p className="settings-hint">
                 設定した拡張子のファイルは、ダブルクリック時にそのツールで開きます (未設定はアプリ内エディタ)。
               </p>
-              {extRows.map(([ext, toolId]) => (
-                <div className="ext-default-row" key={ext}>
+              {extRows.map((r, i) => (
+                <div className="ext-default-row" key={i}>
                   <input
                     className="dialog-input ext-input"
-                    value={ext}
-                    onChange={(e) => setExtRow(ext, e.target.value, toolId)}
+                    placeholder="png"
+                    value={r.ext}
+                    onChange={(e) => updateExtRow(i, { ext: e.target.value })}
                   />
-                  <select value={toolId} onChange={(e) => setExtRow(ext, ext, e.target.value)}>
-                    {!draft.externalTools.some((t) => t.id === toolId) && <option value={toolId}>(不明なツール)</option>}
+                  <select value={r.toolId} onChange={(e) => updateExtRow(i, { toolId: e.target.value })}>
+                    <option value="">ツールを選択…</option>
+                    {!draft.externalTools.some((t) => t.id === r.toolId) && r.toolId && (
+                      <option value={r.toolId}>(不明なツール)</option>
+                    )}
                     {draft.externalTools.map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.label}
+                        {t.label || '(無題)'}
                       </option>
                     ))}
                   </select>
-                  <button className="btn danger" onClick={() => removeExtRow(ext)}>
+                  <button className="btn danger" title="削除" onClick={() => removeExtRow(i)}>
                     ✕
                   </button>
                 </div>
               ))}
-              <div className="ext-default-row">
-                <input
-                  className="dialog-input ext-input"
-                  placeholder="png"
-                  value={newExt}
-                  onChange={(e) => setNewExt(e.target.value)}
-                />
-                <select value={newExtTool} onChange={(e) => setNewExtTool(e.target.value)}>
-                  <option value="">ツールを選択…</option>
-                  {draft.externalTools.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn" onClick={addExtRow} disabled={!normExt(newExt) || !newExtTool}>
-                  追加
+              <div className="tool-add-row">
+                <button className="btn" onClick={addExtRow}>
+                  + 拡張子を追加
                 </button>
               </div>
             </div>
@@ -489,65 +589,40 @@ export function SettingsDialog() {
           {tab === 'diff' && draft && (
             <div className="tool-editor">
               <p className="settings-hint">
-                差分表示に使う外部ツール。args の <code>{'${left}'}</code> / <code>{'${right}'}</code> が比較対象、
-                <code>{'${leftTitle}'}</code> / <code>{'${rightTitle}'}</code> が見出しに展開されます。
-                「既定」にするとファイルのダブルクリックでそのツールが開きます。
+                差分表示に使う外部ツール (WinMerge / Meld / VS Code など)。行をクリックすると編集ダイアログを開きます。
               </p>
+              {draft.diffTools.length === 0 && <p className="settings-empty">ツールがありません。</p>}
               {draft.diffTools.map((t, i) => (
-                <div className="tool-card" key={t.id}>
-                  <div className="tool-card-head">
-                    <input
-                      className="dialog-input"
-                      placeholder="ラベル"
-                      value={t.label}
-                      onChange={(e) => updateDiff(i, { label: e.target.value })}
-                    />
-                    <div className="tool-card-actions">
-                      <label className="diff-default-label">
-                        <input
-                          type="checkbox"
-                          checked={t.default === true}
-                          onChange={(e) => updateDiff(i, { default: e.target.checked })}
-                        />
-                        既定
-                      </label>
-                      <button className="btn danger" title="削除" onClick={() => removeDiff(i)}>
-                        ✕
-                      </button>
-                    </div>
+                <div className="tool-list-row" key={t.id}>
+                  <button className="tool-list-main" onClick={() => setEditingDiff({ index: i, tool: t })}>
+                    <span className="tool-list-label">
+                      {t.label || '(無題)'}
+                      {t.default && <span className="tool-badge">既定</span>}
+                    </span>
+                    <span className="tool-list-sub">{t.command || '(コマンド未設定)'}</span>
+                  </button>
+                  <div className="tool-list-actions">
+                    <button className="btn danger" title="削除" onClick={() => removeDiff(i)}>
+                      ✕
+                    </button>
                   </div>
-                  {row(
-                    'コマンド',
-                    <input
-                      className="dialog-input"
-                      placeholder="絶対パス推奨"
-                      value={t.command}
-                      onChange={(e) => updateDiff(i, { command: e.target.value })}
-                    />,
-                  )}
-                  {row(
-                    '引数 (1 行 1 つ)',
-                    <textarea
-                      className="dialog-input"
-                      rows={2}
-                      value={(t.args ?? []).join('\n')}
-                      onChange={(e) =>
-                        updateDiff(i, { args: e.target.value.split('\n').filter((s) => s.length > 0) })
-                      }
-                    />,
-                  )}
                 </div>
               ))}
               <div className="tool-add-row">
-                <button className="btn" onClick={() => addDiff()}>
-                  + 空のツールを追加
+                <button
+                  className="btn"
+                  onClick={() =>
+                    setEditingDiff({ index: -1, tool: { id: crypto.randomUUID(), label: '新しい差分ツール', command: '' } })
+                  }
+                >
+                  + ツールを追加
                 </button>
                 <select
-                  defaultValue=""
+                  value=""
                   onChange={(e) => {
                     const idx = Number(e.target.value);
-                    const presets = diffToolPresets(platform);
-                    if (presets[idx]) addDiff(presets[idx]);
+                    const p = diffToolPresets(platform)[idx];
+                    if (p) setEditingDiff({ index: -1, tool: { id: crypto.randomUUID(), ...p } });
                     e.target.value = '';
                   }}
                 >
@@ -598,6 +673,21 @@ export function SettingsDialog() {
           </button>
         </div>
       </div>
+
+      {editingTool && (
+        <ExternalToolEditor
+          initial={editingTool.tool}
+          onSave={(tool) => commitTool(editingTool.index, tool)}
+          onCancel={() => setEditingTool(null)}
+        />
+      )}
+      {editingDiff && (
+        <DiffToolEditor
+          initial={editingDiff.tool}
+          onSave={(tool) => commitDiff(editingDiff.index, tool)}
+          onCancel={() => setEditingDiff(null)}
+        />
+      )}
     </div>
   );
 }

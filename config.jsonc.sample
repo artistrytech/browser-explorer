@@ -1,10 +1,9 @@
 // アプリ設定 (JSONC: // や /* */ のコメントを書けます。末尾カンマは不可)
 //
-// 【重要】commitFilesLimit / contextMenu / externalTools / diffTools は
-//   初回起動時にここから DB (data/app.db) へ取り込まれ、以後は「設定」画面 (GUI) で
-//   編集した内容が正となります (再起動不要で即時反映)。取り込み後にこのファイルを
-//   編集しても反映されません。GUI で変更した内容は設定画面の「エクスポート」から書き出せます。
-//   host / port / clientPort / token は再起動が必要なため引き続きここで設定します。
+// ここで設定するのは再起動が必要な項目のみです。
+// コミット変更ファイルの表示上限・コンテキストメニュー・外部ツール・差分ツール・
+// 拡張子ごとの既定ツールは、アプリの「設定」画面 (GUI) で編集し DB に保存します
+// (再起動なしで即時反映。設定画面のエクスポート/インポートで持ち出し可)。
 {
   // サーバの待受アドレス (127.0.0.1 固定を推奨)
   "host": "127.0.0.1",
@@ -13,89 +12,5 @@
   // 開発用クライアント (vite) のポート
   "clientPort": 5173,
   // API 認証トークン (x-app-token ヘッダで全 API に要求される)
-  "token": "eb-7f3c9a1d5e8b4620c4d2a6f0b9e17358",
-  // コミット差分ファイル一覧の表示上限
-  "commitFilesLimit": 100,
-
-  // Explorer のコンテキストメニュー表示設定。
-  // false にすると該当メニューを非表示にする (キーを省略した場合は表示)。
-  // groupXxx はサブメニュー (マウスオーバーで展開) 自体の表示設定。
-  // グループを false にするか、中身が全て false / 対象外になった場合はグループごと出さない。
-  "contextMenu": {
-    "groupOpen": true,        // 「開く」サブメニュー
-    "open": true,             //   開く
-    "openEditor": true,       //   エディタで開く
-    "openNewWindow": true,    //   別ウィンドウで開く
-    "osFileManager": true,    //   Explorer / Finder で開く
-    "osTerminal": true,       //   コマンドプロンプト / ターミナルで開く
-    "pin": true,              // クイックアクセスにピン止め / ピン止めを解除
-    "copy": true,             // コピー
-    "cut": true,              // 切り取り
-    "paste": true,            // 貼り付け
-    "rename": true,           // 名前の変更 (F2)
-    "groupDelete": true,      // 「削除」サブメニュー
-    "delete": true,           //   ゴミ箱に移動
-    "deletePermanent": true,  //   完全に削除
-    "groupGit": true,         // 「Git」サブメニュー
-    "gitLog": true,           //   Gitログ
-    "resolveConflict": true,  //   競合を解消…
-    "gitClone": true,         //   Git Clone…
-    "gitStage": true,         //   ステージ
-    "gitUnstage": true,       //   ステージ解除
-    "gitDiscard": true,       //   変更を破棄
-    "properties": true,       // プロパティ
-    "newFolder": true,        // 新規フォルダ (空白右クリック)
-    "newFile": true,          // 新規ファイル (空白右クリック)
-    "refresh": true           // 最新の情報に更新 (空白右クリック)
-  },
-
-  // コンテキストメニューから起動する外部ツール。
-  // - label:   メニューに表示する名前
-  // - command: 実行ファイル (絶対パス推奨。PATH 上の .exe 名も可。.cmd/.bat は不可)
-  // - args:    オプション引数 (省略可)。"${paths}" と書いた位置に選択中のパス群が展開される。
-  //            "${paths}" が無い場合は末尾に選択パスを追加する。
-  // - group:   親グループ名 (省略可)。指定するとその名前のサブメニューに入る。
-  //            既定グループ名 ("開く" / "削除" / "Git") を指定するとそのサブメニューに合流し、
-  //            それ以外の名前なら同名のサブメニューを新設する。省略時はメニュー直下に並ぶ。
-  // - kind:    対象種別 ("file" / "dir" / "any"。省略時 any)。条件に合う対象のときだけメニュー表示。
-  // - extensions: 対象拡張子 (["sh","bat"] のようにドット無し・小文字。省略/空なら全拡張子)。
-  // - confirm: true にすると起動前に確認ダイアログを出す (例: .sh にシェルを実行する場合など)。
-  // ファイルを複数選択して実行するとまとめて引数に渡る。選択が無い空白右クリックでは表示中フォルダが渡る。
-  // ここに設定したツール以外はサーバ側で実行を拒否する。
-  // ※ 設定画面 (GUI) にプリセット (CMD で実行 / シェルで実行 / Chrome で開く など) や、
-  //    拡張子ごとの既定起動ツール (ダブルクリックで開く) の設定がある。
-  "externalTools": [
-    { "label": "メモ帳で開く", "command": "notepad.exe", "group": "開く", "kind": "file" }
-    // 例: VSCode で開く (新しいウィンドウ) — 「開く」サブメニューに合流させる
-    // { "label": "VSCode で開く", "command": "C:/Users/you/AppData/Local/Programs/Microsoft VS Code/Code.exe", "args": ["-n", "${paths}"], "group": "開く" }
-    // 例: .sh をシェルで実行 (起動前に確認)
-    // { "label": "シェルで実行", "command": "C:/Program Files/Git/bin/bash.exe", "kind": "file", "extensions": ["sh"], "confirm": true }
-  ],
-
-  // 差分表示に使う外部ツール (WinMerge / Meld など)。
-  // Git の「コミット」タブのファイル行、コミット詳細の変更ファイル一覧 (右クリック)、
-  // および差分タブのヘッダから起動できる。
-  // - label:   メニュー/ボタンに表示する名前
-  // - command: 実行ファイル (絶対パス推奨。PATH 上の .exe 名も可。.cmd/.bat は不可)
-  // - args:    オプション引数 (省略可)。以下のプレースホルダが展開される。
-  //            "${left}"  比較元 (変更前) のファイルパス
-  //            "${right}" 比較先 (変更後) のファイルパス
-  //            "${leftTitle}" / "${rightTitle}"  見出し文字列 (例: "src/a.ts (a1b2c3d^)")
-  //            ${left}/${right} をどちらも書かない場合は末尾に左・右のパスを追加する。
-  // - default: true を付けたツールが、ファイルをダブルクリックした際の既定の差分表示になる
-  //            (複数指定した場合は先頭のもの。省略/false ならアプリ内の 2 ペイン差分を開く)
-  // 比較内容はコミットから一時ファイルに書き出して渡す (24 時間後に自動削除)。
-  // 作業ツリー側は実ファイルを渡すので、ツール上での編集がそのまま保存される。
-  // ここに設定したツール以外はサーバ側で実行を拒否する。
-  "diffTools": [
-    // 例: WinMerge (読み取り専用 /wl、タブで開く /u)。ダブルクリック時の既定にする場合は "default": true
-    // {
-    //   "label": "WinMerge",
-    //   "command": "C:/Program Files/WinMerge/WinMergeU.exe",
-    //   "args": ["/u", "/wl", "/dl", "${leftTitle}", "/dr", "${rightTitle}", "${left}", "${right}"],
-    //   "default": true
-    // }
-    // 例: Meld (Linux/macOS)
-    // { "label": "Meld", "command": "meld", "args": ["${left}", "${right}"] }
-  ]
+  "token": "eb-7f3c9a1d5e8b4620c4d2a6f0b9e17358"
 }
