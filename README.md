@@ -6,8 +6,24 @@ Explorer(ファイル管理)を主画面に、テキスト編集(Monaco)と Git 
 ## 設定
 
 初回セットアップ時は `config.jsonc.sample` を `config.jsonc` にコピーして作成し、
-必要に応じてポートやトークンを調整する。JSONC 形式なので `//` コメントを書ける
-(コンテキストメニューの表示設定 `contextMenu` など、各項目の説明はサンプル内のコメント参照)。
+必要に応じてポートやトークンを調整する。JSONC 形式なので `//` コメントを書ける。
+
+`host` / `port` / `clientPort` / `token` は再起動が必要なため `config.jsonc` で設定する。
+一方 `commitFilesLimit` / `contextMenu` / `externalTools` / `diffTools` は初回起動時に
+`config.jsonc` から DB へ取り込まれ、以後は画面右上の **設定** から編集する
+(再起動なしで即時反映)。設定画面はタブ構成:
+
+- **一般**: 表示モード・テーマ・エンコーディング・コミット変更ファイルの表示上限 など。
+- **コンテキストメニュー**: 各メニュー項目の表示 / 非表示。
+- **外部ツール**: 右クリックから起動するツール。対象種別 (ファイル/フォルダ) や
+  対象拡張子で表示条件を絞り込み、起動前の確認要否を指定できる。拡張子ごとに
+  ダブルクリック時の既定起動ツールも設定可 (未設定はアプリ内エディタ)。
+  「プリセットから追加」で CMD / シェル / Chrome / VS Code などの雛形を挿入できる。
+- **差分ツール**: WinMerge / Meld / VS Code などの外部差分ツール。
+
+設定内容は設定画面の **エクスポート / インポート** で JSON として持ち出せる
+(ブックマーク・リポジトリ一覧も含む)。外部ツールの起動に失敗した場合 (実行ファイルが
+見つからない等) はトーストでエラー通知する。
 
 ## 起動
 
@@ -21,8 +37,8 @@ npm run dev     # server (127.0.0.1:5175) + client (127.0.0.1:5173) を並列起
 ## 構成
 
 ```
-config.jsonc     # ポート・API トークン・メニュー表示設定 (コメント可)
-data/app.db      # SQLite (設定・ブックマーク等の永続化)
+config.jsonc     # ポート・API トークン (+ 各設定の初回 seed 値。コメント可)
+data/app.db      # SQLite (設定・外部ツール・ブックマーク等の永続化)
 server/          # Express + simple-git + chokidar + better-sqlite3
 client/          # React + Vite + Zustand + Monaco Editor
 ```

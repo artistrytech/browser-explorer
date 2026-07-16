@@ -1,4 +1,10 @@
 // アプリ設定 (JSONC: // や /* */ のコメントを書けます。末尾カンマは不可)
+//
+// 【重要】commitFilesLimit / contextMenu / externalTools / diffTools は
+//   初回起動時にここから DB (data/app.db) へ取り込まれ、以後は「設定」画面 (GUI) で
+//   編集した内容が正となります (再起動不要で即時反映)。取り込み後にこのファイルを
+//   編集しても反映されません。GUI で変更した内容は設定画面の「エクスポート」から書き出せます。
+//   host / port / clientPort / token は再起動が必要なため引き続きここで設定します。
 {
   // サーバの待受アドレス (127.0.0.1 固定を推奨)
   "host": "127.0.0.1",
@@ -51,14 +57,19 @@
   // - group:   親グループ名 (省略可)。指定するとその名前のサブメニューに入る。
   //            既定グループ名 ("開く" / "削除" / "Git") を指定するとそのサブメニューに合流し、
   //            それ以外の名前なら同名のサブメニューを新設する。省略時はメニュー直下に並ぶ。
+  // - kind:    対象種別 ("file" / "dir" / "any"。省略時 any)。条件に合う対象のときだけメニュー表示。
+  // - extensions: 対象拡張子 (["sh","bat"] のようにドット無し・小文字。省略/空なら全拡張子)。
+  // - confirm: true にすると起動前に確認ダイアログを出す (例: .sh にシェルを実行する場合など)。
   // ファイルを複数選択して実行するとまとめて引数に渡る。選択が無い空白右クリックでは表示中フォルダが渡る。
   // ここに設定したツール以外はサーバ側で実行を拒否する。
+  // ※ 設定画面 (GUI) にプリセット (CMD で実行 / シェルで実行 / Chrome で開く など) や、
+  //    拡張子ごとの既定起動ツール (ダブルクリックで開く) の設定がある。
   "externalTools": [
-    { "label": "メモ帳で開く", "command": "notepad.exe", "group": "開く" }
+    { "label": "メモ帳で開く", "command": "notepad.exe", "group": "開く", "kind": "file" }
     // 例: VSCode で開く (新しいウィンドウ) — 「開く」サブメニューに合流させる
     // { "label": "VSCode で開く", "command": "C:/Users/you/AppData/Local/Programs/Microsoft VS Code/Code.exe", "args": ["-n", "${paths}"], "group": "開く" }
-    // 例: 独自グループ「ツール」を新設する
-    // { "label": "ハッシュを計算", "command": "C:/tools/hash.exe", "group": "ツール" }
+    // 例: .sh をシェルで実行 (起動前に確認)
+    // { "label": "シェルで実行", "command": "C:/Program Files/Git/bin/bash.exe", "kind": "file", "extensions": ["sh"], "confirm": true }
   ],
 
   // 差分表示に使う外部ツール (WinMerge / Meld など)。

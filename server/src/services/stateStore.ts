@@ -4,7 +4,8 @@ import path from 'node:path';
 import { dataDir } from '../config.js';
 
 mkdirSync(dataDir, { recursive: true });
-const db = new Database(path.join(dataDir, 'app.db'));
+// 設定 (settings テーブル) は appConfigStore も共有するので db をエクスポートする
+export const db = new Database(path.join(dataDir, 'app.db'));
 db.pragma('journal_mode = WAL');
 
 db.exec(`

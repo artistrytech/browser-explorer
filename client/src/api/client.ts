@@ -1,4 +1,5 @@
 import type {
+  AppSettings,
   AppState,
   CommitFilesResult,
   ConflictFile,
@@ -89,9 +90,21 @@ export const api = {
   uiConfig: () =>
     get<{
       contextMenu: Record<string, boolean>;
-      externalTools: { label: string; group?: string }[];
-      diffTools: { label: string; isDefault?: boolean }[];
+      externalTools: {
+        id: string;
+        label: string;
+        group?: string;
+        kind?: 'file' | 'dir' | 'any';
+        extensions?: string[];
+        confirm?: boolean;
+      }[];
+      diffTools: { id: string; label: string; isDefault?: boolean }[];
+      extDefaults: Record<string, string>;
     }>('/api/config'),
+
+  // 設定編集 (command/args も含む全項目)
+  getSettings: () => get<AppSettings>('/api/settings'),
+  putSettings: (partial: Partial<AppSettings>) => put<AppSettings>('/api/settings', partial),
 
   // --- git ---
   isRepo: (path: string) =>
@@ -130,9 +143,9 @@ export const api = {
     get<{ diff: string }>(
       `/api/git/diff?repo=${q(repo)}${path ? `&path=${q(path)}` : ''}&staged=${staged}`,
     ),
-  /** 外部差分ツール (config.jsonc の diffTools) で比較を開く。tool は設定の index */
+  /** 外部差分ツール (設定の diffTools) で比較を開く。tool は設定の id */
   gitDiffTool: (
-    tool: number,
+    tool: string,
     repo: string,
     path: string,
     mode: 'commit' | 'staged' | 'worktree',
@@ -214,7 +227,7 @@ export const api = {
   osPlatform: () => get<{ platform: string }>('/api/os/platform'),
   osOpenFileManager: (path: string) => post<{ ok: true }>('/api/os/open-in-file-manager', { path }),
   osOpenTerminal: (path: string) => post<{ ok: true }>('/api/os/open-in-terminal', { path }),
-  osRunTool: (tool: number, paths: string[]) => post<{ ok: true }>('/api/os/run-tool', { tool, paths }),
+  osRunTool: (tool: string, paths: string[]) => post<{ ok: true }>('/api/os/run-tool', { tool, paths }),
 
   // --- クイックアクセス (002.md §7) ---
   quickaccessList: () => get<{ favorites: Favorite[] }>('/api/quickaccess'),

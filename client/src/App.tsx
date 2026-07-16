@@ -22,7 +22,15 @@ import { useExplorer, pathFromUrl, searchFromUrl } from './stores/explorer';
 import { useEditor } from './stores/editor';
 import { useGit } from './stores/git';
 import { useSettings } from './stores/settings';
-import { useUi, viewFromUrl, switchView, replaceView, isGitView, logFilterFromUrl } from './stores/ui';
+import {
+  useUi,
+  viewFromUrl,
+  switchView,
+  replaceView,
+  isGitView,
+  logFilterFromUrl,
+  refreshUiConfig,
+} from './stores/ui';
 import { onFsChange } from './api/ws';
 import { api } from './api/client';
 import { parentPath, isRootPath, baseName } from './lib/paths';
@@ -42,15 +50,8 @@ export default function App() {
     void useSettings.getState().load();
     // ホスト OS 判定 (002.md §4.2): メニューラベルの出し分けに使う
     api.osPlatform().then((r) => useUi.getState().setPlatform(r.platform)).catch(() => {});
-    // コンテキストメニューの表示設定・外部ツール (config.jsonc)
-    api
-      .uiConfig()
-      .then((r) => {
-        useUi.getState().setMenuConfig(r.contextMenu);
-        useUi.getState().setExternalTools(r.externalTools ?? []);
-        useUi.getState().setDiffTools(r.diffTools ?? []);
-      })
-      .catch(() => {});
+    // コンテキストメニューの表示設定・外部ツール (設定は DB。初回は config.jsonc から seed)
+    void refreshUiConfig();
     const initial = pathFromUrl();
     const initialView = viewFromUrl();
     const initialLogFilter = logFilterFromUrl();

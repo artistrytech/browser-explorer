@@ -183,23 +183,23 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   };
 
   /**
-   * 外部差分ツールで開くメニュー項目 (config.jsonc の diffTools)。
-   * 送るのはツールの index と比較対象だけで、コマンドはサーバ側の設定からのみ解決される。
+   * 外部差分ツールで開くメニュー項目 (設定の diffTools)。
+   * 送るのはツールの id と比較対象だけで、コマンドはサーバ側の設定からのみ解決される。
    */
   const diffToolItems = (
     filePath: string,
     mode: 'commit' | 'staged' | 'worktree',
     hash?: string,
   ): MenuItem[] =>
-    diffTools.map((t, i) => ({
+    diffTools.map((t) => ({
       label: t.label,
-      action: () => void api.gitDiffTool(i, repoRoot, filePath, mode, hash).catch(toastError),
+      action: () => void api.gitDiffTool(t.id, repoRoot, filePath, mode, hash).catch(toastError),
     }));
 
   /** ダブルクリック時の差分表示: 既定ツールがあればそれ、無ければアプリ内の 2 ペイン差分 */
   const openDefaultCommitDiff = (f: CommitFile, detail: CommitFilesResult) => {
     if (defaultTool >= 0) {
-      void api.gitDiffTool(defaultTool, repoRoot, f.path, 'commit', detail.hash).catch(toastError);
+      void api.gitDiffTool(diffTools[defaultTool].id, repoRoot, f.path, 'commit', detail.hash).catch(toastError);
       return;
     }
     openCommitDiff({
@@ -213,7 +213,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const openDefaultWorkingDiff = (f: GitFileStatus, stagedSide: boolean) => {
     if (defaultTool >= 0) {
       void api
-        .gitDiffTool(defaultTool, repoRoot, f.path, stagedSide ? 'staged' : 'worktree')
+        .gitDiffTool(diffTools[defaultTool].id, repoRoot, f.path, stagedSide ? 'staged' : 'worktree')
         .catch(toastError);
       return;
     }

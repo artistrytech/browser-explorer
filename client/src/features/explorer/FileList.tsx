@@ -13,6 +13,8 @@ import { useUi, osMenuLabels } from '../../stores/ui';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import {
   openEntry,
+  openWithDefault,
+  runExternalTool,
   copySelection,
   cutSelection,
   paste,
@@ -47,6 +49,22 @@ const OVERLAY_MARK: Record<OverlayCode, { mark: string; cls: string; title: stri
   conflicted: { mark: '⚠', cls: 'ov-conflicted', title: '競合' },
   ignored: { mark: '－', cls: 'ov-ignored', title: '無視 (.gitignore)' },
 };
+
+/**
+ * 外部ツールがメニューに出せるか: 対象 (複数選択可) が全て kind / 拡張子条件に合致するか。
+ * kind 'any'/未指定は種別不問。extensions 空/未指定は全拡張子対象 (フォルダは拡張子条件に不一致)。
+ */
+function toolMatches(
+  t: { kind?: 'file' | 'dir' | 'any'; extensions?: string[] },
+  targets: { kind: 'file' | 'dir'; ext: string }[],
+): boolean {
+  return targets.every((tg) => {
+    const kindOk = !t.kind || t.kind === 'any' || t.kind === tg.kind;
+    const extOk =
+      !t.extensions || t.extensions.length === 0 || (tg.kind === 'file' && t.extensions.includes(tg.ext));
+    return kindOk && extOk;
+  });
+}
 
 function GitOverlay({ path, dirCode }: { path: string; dirCode?: OverlayCode }) {
   const repoRoot = useGit((s) => s.repoRoot);
@@ -261,7 +279,7 @@ export function FileList() {
 
     if (e.key === 'Enter' && selEntries.length > 0) {
       e.preventDefault();
-      selEntries.forEach(openEntry);
+      selEntries.forEach(openWithDefault);
     } else if (e.key === 'F2' && selEntries.length === 1) {
       e.preventDefault();
       setRenaming(selEntries[0].path);
@@ -316,18 +334,19 @@ export function FileList() {
   };
 
   /**
-   * カスタム項目 (config.jsonc の externalTools) を group ごとに振り分ける。
+   * カスタム項目 (設定の externalTools) を group ごとに振り分ける。
    * group が既定グループ名 (開く/削除/Git) ならそのサブメニューに合流し、
    * それ以外の名前なら同名のサブメニューを新設する。group 無しはメニュー直下。
+   * targets の種別/拡張子が全て一致するツールだけを表示する。
    */
-  const toolItems = (paths: string[]) => {
+  const toolItems = (paths: string[], targets: { kind: 'file' | 'dir'; ext: string }[]) => {
     const byGroup = new Map<string, MenuItem[]>();
     const ungrouped: MenuItem[] = [];
-    externalTools.forEach((t, i) => {
-      if (!t.label) return;
+    externalTools.forEach((t) => {
+      if (!t.label || !toolMatches(t, targets)) return;
       const item: MenuItem = {
         label: t.label,
-        action: () => void api.osRunTool(i, paths).catch(toastError),
+        action: () => void runExternalTool(t, paths),
       };
       if (t.group) byGroup.set(t.group, [...(byGroup.get(t.group) ?? []), item]);
       else ungrouped.push(item);
@@ -439,12 +458,17 @@ export function FileList() {
     const single = sel.length === 1;
     const pinned = useSettings.getState().isPinned(entry.path);
     const isDir = entry.type === 'dir';
-    // 外部ツール: 選択中のパス群 (複数可) を引数に起動。group 指定のものは各グループへ合流
-    const tools = toolItems(sel);
+    // 外部ツール: 選択中のパス群 (複数可) を引数に起動。group 指定のものは各グループへ合流。
+    // 表示条件用に選択エントリの種別/拡張子を渡す
+    const selEntriesForTools = displayed.filter((d) => sel.includes(d.path));
+    const tools = toolItems(
+      sel,
+      selEntriesForTools.map((d) => ({ kind: d.type === 'dir' ? 'dir' : 'file', ext: d.ext })),
+    );
 
     // 「開く」系統をサブメニューにまとめる
     const openGroup: CfgMenuItem[] = [
-      { id: 'open', label: '開く', action: () => displayed.filter((d) => sel.includes(d.path)).forEach(openEntry) },
+      { id: 'open', label: '開く', action: () => selEntriesForTools.forEach(openWithDefault) },
       ...(isDir
         ? [
             // フォルダ: 対象フォルダ自体を別ウィンドウ (ブラウザの別タブ) で開く
@@ -516,8 +540,8 @@ export function FileList() {
     setSelection([]);
     // 空白 = カレントフォルダを対象とする (002.md §4.1 / §8)
     const currentPinned = useSettings.getState().isPinned(path);
-    // 選択が無い場合は表示中のフォルダを引数に起動
-    const tools = toolItems([path]);
+    // 選択が無い場合は表示中のフォルダを引数に起動 (対象はフォルダ 1 件)
+    const tools = toolItems([path], [{ kind: 'dir', ext: '' }]);
 
     const openGroup: CfgMenuItem[] = [
       // フォーカス無し: 表示中のフォルダを別ウィンドウで開く
@@ -680,7 +704,7 @@ export function FileList() {
     'data-entry-path': entry.path,
     className: `${selectedSet.has(entry.path) ? 'selected' : ''}${dropTarget === entry.path ? ' drop-target' : ''}${entry.hidden ? ' hidden-entry' : ''}`,
     onClick: (e: React.MouseEvent) => clickEntry(e, entry),
-    onDoubleClick: () => openEntry(entry),
+    onDoubleClick: () => openWithDefault(entry),
     onContextMenu: (e: React.MouseEvent) => entryMenu(e, entry),
     draggable: renaming !== entry.path,
     onDragStart: (e: React.DragEvent) => onDragStart(e, entry),

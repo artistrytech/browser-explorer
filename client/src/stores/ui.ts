@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { api } from '../api/client';
 
 /**
  * メイン領域の表示: ファイル一覧 / コミット(変更) / ログ / ブランチ / エディタ / コミット差分。
@@ -11,14 +12,22 @@ export function isGitView(v: MainView): boolean {
   return v === 'commit' || v === 'log' || v === 'branches';
 }
 
-/** コンテキストメニューのカスタム項目。group を指定するとその名前のサブメニューに入る */
+/** コンテキストメニューのカスタム項目 (id が実行時の識別子)。group でサブメニューに入る */
 export interface ExternalTool {
+  id: string;
   label: string;
   group?: string;
+  /** 対象種別 (any = 両方)。メニュー表示条件に使う */
+  kind?: 'file' | 'dir' | 'any';
+  /** 対象拡張子 (ドット無し・小文字。空=全拡張子)。FsEntry.ext と同形式 */
+  extensions?: string[];
+  /** 起動前に確認ダイアログを出すか */
+  confirm?: boolean;
 }
 
-/** 外部差分ツール。isDefault はファイルをダブルクリックした際に使うツール (最大 1 つ) */
+/** 外部差分ツール (id が識別子)。isDefault はダブルクリック時に使うツール (最大 1 つ) */
 export interface DiffTool {
+  id: string;
   label: string;
   isDefault?: boolean;
 }
@@ -35,16 +44,19 @@ interface UiStore {
   platform: string;
   /** コンテキストメニューの表示設定 (config.jsonc の contextMenu。false で非表示) */
   menuConfig: Record<string, boolean>;
-  /** コンテキストメニューから起動する外部ツール (config.jsonc の externalTools。index が識別子) */
+  /** コンテキストメニューから起動する外部ツール (設定の externalTools。id が識別子) */
   externalTools: ExternalTool[];
-  /** 差分表示に使う外部ツール (config.jsonc の diffTools。index が識別子) */
+  /** 差分表示に使う外部ツール (設定の diffTools。id が識別子) */
   diffTools: DiffTool[];
+  /** 拡張子 (ドット無し・小文字) → externalTool.id。ダブルクリック時の既定起動ツール */
+  extDefaults: Record<string, string>;
   setView: (v: MainView) => void;
   setSettingsOpen: (open: boolean) => void;
   setPlatform: (p: string) => void;
   setMenuConfig: (m: Record<string, boolean>) => void;
   setExternalTools: (t: ExternalTool[]) => void;
   setDiffTools: (t: DiffTool[]) => void;
+  setExtDefaults: (m: Record<string, string>) => void;
 }
 
 export const useUi = create<UiStore>((set) => ({
@@ -54,13 +66,28 @@ export const useUi = create<UiStore>((set) => ({
   menuConfig: {},
   externalTools: [],
   diffTools: [],
+  extDefaults: {},
   setView: (view) => set({ view }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setPlatform: (platform) => set({ platform }),
   setMenuConfig: (menuConfig) => set({ menuConfig }),
   setExternalTools: (externalTools) => set({ externalTools }),
   setDiffTools: (diffTools) => set({ diffTools }),
+  setExtDefaults: (extDefaults) => set({ extDefaults }),
 }));
+
+/**
+ * サーバから UI 設定 (コンテキストメニュー / 外部ツール / 差分ツール / 既定ツール) を取得して反映。
+ * 起動時と、設定画面での保存後に呼ぶ (再起動なしで即時反映)。
+ */
+export async function refreshUiConfig(): Promise<void> {
+  const r = await api.uiConfig();
+  const s = useUi.getState();
+  s.setMenuConfig(r.contextMenu ?? {});
+  s.setExternalTools(r.externalTools ?? []);
+  s.setDiffTools(r.diffTools ?? []);
+  s.setExtDefaults(r.extDefaults ?? {});
+}
 
 /** URL の ?view= から表示ビューを復元 (無指定は files)。旧 'git' は 'commit' に読み替え */
 export function viewFromUrl(): MainView {

@@ -7,6 +7,7 @@ import { stateRouter } from './routes/state.js';
 import { osRouter } from './routes/os.js';
 import { quickaccessRouter } from './routes/quickaccess.js';
 import { attachWatcher } from './ws/watcher.js';
+import { getAppConfig, saveAppConfig, type AppConfigKey } from './services/appConfigStore.js';
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -54,22 +55,41 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, platform: process.platform });
 });
 
-// クライアント向けの UI 設定 (トークン等の秘匿値は返さない)
+// クライアント向けの UI 設定 (メニュー描画用の最小情報。command/args は返さない)
 app.get('/api/config', (_req, res) => {
+  const cfg = getAppConfig();
   res.json({
-    contextMenu: config.contextMenu ?? {},
-    // 外部ツールはラベルと所属グループのみ返す (index が /api/os/run-tool の識別子になる)
-    externalTools: (config.externalTools ?? []).map((t) => ({
-      label: String(t?.label ?? ''),
-      group: t?.group ? String(t.group) : undefined,
+    contextMenu: cfg.contextMenu,
+    // 外部ツールは描画・実行に必要な情報のみ (id が /api/os/run-tool の識別子)
+    externalTools: cfg.externalTools.map((t) => ({
+      id: t.id,
+      label: t.label,
+      group: t.group,
+      kind: t.kind ?? 'any',
+      extensions: t.extensions ?? [],
+      confirm: t.confirm === true,
     })),
-    // 外部差分ツールも同様 (index が /api/git/difftool の識別子)。
+    // 外部差分ツール (id が /api/git/difftool の識別子)。
     // isDefault はダブルクリック時に使うツール (先頭の 1 つだけ有効)
-    diffTools: (config.diffTools ?? []).map((t, i, all) => ({
-      label: String(t?.label ?? ''),
-      isDefault: t?.default === true && all.findIndex((x) => x?.default === true) === i,
+    diffTools: cfg.diffTools.map((t, i, all) => ({
+      id: t.id,
+      label: t.label,
+      isDefault: t.default === true && all.findIndex((x) => x.default === true) === i,
     })),
+    // 拡張子 → 既定起動ツール id (ダブルクリック上書き)
+    extDefaults: cfg.extDefaults,
   });
+});
+
+// 設定編集用: command/args も含む全項目を返す (token 認証済み前提)
+app.get('/api/settings', (_req, res) => {
+  res.json(getAppConfig());
+});
+
+// 設定保存: 指定キーのみ検証・正規化して DB へ (再起動不要で即時反映)
+app.put('/api/settings', (req, res) => {
+  const body = (req.body ?? {}) as Partial<Record<AppConfigKey, unknown>>;
+  res.json(saveAppConfig(body));
 });
 
 // エラーハンドラ: 種別付き JSON で返す (plan §10)

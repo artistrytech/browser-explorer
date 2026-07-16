@@ -2,6 +2,7 @@ import { api } from '../api/client';
 import { useExplorer } from '../stores/explorer';
 import { useEditor } from '../stores/editor';
 import { useGit } from '../stores/git';
+import { useUi, type ExternalTool } from '../stores/ui';
 import { useToast, toastError } from '../stores/toast';
 import { confirmDialog, promptDialog } from '../stores/dialog';
 import { joinPath, baseName, formatSize, formatDate, parentPath } from './paths';
@@ -14,6 +15,39 @@ function rememberEnteredChild(entry: FsEntry): void {
   if (parentPath(entry.path) !== ex.path) return; // 検索結果など別階層は対象外
   const idx = ex.entries.findIndex((e) => e.path === entry.path);
   saveEnteredChild(ex.path, entry.name, idx);
+}
+
+/**
+ * 外部ツールを起動する。confirm 指定のツールは事前に確認ダイアログを挟み、
+ * 起動失敗 (実行ファイルが無い等) はサーバがエラーを返すのでトーストで通知する。
+ */
+export async function runExternalTool(tool: ExternalTool, paths: string[]): Promise<void> {
+  if (tool.confirm) {
+    const ok = await confirmDialog(`${tool.label} を実行しますか？`, paths.join('\n'));
+    if (!ok) return;
+  }
+  try {
+    await api.osRunTool(tool.id, paths);
+  } catch (e) {
+    toastError(e);
+  }
+}
+
+/**
+ * ダブルクリック / Enter でエントリを開く。ファイルで拡張子に既定ツール (extDefaults) が
+ * 設定されていればそのツールで起動し、無ければ従来どおり (フォルダは移動 / ファイルはエディタ)。
+ */
+export function openWithDefault(entry: FsEntry): void {
+  if (entry.type === 'file') {
+    const { extDefaults, externalTools } = useUi.getState();
+    const toolId = extDefaults[entry.ext];
+    const tool = toolId ? externalTools.find((t) => t.id === toolId) : undefined;
+    if (tool) {
+      void runExternalTool(tool, [entry.path]);
+      return;
+    }
+  }
+  openEntry(entry);
 }
 
 /** エントリを開く: フォルダなら移動、ファイルならエディタ */

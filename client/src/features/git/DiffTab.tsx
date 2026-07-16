@@ -153,14 +153,14 @@ export function DiffTab() {
         <span className="diff-tab-legend">
           左: {short}^ (変更前) / 右: {short} (変更後)
         </span>
-        {/* 外部差分ツール (config.jsonc の diffTools) で同じ比較を開く */}
-        {diffTools.map((t, i) => (
+        {/* 外部差分ツール (設定の diffTools) で同じ比較を開く */}
+        {diffTools.map((t) => (
           <button
-            key={t.label}
+            key={t.id}
             className="status-btn"
             title={`${t.label} でこの差分を開く`}
             onClick={() =>
-              void api.gitDiffTool(i, current.repo, current.path, 'commit', current.hash).catch(toastError)
+              void api.gitDiffTool(t.id, current.repo, current.path, 'commit', current.hash).catch(toastError)
             }
           >
             {t.label}

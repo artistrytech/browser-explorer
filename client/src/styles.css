@@ -666,7 +666,154 @@ body.col-resizing {
 }
 
 .settings-dialog {
-  min-width: 460px;
+  min-width: 560px;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  max-height: 86vh;
+}
+
+/* ---------- 設定タブ ---------- */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.settings-tab {
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  padding: 7px 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.settings-tab:hover {
+  color: var(--text);
+}
+
+.settings-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.settings-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.settings-hint {
+  color: var(--text-dim);
+  font-size: 12px;
+  margin: 4px 0 10px;
+  line-height: 1.5;
+}
+
+.settings-hint code {
+  background: var(--bg-alt);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.settings-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  white-space: pre;
+}
+
+.settings-subtitle {
+  font-weight: 600;
+  margin: 16px 0 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-dirty {
+  color: var(--text-dim);
+  font-size: 12px;
+  align-self: center;
+  margin-right: auto;
+}
+
+/* ---------- ツール編集 ---------- */
+.tool-editor textarea.dialog-input {
+  font: inherit;
+  resize: vertical;
+}
+
+.tool-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  background: var(--bg-alt);
+}
+
+.tool-card .settings-row {
+  border-bottom: none;
+  padding: 4px 0;
+}
+
+.tool-card-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.tool-card-head .dialog-input {
+  font-weight: 600;
+}
+
+.tool-card-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.tool-card-actions .btn {
+  padding: 4px 8px;
+}
+
+.diff-default-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.tool-add-row {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+
+.ext-default-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 0;
+}
+
+.ext-input {
+  width: 120px;
+  flex-shrink: 0;
+}
+
+.ext-default-row select {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: inherit;
 }
 
 .settings-row {

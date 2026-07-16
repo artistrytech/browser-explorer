@@ -9,9 +9,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { norm } from '../services/fsService.js';
 import { broadcastEvent } from '../ws/watcher.js';
-import { launch } from './os.js';
-import { config } from '../config.js';
+import { launchChecked } from './os.js';
 import { getGitAuth, setGitAuth } from '../services/stateStore.js';
+import { getDiffToolById, getAppConfig } from '../services/appConfigStore.js';
 
 export const gitRouter = Router();
 
@@ -272,8 +272,8 @@ gitRouter.get('/commit-files', async (req, res) => {
         binary: m[1] === '-', // numstat が '-' を返すのはバイナリ
       };
     });
-  // 表示上限 (config.json の commitFilesLimit)。絞り込みはクライアント側で全件に対して行う
-  const limit = Math.max(1, Number(config.commitFilesLimit) || 100);
+  // 表示上限 (設定の commitFilesLimit)。絞り込みはクライアント側で全件に対して行う
+  const limit = Math.max(1, Number(getAppConfig().commitFilesLimit) || 100);
   res.json({ hash: h, author, date, message: msg.join('\x1f').trim(), files, limit });
 });
 
@@ -393,8 +393,7 @@ gitRouter.post('/difftool', async (req, res) => {
     mode?: unknown;
     hash?: unknown;
   };
-  const tools = config.diffTools ?? [];
-  const t = typeof tool === 'number' && Number.isInteger(tool) && tool >= 0 ? tools[tool] : undefined;
+  const t = getDiffToolById(tool);
   if (!t || typeof t.command !== 'string' || t.command.trim().length === 0) badRequest('unknown diff tool');
   if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
   if (mode !== 'commit' && mode !== 'staged' && mode !== 'worktree') {
@@ -422,7 +421,7 @@ gitRouter.post('/difftool', async (req, res) => {
   // プレースホルダが無い設定では末尾に左右のパスを渡す
   if (!template.some((a) => a.includes('${left}') || a.includes('${right}'))) args.push(leftPath, rightPath);
 
-  launch(command, args, repo);
+  await launchChecked(command, args, repo);
   res.json({ ok: true, command, left: leftPath, right: rightPath });
 });
 

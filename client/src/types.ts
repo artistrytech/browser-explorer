@@ -128,3 +128,35 @@ export interface AppState {
 
 export type SortKey = 'name' | 'type' | 'size' | 'mtime';
 export type ViewMode = 'details' | 'list' | 'icons';
+
+// --- GUI で編集する設定 (サーバの appConfigStore と対応) ---
+
+/** 外部ツール定義 (設定編集用: command/args も含む) */
+export interface ExternalToolDef {
+  id: string;
+  label: string;
+  command: string;
+  args?: string[];
+  group?: string;
+  kind?: 'file' | 'dir' | 'any';
+  extensions?: string[];
+  confirm?: boolean;
+}
+
+/** 差分ツール定義 (設定編集用) */
+export interface DiffToolDef {
+  id: string;
+  label: string;
+  command: string;
+  args?: string[];
+  default?: boolean;
+}
+
+/** GET/PUT /api/settings の本体 */
+export interface AppSettings {
+  commitFilesLimit: number;
+  contextMenu: Record<string, boolean>;
+  externalTools: ExternalToolDef[];
+  diffTools: DiffToolDef[];
+  extDefaults: Record<string, string>;
+}
