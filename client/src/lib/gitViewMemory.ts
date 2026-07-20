@@ -18,6 +18,8 @@ export interface GitViewRecord {
   filesFilter: string;
   /** コミット差分ファイル一覧のフォーカス行 (マーキングのみ) */
   focusedFile: string | null;
+  /** ブランチ一覧で折りたたんでいる階層キー */
+  collapsedBranchGroups: string[];
   ts: number;
 }
 
@@ -40,6 +42,7 @@ export function saveGitView(repo: string, partial: Partial<Omit<GitViewRecord, '
       graphAll: false,
       filesFilter: '',
       focusedFile: null,
+      collapsedBranchGroups: [],
     };
     sessionStorage.setItem(PREFIX + repo, JSON.stringify({ ...prev, ...partial, ts: Date.now() }));
   } catch {

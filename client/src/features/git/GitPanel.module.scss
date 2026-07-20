@@ -260,6 +260,28 @@
   color: var(--add);
 }
 
+.branch-folder {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.branch-toggle {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 0;
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 18px;
+}
+
+.branch-leaf {
+  color: var(--text);
+}
+
 .git-branches .btn {
   margin-bottom: 8px;
 }

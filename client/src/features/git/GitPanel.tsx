@@ -35,6 +35,61 @@ const COMMIT_FILE_STATUS: Record<string, { label: string; cls: string }> = {
   T: { label: '種別変更', cls: 'st-mod' },
 };
 
+interface BranchTreeNode {
+  key: string;
+  label: string;
+  branch: GitBranch | null;
+  children: BranchTreeNode[];
+}
+
+interface MutableBranchTreeNode extends BranchTreeNode {
+  childMap: Map<string, MutableBranchTreeNode>;
+}
+
+function createBranchTreeNode(key: string, label: string): MutableBranchTreeNode {
+  return { key, label, branch: null, children: [], childMap: new Map() };
+}
+
+function buildBranchTree(branches: GitBranch[]): BranchTreeNode[] {
+  const root = new Map<string, MutableBranchTreeNode>();
+
+  for (const branch of branches) {
+    const parts = branch.name.split('/').filter(Boolean);
+    if (parts.length === 0) continue;
+    let level = root;
+    let node: MutableBranchTreeNode | undefined;
+    let key = '';
+
+    parts.forEach((part, index) => {
+      key = key ? `${key}/${part}` : part;
+      node = level.get(part);
+      if (!node) {
+        node = createBranchTreeNode(key, part);
+        level.set(part, node);
+      }
+      if (index === parts.length - 1) node.branch = branch;
+      level = node.childMap;
+    });
+  }
+
+  const finalize = (nodes: Iterable<MutableBranchTreeNode>): BranchTreeNode[] =>
+    [...nodes]
+      .sort((a, b) => {
+        const aIsFolder = a.branch === null;
+        const bIsFolder = b.branch === null;
+        if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
+        return a.label.localeCompare(b.label);
+      })
+      .map((node) => ({
+        key: node.key,
+        label: node.label,
+        branch: node.branch,
+        children: finalize(node.childMap.values()),
+      }));
+
+  return finalize(root.values());
+}
+
 /** コミットの引数を組み立てる (amend + メッセージ空欄は --no-edit) */
 function commitArgs(message: string, amend: boolean): string[] {
   if (amend && !message.trim()) return ['commit', '--amend', '--no-edit'];
@@ -58,6 +113,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const [amend, setAmend] = useState(false);
   const [busy, setBusy] = useState(false);
   const [branches, setBranches] = useState<GitBranch[]>([]);
+  const [collapsedBranchGroups, setCollapsedBranchGroups] = useState<Set<string>>(new Set());
   /** コミットタブ 変更一覧の選択 (フォーカス)。キーは `S:`(ステージ側)/`W:`(作業ツリー側)+path */
   const [selKeys, setSelKeys] = useState<Set<string>>(new Set());
   /** Shift 範囲選択の起点 */
@@ -96,6 +152,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     const saved = loadGitView(repoRoot);
     setFileFilter(saved?.filesFilter ?? '');
     setFocusedFileState(saved?.focusedFile ?? null);
+    setCollapsedBranchGroups(new Set(saved?.collapsedBranchGroups ?? []));
     if (saved?.hash) {
       api.gitCommitFiles(repoRoot, saved.hash).then(setCommitDetail).catch(() => {
         saveGitView(repoRoot, { hash: null, focusedFile: null }); // 消えたコミット (reset 等) は破棄
@@ -356,6 +413,58 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           },
         ];
     openMenu(e.clientX, e.clientY, items);
+  };
+
+  const toggleBranchGroup = (key: string) => {
+    setCollapsedBranchGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      saveGitView(repoRoot, { collapsedBranchGroups: [...next] });
+      return next;
+    });
+  };
+
+  const branchTree = buildBranchTree(branches);
+  const renderBranchNode = (node: BranchTreeNode, depth = 0): React.ReactNode => {
+    const indent = 4 + depth * 16;
+    if (node.branch) {
+      const b = node.branch;
+      return (
+        <div
+          key={node.key}
+          className={cx("branch-row branch-leaf")}
+          style={{ paddingLeft: `${indent}px` }}
+          onDoubleClick={() => branchDoubleClick(b)}
+          onContextMenu={(e) => branchMenu(e, b)}
+          title="右クリックでメニュー、ダブルクリックで操作"
+        >
+          <span className={cx(b.current ? 'branch-current' : '')} title={b.name}>
+            {b.current ? '● ' : '  '}
+            {node.label}
+          </span>
+        </div>
+      );
+    }
+
+    const collapsed = collapsedBranchGroups.has(node.key);
+    return (
+      <div key={node.key}>
+        <div
+          className={cx("branch-row branch-folder")}
+          style={{ paddingLeft: `${indent}px` }}
+          onClick={() => toggleBranchGroup(node.key)}
+          onContextMenu={(e) => e.preventDefault()}
+          title={collapsed ? 'クリックで展開' : 'クリックで折りたたみ'}
+        >
+          <button className={cx("branch-toggle")} tabIndex={-1}>
+            {collapsed ? '▶' : '▼'}
+          </button>
+          <span title={node.key}>{node.label}</span>
+        </div>
+        {!collapsed && node.children.map((child) => renderBranchNode(child, depth + 1))}
+      </div>
+    );
   };
 
   /** 変更ファイル行 (コミットタブ) の右クリックメニュー */
@@ -780,20 +889,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
               >
                 ＋ ブランチ作成
               </button>
-              {branches.map((b) => (
-                <div
-                  key={b.name}
-                  className={cx("branch-row")}
-                  onDoubleClick={() => branchDoubleClick(b)}
-                  onContextMenu={(e) => branchMenu(e, b)}
-                  title="右クリックでメニュー、ダブルクリックで操作"
-                >
-                  <span className={cx(b.current ? 'branch-current' : '')} title={b.name}>
-                    {b.current ? '● ' : '  '}
-                    {b.name}
-                  </span>
-                </div>
-              ))}
+              {branchTree.map((node) => renderBranchNode(node))}
             </div>
           )}
         </div>
