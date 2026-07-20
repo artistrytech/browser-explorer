@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS git_auth (
   ssh_key TEXT,            -- SSH 秘密鍵ファイルのパス (空なら既定の鍵)
   credential_helper TEXT   -- HTTPS の資格情報ヘルパー名 (空なら git の既定)
 );
+-- 過去のコミットメッセージ (再利用候補)。message は一意で、重複時は日時を更新する
+CREATE TABLE IF NOT EXISTS commit_messages (
+  message TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL
+);
 `);
 
 export interface Favorite {
@@ -147,6 +152,40 @@ export function setGitAuth(repo: string, auth: GitAuth): void {
     `INSERT INTO git_auth (repo, ssh_key, credential_helper) VALUES (?, ?, ?)
      ON CONFLICT(repo) DO UPDATE SET ssh_key = excluded.ssh_key, credential_helper = excluded.credential_helper`,
   ).run(repo, auth.sshKey, auth.credentialHelper);
+}
+
+// --- 過去のコミットメッセージ (再利用候補) ---
+
+/** 選択候補として直近のコミットメッセージを返す (新しい順・最大件数)。既定 20 件 */
+export function listCommitMessages(limit = 20): string[] {
+  const n = Math.max(1, Math.min(limit, 100));
+  return (
+    db
+      .prepare('SELECT message FROM commit_messages ORDER BY created_at DESC LIMIT ?')
+      .all(n) as { message: string }[]
+  ).map((r) => r.message);
+}
+
+/**
+ * コミットメッセージを記録する (コミット成功時に呼ぶ)。
+ * 同一メッセージが既にあれば日時だけ最新へ更新し (実質「過去分を消して先頭へ」)、
+ * 肥大化を防ぐため新しい 50 件を超える古い行は削除する。空文字は無視。
+ */
+export function addCommitMessage(message: string): void {
+  const m = message.trim();
+  if (!m) return;
+  const tx = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO commit_messages (message, created_at) VALUES (?, ?)
+       ON CONFLICT(message) DO UPDATE SET created_at = excluded.created_at`,
+    ).run(m, new Date().toISOString());
+    db.prepare(
+      `DELETE FROM commit_messages WHERE message NOT IN (
+         SELECT message FROM commit_messages ORDER BY created_at DESC LIMIT 50
+       )`,
+    ).run();
+  });
+  tx();
 }
 
 export function importState(state: Partial<AppState>): void {

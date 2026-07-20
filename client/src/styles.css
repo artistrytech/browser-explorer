@@ -1303,6 +1303,66 @@ body.col-resizing {
   color: var(--text-dim);
 }
 
+/* コミットメッセージ欄の見出し行 (履歴ボタン付き) */
+.commit-message-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.git-section-title-text {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+/* ログ詳細: コミットメッセージ全体表示 (1 行目=見出し / 2 行目以降=本文) */
+.commit-full-message .commit-body {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* コミットメッセージ履歴ダイアログ */
+.msg-history-dialog {
+  width: min(560px, 92vw);
+}
+
+.msg-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 50vh;
+  overflow-y: auto;
+  margin: 8px 0;
+}
+
+.msg-history-row {
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: inherit;
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
+  line-height: 1.4;
+  /* 長いメッセージは最大 4 行程度で省略 */
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.msg-history-row:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
 .git-log {
   display: flex;
   flex-direction: column;

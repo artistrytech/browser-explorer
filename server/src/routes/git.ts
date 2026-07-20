@@ -10,7 +10,7 @@ import path from 'node:path';
 import { norm } from '../services/fsService.js';
 import { broadcastEvent } from '../ws/watcher.js';
 import { launchChecked } from './os.js';
-import { getGitAuth, setGitAuth } from '../services/stateStore.js';
+import { getGitAuth, setGitAuth, listCommitMessages, addCommitMessage } from '../services/stateStore.js';
 import { getDiffToolById, getAppConfig } from '../services/appConfigStore.js';
 
 export const gitRouter = Router();
@@ -519,6 +519,10 @@ gitRouter.post('/unstage', async (req, res) => {
 gitRouter.post('/discard', async (req, res) => {
   const g = git(req.body.repo);
   const paths = req.body.paths as string[];
+  // full=true はファイル全体の変更 (ステージ済み含む) を HEAD 状態へ戻す。
+  // 先に index を HEAD へ戻すと、ステージ済みの変更も未ステージ扱いになり以降の処理で破棄される。
+  const full = req.body.full === true;
+  if (full && paths.length > 0) await g.raw(['reset', '-q', '--', ...paths]).catch(() => {});
   const st = await g.status();
   const untracked = new Set(st.not_added);
   const tracked = paths.filter((p) => !untracked.has(p));
@@ -533,6 +537,21 @@ gitRouter.post('/commit', async (req, res) => {
   const { message, amend } = req.body as { message: string; amend?: boolean };
   const result = await g.commit(message, undefined, amend ? { '--amend': null } : {});
   res.json({ ok: true, commit: result.commit });
+});
+
+// --- コミットメッセージ履歴 (再利用候補) ---
+
+/** 直近のコミットメッセージ一覧 (新しい順・重複なし・最大 20 件) */
+gitRouter.get('/commit-messages', (_req, res) => {
+  res.json({ messages: listCommitMessages(20) });
+});
+
+/** コミット成功時にメッセージを記録する (重複は最新日時へ更新) */
+gitRouter.post('/commit-messages', (req, res) => {
+  const { message } = (req.body ?? {}) as { message?: unknown };
+  if (typeof message !== 'string') badRequest('message is required');
+  addCommitMessage(message);
+  res.json({ ok: true });
 });
 
 gitRouter.post('/push', async (req, res) => {

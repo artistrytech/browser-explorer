@@ -18,6 +18,7 @@ import { openPushDialog, defaultPushArgs } from './PushDialog';
 import { openFetchDialog } from './FetchDialog';
 import { openStashDialog } from './StashDialog';
 import { openAuthDialog } from './AuthDialog';
+import { openCommitMessagePicker } from './CommitMessageDialog';
 import { openCommitDiff } from './DiffTab';
 import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
 
@@ -222,6 +223,34 @@ export function GitPanel({ tab }: { tab: GitTab }) {
       untracked: !r.side && (r.f.index === '?' || r.f.workingDir === '?'),
     }));
 
+  // コミット実行可否 (メッセージ or amend があり、ステージ済みがある or amend)
+  const canCommit = !busy && (!!message.trim() || amend) && (staged.length > 0 || amend);
+
+  /**
+   * コミット (任意で続けて Push)。成功したらメッセージを履歴に保存し入力を初期化する。
+   * amend でメッセージ空欄のときは --no-edit なので履歴保存はしない。
+   */
+  const doCommit = (push: boolean) => {
+    if (!canCommit) return;
+    const msg = message.trim();
+    const commands = push
+      ? [commitArgs(message, amend), defaultPushArgs(status ?? { branch: null, tracking: null })]
+      : [commitArgs(message, amend)];
+    void runGitCommands(repoRoot, commands, push ? 'Commit & Push' : 'Commit').then((ok) => {
+      if (!ok) return;
+      if (msg) void api.gitAddCommitMessage(msg).catch(() => {}); // 履歴保存 (失敗は無視)
+      setMessage('');
+      setAmend(false);
+    });
+  };
+
+  /** 過去のコミットメッセージから選んで入力欄に設定する */
+  const pickCommitMessage = () => {
+    void openCommitMessagePicker().then((m) => {
+      if (m !== null) setMessage(m);
+    });
+  };
+
   // 差分ファイル一覧: パス部分一致フィルタ → 表示上限 (config.json の commitFilesLimit)
   const filterText = fileFilter.trim().toLowerCase();
   const matchedFiles = commitDetail
@@ -275,9 +304,48 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const workingFileMenu = (e: React.MouseEvent, f: GitFileStatus, stagedSide: boolean, key: string) => {
     e.preventDefault();
     focusForMenu(key); // 未選択なら単一選択、選択済みなら現在の選択を維持
-    const items: MenuItem[] = [
-      { label: '差分を表示', action: () => selectSingle(key) },
-    ];
+    // メニュー操作の対象は現在の選択 (未選択の行なら focusForMenu 後のその 1 行)。
+    // setState は非同期なので、この場では選択後の状態を自前で組み立てて使う
+    const effKeys = selKeys.has(key) ? selKeys : new Set([key]);
+    const rowsIn = orderedRows.filter((r) => effKeys.has(r.key));
+    const stagePaths = rowsIn.filter((r) => !r.side).map((r) => r.f.path); // 未ステージ側 → ステージ
+    const unstagePaths = rowsIn.filter((r) => r.side).map((r) => r.f.path); // ステージ側 → 解除
+    const allPaths = [...new Set(rowsIn.map((r) => r.f.path))]; // 破棄対象 (ファイル単位)
+
+    const items: MenuItem[] = [];
+    // 「ステージ」「解除」はメニュー先頭。機能は「選択をステージ/解除」と同じ (現在の選択を対象)
+    if (stagePaths.length > 0) {
+      items.push({
+        label: `ステージ${stagePaths.length > 1 ? ` (${stagePaths.length})` : ''}`,
+        action: () => void run(() => api.gitStage(repoRoot, stagePaths)),
+      });
+    }
+    if (unstagePaths.length > 0) {
+      items.push({
+        label: `解除${unstagePaths.length > 1 ? ` (${unstagePaths.length})` : ''}`,
+        action: () => void run(() => api.gitUnstage(repoRoot, unstagePaths)),
+      });
+    }
+    // 「破棄」はファイル差分全体 (ステージ済み含む) を破棄。未ステージ/ステージ済みどちらも同じ動作
+    items.push({
+      label: `破棄${allPaths.length > 1 ? ` (${allPaths.length})` : ''}`,
+      danger: true,
+      action: () =>
+        void confirmDialog(
+          '変更を破棄',
+          allPaths.length === 1
+            ? `${allPaths[0]} の変更をすべて破棄しますか?`
+            : `選択した ${allPaths.length} 件の変更をすべて破棄しますか?`,
+          true,
+        ).then((ok) => {
+          if (ok)
+            void run(
+              () => api.gitDiscard(repoRoot, allPaths, true).then(() => useExplorer.getState().refresh()),
+              '破棄しました',
+            );
+        }),
+    });
+    items.push({ separator: true }, { label: '差分を表示', action: () => selectSingle(key) });
     const tools = diffToolItems(f.path, stagedSide ? 'staged' : 'worktree');
     if (tools.length > 0) items.push({ separator: true }, ...tools);
     openMenu(e.clientX, e.clientY, items);
@@ -585,47 +653,38 @@ export function GitPanel({ tab }: { tab: GitTab }) {
               {unstaged.map((f) => fileRow(f, false))}
 
               <div className="commit-box">
+                <div className="commit-message-head">
+                  <span className="git-section-title-text">コミットメッセージ</span>
+                  <button
+                    className="status-btn"
+                    title="過去のコミットメッセージから選ぶ"
+                    onClick={pickCommitMessage}
+                  >
+                    履歴から選ぶ
+                  </button>
+                </div>
                 <textarea
                   className="commit-message"
-                  placeholder="コミットメッセージ"
+                  placeholder="コミットメッセージ (Ctrl+Enter でコミット)"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Ctrl+Enter (mac は ⌘+Enter) でコミット実行
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault();
+                      doCommit(false);
+                    }
+                  }}
                 />
                 <label className="amend-label">
                   <input type="checkbox" checked={amend} onChange={(e) => setAmend(e.target.checked)} />
                   amend (直前のコミットを修正)
                 </label>
                 <div>
-                  <button
-                    className="btn primary"
-                    disabled={busy || (!message.trim() && !amend) || (staged.length === 0 && !amend)}
-                    onClick={() =>
-                      void runGitCommands(repoRoot, [commitArgs(message, amend)], 'Commit').then((ok) => {
-                        if (ok) {
-                          setMessage('');
-                          setAmend(false);
-                        }
-                      })
-                    }
-                  >
+                  <button className="btn primary" disabled={!canCommit} onClick={() => doCommit(false)}>
                     Commit
                   </button>{' '}
-                  <button
-                    className="btn"
-                    disabled={busy || (!message.trim() && !amend) || (staged.length === 0 && !amend)}
-                    onClick={() =>
-                      void runGitCommands(
-                        repoRoot,
-                        [commitArgs(message, amend), defaultPushArgs(status ?? { branch: null, tracking: null })],
-                        'Commit & Push',
-                      ).then((ok) => {
-                        if (ok) {
-                          setMessage('');
-                          setAmend(false);
-                        }
-                      })
-                    }
-                  >
+                  <button className="btn" disabled={!canCommit} onClick={() => doCommit(true)}>
                     Commit & Push
                   </button>
                 </div>
@@ -713,8 +772,14 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             commitDetail ? (
               <div className="commit-detail">
                 <div className="commit-detail-head">
-                  <div>
+                  {/* 1 行目を見出し、2 行目以降は本文として全体を表示する */}
+                  <div className="commit-full-message">
                     <b>{commitDetail.message.split('\n')[0]}</b>
+                    {commitDetail.message.includes('\n') && (
+                      <div className="commit-body">
+                        {commitDetail.message.split('\n').slice(1).join('\n').replace(/^\n+|\s+$/g, '')}
+                      </div>
+                    )}
                   </div>
                   <div className="log-meta">
                     {commitDetail.author} · {commitDetail.date} · {commitDetail.hash.slice(0, 12)}

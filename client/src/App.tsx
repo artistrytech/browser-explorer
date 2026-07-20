@@ -14,6 +14,7 @@ import { PushDialog } from './features/git/PushDialog';
 import { FetchDialog } from './features/git/FetchDialog';
 import { StashDialog } from './features/git/StashDialog';
 import { AuthDialog } from './features/git/AuthDialog';
+import { CommitMessageDialog } from './features/git/CommitMessageDialog';
 import { DiffTab, useDiffTab, closeDiffTab, diffTargetFromUrl } from './features/git/DiffTab';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
@@ -120,6 +121,21 @@ export default function App() {
       }, 300);
       useEditor.getState().handleExternalChange(e.path);
     });
+  }, []);
+
+  // ブラウザのタブにフォーカスが戻ったら変更一覧 (Git status) と一覧を最新化する
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return;
+      void useGit.getState().refreshStatus();
+      void useExplorer.getState().refresh();
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, []);
 
   // グローバルキー: Alt+↑ 上へ / Alt+← 戻る / Alt+→ 進む (plan §1.2)
@@ -241,6 +257,7 @@ export default function App() {
       <FetchDialog />
       <StashDialog />
       <AuthDialog />
+      <CommitMessageDialog />
       {/* 実行結果ダイアログは他ダイアログより手前に出すため最後にマウント */}
       <GitCommandDialog />
     </div>
