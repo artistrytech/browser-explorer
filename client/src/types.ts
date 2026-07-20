@@ -55,6 +55,8 @@ export interface GitBranch {
   current: boolean;
   commit: string;
   label: string;
+  ahead?: number;
+  behind?: number;
 }
 
 /** グラフ用ログの 1 コミット (002.md §5.2) */

@@ -90,6 +90,11 @@ function buildBranchTree(branches: GitBranch[]): BranchTreeNode[] {
   return finalize(root.values());
 }
 
+function branchSyncLabel(branch: GitBranch): string {
+  if (branch.ahead === undefined || branch.behind === undefined) return '';
+  return ` ↑${branch.ahead}↓${branch.behind}`;
+}
+
 /** コミットの引数を組み立てる (amend + メッセージ空欄は --no-edit) */
 function commitArgs(message: string, amend: boolean): string[] {
   if (amend && !message.trim()) return ['commit', '--amend', '--no-edit'];
@@ -442,6 +447,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           <span className={cx(b.current ? 'branch-current' : '')} title={b.name}>
             {b.current ? '● ' : '  '}
             {node.label}
+            {branchSyncLabel(b)}
           </span>
         </div>
       );

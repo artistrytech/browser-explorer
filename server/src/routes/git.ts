@@ -575,7 +575,29 @@ gitRouter.post('/fetch', async (req, res) => {
 gitRouter.get('/branches', async (req, res) => {
   const g = git(req.query.repo);
   const b = await g.branch();
-  res.json({ current: b.current, branches: Object.values(b.branches) });
+  const branches = Object.values(b.branches);
+  const upstreamRaw = await g.raw(['for-each-ref', '--format=%(refname:short)%00%(upstream:short)', 'refs/heads']);
+  const upstreamByBranch = new Map<string, string>();
+  for (const line of upstreamRaw.split('\n')) {
+    const [name, upstream] = line.split('\0');
+    if (name && upstream) upstreamByBranch.set(name, upstream);
+  }
+  const counts = new Map<string, { ahead: number; behind: number }>();
+  await Promise.all(
+    branches.map(async (branch) => {
+      const upstream = upstreamByBranch.get(branch.name);
+      if (!upstream) return;
+      const out = await g.raw(['rev-list', '--left-right', '--count', `${branch.name}...${upstream}`]).catch(() => '');
+      const [aheadRaw, behindRaw] = out.trim().split(/\s+/);
+      const ahead = Number(aheadRaw);
+      const behind = Number(behindRaw);
+      if (Number.isFinite(ahead) && Number.isFinite(behind)) counts.set(branch.name, { ahead, behind });
+    }),
+  );
+  res.json({
+    current: b.current,
+    branches: branches.map((branch) => ({ ...branch, ...counts.get(branch.name) })),
+  });
 });
 
 gitRouter.post('/branch', async (req, res) => {
