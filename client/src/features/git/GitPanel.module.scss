@@ -191,7 +191,8 @@
 .commit-message {
   width: 100%;
   min-height: 64px;
-  resize: vertical;
+  resize: none;
+  overflow: hidden;
   padding: 8px;
   border: 1px solid var(--border);
   border-radius: 4px;

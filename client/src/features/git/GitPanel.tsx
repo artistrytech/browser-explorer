@@ -119,6 +119,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const [busy, setBusy] = useState(false);
   const [branches, setBranches] = useState<GitBranch[]>([]);
   const [collapsedBranchGroups, setCollapsedBranchGroups] = useState<Set<string>>(new Set());
+  const commitMessageRef = useRef<HTMLTextAreaElement>(null);
   /** コミットタブ 変更一覧の選択 (フォーカス)。キーは `S:`(ステージ側)/`W:`(作業ツリー側)+path */
   const [selKeys, setSelKeys] = useState<Set<string>>(new Set());
   /** Shift 範囲選択の起点 */
@@ -180,6 +181,13 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     setFileFilter(v);
     if (repoRoot) saveGitView(repoRoot, { filesFilter: v });
   };
+
+  useEffect(() => {
+    const el = commitMessageRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [message, tab]);
 
   useEffect(() => {
     if (repoRoot && tab === 'branches') {
@@ -837,6 +845,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   </button>
                 </div>
                 <textarea
+                  ref={commitMessageRef}
                   className={cx("commit-message")}
                   placeholder="コミットメッセージ (Ctrl+Enter でコミット)"
                   value={message}
