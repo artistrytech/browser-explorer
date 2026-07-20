@@ -45,7 +45,9 @@ export default function App() {
   const path = useExplorer((s) => s.path);
   const navigate = useExplorer((s) => s.navigate);
   const tabs = useEditor((s) => s.tabs);
+  const activePath = useEditor((s) => s.activePath);
   const diffTarget = useDiffTab((s) => s.current);
+  const repoRoot = useGit((s) => s.repoRoot);
   const { view, setView } = useUi();
   const theme = useSettings((s) => s.settings.theme);
   const loaded = useSettings((s) => s.loaded);
@@ -177,6 +179,19 @@ export default function App() {
   useEffect(() => {
     if (view === 'diff' && !diffTarget) replaceView('files');
   }, [view, diffTarget]);
+
+  useEffect(() => {
+    const activeTab = tabs.find((t) => t.path === activePath);
+    const title =
+      view === 'files'
+        ? baseName(path) || path
+        : view === 'editor'
+          ? activeTab?.name || 'Explorer'
+          : isGitView(view) && repoRoot
+            ? baseName(repoRoot) || repoRoot
+            : 'Explorer';
+    document.title = title;
+  }, [activePath, path, repoRoot, tabs, view]);
 
   return (
     <div className={cx("app")}>
