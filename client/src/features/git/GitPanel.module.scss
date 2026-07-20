@@ -238,11 +238,21 @@
   gap: 6px;
   padding: 5px 4px;
   border-bottom: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
 }
 
 .branch-row > span {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: pre;
+}
+
+.branch-row:hover {
+  background: var(--bg-hover);
 }
 
 .branch-current {

@@ -8,7 +8,7 @@ import { useUi, defaultDiffToolIndex } from '../../stores/ui';
 import { useExplorer } from '../../stores/explorer';
 import { useSettings } from '../../stores/settings';
 import { useToast, toastError } from '../../stores/toast';
-import { confirmDialog, promptDialog } from '../../stores/dialog';
+import { confirmDialog } from '../../stores/dialog';
 import { WorkingDiff, type FocusFile } from './WorkingDiff';
 import { GitGraph } from './GitGraph';
 import { openCloneDialog } from './CloneDialog';
@@ -19,6 +19,7 @@ import { openFetchDialog } from './FetchDialog';
 import { openStashDialog } from './StashDialog';
 import { openAuthDialog } from './AuthDialog';
 import { openCommitMessagePicker } from './CommitMessageDialog';
+import { openCreateBranchDialog, openRemoteCheckoutDialog } from './BranchDialog';
 import { openCommitDiff } from './DiffTab';
 import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
 import styles from './GitPanel.module.scss';
@@ -302,6 +303,59 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     }
     // 既定の外部ツールが無ければアプリ内差分 (フォーカス) にフォールバック
     selectSingle(`${stagedSide ? 'S' : 'W'}:${f.path}`);
+  };
+
+  const isRemoteBranch = (b: GitBranch) => b.name.startsWith('remotes/');
+  const isRemoteHead = (b: GitBranch) => /^remotes\/[^/]+\/HEAD$/.test(b.name);
+
+  const checkoutBranch = (b: GitBranch) => {
+    if (b.current || isRemoteBranch(b)) return;
+    void runGitCommands(repoRoot, [['checkout', b.name]], 'ブランチ切替');
+  };
+
+  const checkoutRemoteBranch = (b: GitBranch) => {
+    if (!isRemoteBranch(b) || isRemoteHead(b)) return;
+    openRemoteCheckoutDialog(b.name);
+  };
+
+  const branchDoubleClick = (b: GitBranch) => {
+    if (isRemoteBranch(b)) checkoutRemoteBranch(b);
+    else checkoutBranch(b);
+  };
+
+  const branchMenu = (e: React.MouseEvent, b: GitBranch) => {
+    e.preventDefault();
+    const remote = isRemoteBranch(b);
+    const items: MenuItem[] = remote
+      ? [
+          {
+            label: 'チェックアウト',
+            disabled: isRemoteHead(b),
+            action: () => checkoutRemoteBranch(b),
+          },
+        ]
+      : [
+          {
+            label: '切替',
+            disabled: b.current,
+            action: () => checkoutBranch(b),
+          },
+          {
+            label: 'マージ',
+            disabled: b.current,
+            action: () => void runGitCommands(repoRoot, [['merge', b.name]], 'マージ'),
+          },
+          {
+            label: '削除',
+            disabled: b.current,
+            danger: true,
+            action: () =>
+              void confirmDialog('ブランチ削除', `${b.name} を削除しますか?`, true).then((ok) => {
+                if (ok) void runGitCommands(repoRoot, [['branch', '-d', b.name]], 'ブランチ削除');
+              }),
+          },
+        ];
+    openMenu(e.clientX, e.clientY, items);
   };
 
   /** 変更ファイル行 (コミットタブ) の右クリックメニュー */
@@ -722,48 +776,22 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             <div className={cx("git-branches")}>
               <button
                 className={cx("btn")}
-                onClick={() =>
-                  void promptDialog('新しいブランチ', '', { message: '作成して切り替えるブランチ名' }).then(
-                    (name) => {
-                      if (name) void runGitCommands(repoRoot, [['checkout', '-b', name]], 'ブランチ作成');
-                    },
-                  )
-                }
+                onClick={openCreateBranchDialog}
               >
                 ＋ ブランチ作成
               </button>
               {branches.map((b) => (
-                <div key={b.name} className={cx("branch-row")}>
-                  <span className={cx(b.current ? 'branch-current' : '')}>
+                <div
+                  key={b.name}
+                  className={cx("branch-row")}
+                  onDoubleClick={() => branchDoubleClick(b)}
+                  onContextMenu={(e) => branchMenu(e, b)}
+                  title="右クリックでメニュー、ダブルクリックで操作"
+                >
+                  <span className={cx(b.current ? 'branch-current' : '')} title={b.name}>
                     {b.current ? '● ' : '  '}
                     {b.name}
                   </span>
-                  {!b.current && !b.name.startsWith('remotes/') && (
-                    <>
-                      <button
-                        className={cx("status-btn")}
-                        onClick={() => void runGitCommands(repoRoot, [['checkout', b.name]], 'ブランチ切替')}
-                      >
-                        切替
-                      </button>
-                      <button
-                        className={cx("status-btn")}
-                        onClick={() => void runGitCommands(repoRoot, [['merge', b.name]], 'マージ')}
-                      >
-                        マージ
-                      </button>
-                      <button
-                        className={cx("status-btn danger")}
-                        onClick={() =>
-                          void confirmDialog('ブランチ削除', `${b.name} を削除しますか?`, true).then((ok) => {
-                            if (ok) void runGitCommands(repoRoot, [['branch', '-d', b.name]], 'ブランチ削除');
-                          })
-                        }
-                      >
-                        削除
-                      </button>
-                    </>
-                  )}
                 </div>
               ))}
             </div>

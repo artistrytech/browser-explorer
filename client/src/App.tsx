@@ -15,6 +15,7 @@ import { FetchDialog } from './features/git/FetchDialog';
 import { StashDialog } from './features/git/StashDialog';
 import { AuthDialog } from './features/git/AuthDialog';
 import { CommitMessageDialog } from './features/git/CommitMessageDialog';
+import { BranchDialog } from './features/git/BranchDialog';
 import { DiffTab, useDiffTab, closeDiffTab, diffTargetFromUrl } from './features/git/DiffTab';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
@@ -262,6 +263,7 @@ export default function App() {
       <StashDialog />
       <AuthDialog />
       <CommitMessageDialog />
+      <BranchDialog />
       {/* 実行結果ダイアログは他ダイアログより手前に出すため最後にマウント */}
       <GitCommandDialog />
     </div>
