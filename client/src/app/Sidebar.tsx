@@ -8,6 +8,10 @@ import { useContextMenu } from '../components/ContextMenu';
 import { baseName } from '../lib/paths';
 import { unpinFolder } from '../lib/quickaccessOps';
 import type { VolumeInfo } from '../types';
+import styles from './Sidebar.module.scss';
+import { createCssModuleClassNames } from '../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 export function Sidebar() {
   const { path, navigate } = useExplorer();
@@ -54,7 +58,7 @@ export function Sidebar() {
   ) => (
     <button
       key={key}
-      className={`side-item${path === target ? ' active' : ''}`}
+      className={cx(`side-item${path === target ? ' active' : ''}`)}
       onClick={(e) => go(e, target)}
       onContextMenu={(e) => {
         if (onContext) {
@@ -64,21 +68,21 @@ export function Sidebar() {
       }}
       title={`${target}\n(Ctrl+クリックで別タブ)`}
     >
-      <span className="side-icon">{icon}</span>
-      <span className="side-label">{label}</span>
+      <span className={cx("side-icon")}>{icon}</span>
+      <span className={cx("side-label")}>{label}</span>
     </button>
   );
 
   return (
-    <div className="sidebar">
-      <div className="side-section">
-        <div className="side-heading">クイックアクセス</div>
+    <div className={cx("sidebar")}>
+      <div className={cx("side-section")}>
+        <div className={cx("side-heading")}>クイックアクセス</div>
         {home && item('home', 'Home', '🏠', home)}
         {favorites.map((f) => (
           // ピン項目: ホバーで ✕ を表示。解除は確認ダイアログ必須 (002.md §7.3)
-          <div key={f.path} className="side-item-wrap">
+          <div key={f.path} className={cx("side-item-wrap")}>
             <button
-              className={`side-item${path === f.path ? ' active' : ''}`}
+              className={cx(`side-item${path === f.path ? ' active' : ''}`)}
               onClick={(e) => go(e, f.path)}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -88,11 +92,11 @@ export function Sidebar() {
               }}
               title={`${f.path}\n(Ctrl+クリックで別タブ)`}
             >
-              <span className="side-icon">★</span>
-              <span className="side-label">{f.label}</span>
+              <span className={cx("side-icon")}>★</span>
+              <span className={cx("side-label")}>{f.label}</span>
             </button>
             <button
-              className="side-unpin"
+              className={cx("side-unpin")}
               title="ピン止めを解除"
               onClick={(e) => {
                 e.stopPropagation();
@@ -105,17 +109,17 @@ export function Sidebar() {
         ))}
       </div>
 
-      <div className="side-section">
-        <div className="side-heading">場所</div>
+      <div className={cx("side-section")}>
+        <div className={cx("side-heading")}>場所</div>
         {volumes.map((v) => item(v.path, v.name, '💽', v.path))}
       </div>
 
-      <div className="side-section">
-        <div className="side-heading">リポジトリ</div>
+      <div className={cx("side-section")}>
+        <div className={cx("side-heading")}>リポジトリ</div>
         {repositories.map((r) => (
           <button
             key={r}
-            className={`side-item${repoRoot === r ? ' active' : ''}`}
+            className={cx(`side-item${repoRoot === r ? ' active' : ''}`)}
             title={`${r}\n(Ctrl+クリックで別タブ)`}
             onClick={(e) => go(e, r, 'commit')}
             onContextMenu={(e) => {
@@ -128,14 +132,14 @@ export function Sidebar() {
               ]);
             }}
           >
-            <span className="side-icon">●</span>
-            <span className="side-label">
+            <span className={cx("side-icon")}>●</span>
+            <span className={cx("side-label")}>
               {baseName(r)}
               {repoRoot === r && status?.branch ? ` (${status.branch})` : ''}
             </span>
           </button>
         ))}
-        {repositories.length === 0 && <div className="side-empty">(未登録)</div>}
+        {repositories.length === 0 && <div className={cx("side-empty")}>(未登録)</div>}
       </div>
     </div>
   );

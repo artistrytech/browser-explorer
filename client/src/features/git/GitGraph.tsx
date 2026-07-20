@@ -7,6 +7,10 @@ import { useGit } from '../../stores/git';
 import { toastError } from '../../stores/toast';
 import { runGitCommands } from './GitCommandDialog';
 import type { GitGraphCommit } from '../../types';
+import styles from './GitGraph.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 /**
  * Git グラフ表示 (002.md §5): コミット DAG をレーン (レール) 描画する。
@@ -139,7 +143,7 @@ function edgePath(e: Edge, half: 'top' | 'bottom'): string {
 
 function RowGraph({ row, width }: { row: GraphRow; width: number }) {
   return (
-    <svg className="graph-svg" width={width} height={ROW_H}>
+    <svg className={cx("graph-svg")} width={width} height={ROW_H}>
       {row.topEdges.map((e, i) => (
         <path key={`t${i}`} d={edgePath(e, 'top')} stroke={PALETTE[e.color]} strokeWidth={2} fill="none" />
       ))}
@@ -178,7 +182,7 @@ function RefChips({ refs }: { refs: string[] }) {
           cls = 'ref-remote';
         }
         return (
-          <span key={r} className={`ref-chip ${cls}`}>
+          <span key={r} className={cx(`ref-chip ${cls}`)}>
             {label}
           </span>
         );
@@ -333,42 +337,42 @@ export function GitGraph({
   };
 
   return (
-    <div className="git-graph">
-      <div className="graph-toolbar">
+    <div className={cx("git-graph")}>
+      <div className={cx("graph-toolbar")}>
         <label>
           <input type="checkbox" checked={all} onChange={(e) => toggleAll(e.target.checked)} />
           全ブランチ (--all)
         </label>
       </div>
-      <div className="graph-rows" ref={rowsRef}>
+      <div className={cx("graph-rows")} ref={rowsRef}>
         {rows.map((row) => {
           const c = row.commit;
           return (
             <button
               key={c.hash}
-              className={`graph-row${selectedHash === c.hash ? ' active' : ''}`}
+              className={cx(`graph-row${selectedHash === c.hash ? ' active' : ''}`)}
               style={{ height: ROW_H }}
               onClick={() => onSelect(c.hash)}
               onContextMenu={(e) => commitMenu(e, c)}
               title={`${c.hash}\n${c.subject}`}
             >
-              <span className="graph-cell" style={{ width: graphWidth }}>
+              <span className={cx("graph-cell")} style={{ width: graphWidth }}>
                 <RowGraph row={row} width={graphWidth} />
               </span>
-              <span className="graph-hash">{c.hash.slice(0, 7)}</span>
-              <span className="graph-subject">
+              <span className={cx("graph-hash")}>{c.hash.slice(0, 7)}</span>
+              <span className={cx("graph-subject")}>
                 <RefChips refs={c.refs} />
                 {c.subject}
               </span>
-              <span className="graph-meta">
+              <span className={cx("graph-meta")}>
                 {c.author} · {c.date.slice(0, 16).replace('T', ' ')}
               </span>
             </button>
           );
         })}
-        {rows.length === 0 && !loading && <div className="empty-hint">コミットがありません</div>}
+        {rows.length === 0 && !loading && <div className={cx("empty-hint")}>コミットがありません</div>}
         {hasMore && (
-          <button className="btn graph-more" disabled={loading} onClick={() => load(false)}>
+          <button className={cx("btn graph-more")} disabled={loading} onClick={() => load(false)}>
             {loading ? '読み込み中…' : 'さらに読み込む'}
           </button>
         )}

@@ -1,0 +1,51 @@
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 3px 12px;
+  background: var(--bg-alt);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dim);
+  min-height: 26px;
+}
+
+.status-spacer {
+  flex: 1;
+}
+
+.status-select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 12px;
+  padding: 1px 3px;
+}
+
+.status-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 3px;
+  padding: 1px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.status-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.status-btn:disabled {
+  opacity: 0.45;
+}
+
+.status-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.status-btn.danger {
+  color: var(--danger);
+}

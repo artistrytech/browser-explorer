@@ -1,0 +1,48 @@
+.empty-hint {
+  padding: 28px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.diff-line.wd-selectable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.diff-line.wd-line-sel {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  filter: brightness(1.15);
+}
+
+.diff-view {
+  margin: 0;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.diff-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 0 6px;
+}
+
+.diff-add {
+  background: var(--add-bg);
+  color: var(--add);
+}
+
+.diff-del {
+  background: var(--del-bg);
+  color: var(--del);
+}
+
+.diff-hunk {
+  color: var(--accent);
+  background: var(--bg-alt);
+}
+
+.diff-meta {
+  color: var(--text-dim);
+}

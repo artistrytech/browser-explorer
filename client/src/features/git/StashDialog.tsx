@@ -4,6 +4,10 @@ import { api } from '../../api/client';
 import { useGit } from '../../stores/git';
 import { toastError } from '../../stores/toast';
 import { runGitCommands } from './GitCommandDialog';
+import styles from './StashDialog.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 /**
  * Stash ダイアログ:
@@ -89,50 +93,50 @@ export function StashDialog() {
   };
 
   return (
-    <div className="dialog-backdrop">
-      <div className="dialog push-dialog">
-        <div className="dialog-title">Stash</div>
-        <div className="clone-form">
-          <div className="stash-section-title">現在の変更を退避</div>
-          <label className="clone-row">
-            <span className="clone-label wide">メッセージ:</span>
+    <div className={cx("dialog-backdrop")}>
+      <div className={cx("dialog push-dialog")}>
+        <div className={cx("dialog-title")}>Stash</div>
+        <div className={cx("clone-form")}>
+          <div className={cx("stash-section-title")}>現在の変更を退避</div>
+          <label className={cx("clone-row")}>
+            <span className={cx("clone-label wide")}>メッセージ:</span>
             <input
-              className="clone-input"
+              className={cx("clone-input")}
               value={message}
               placeholder="(任意)"
               onChange={(e) => setMessage(e.target.value)}
             />
           </label>
-          <div className="clone-row">
-            <span className="status-spacer" />
-            <button className="btn" disabled={!hasChanges} title={hasChanges ? '' : '退避する変更がありません'} onClick={doStash}>
+          <div className={cx("clone-row")}>
+            <span className={cx("status-spacer")} />
+            <button className={cx("btn")} disabled={!hasChanges} title={hasChanges ? '' : '退避する変更がありません'} onClick={doStash}>
               退避 (stash push)
             </button>
           </div>
 
-          <div className="stash-section-title">退避一覧から復元</div>
+          <div className={cx("stash-section-title")}>退避一覧から復元</div>
           {loading ? (
-            <div className="empty-hint">読み込み中…</div>
+            <div className={cx("empty-hint")}>読み込み中…</div>
           ) : list.length === 0 ? (
-            <div className="empty-hint">退避された変更はありません</div>
+            <div className={cx("empty-hint")}>退避された変更はありません</div>
           ) : (
             <>
-              <div className="stash-list">
+              <div className={cx("stash-list")}>
                 {list.map((s) => (
                   <button
                     key={s.ref}
-                    className={`stash-row${selected === s.ref ? ' active' : ''}`}
+                    className={cx(`stash-row${selected === s.ref ? ' active' : ''}`)}
                     onClick={() => setSelected(s.ref)}
                   >
-                    <span className="stash-ref">{s.ref}</span>
-                    <span className="stash-msg" title={s.message}>
+                    <span className={cx("stash-ref")}>{s.ref}</span>
+                    <span className={cx("stash-msg")} title={s.message}>
                       {s.message}
                     </span>
-                    <span className="stash-date">{s.date}</span>
+                    <span className={cx("stash-date")}>{s.date}</span>
                   </button>
                 ))}
               </div>
-              <label className="clone-row">
+              <label className={cx("clone-row")}>
                 <input
                   type="checkbox"
                   checked={dropAfter}
@@ -143,11 +147,11 @@ export function StashDialog() {
             </>
           )}
         </div>
-        <div className="dialog-buttons">
-          <button className="btn" onClick={close}>
+        <div className={cx("dialog-buttons")}>
+          <button className={cx("btn")} onClick={close}>
             キャンセル
           </button>
-          <button className="btn primary" disabled={!selected || loading} onClick={doRestore}>
+          <button className={cx("btn primary")} disabled={!selected || loading} onClick={doRestore}>
             復元
           </button>
         </div>

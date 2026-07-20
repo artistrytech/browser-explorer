@@ -21,6 +21,10 @@ import { openAuthDialog } from './AuthDialog';
 import { openCommitMessagePicker } from './CommitMessageDialog';
 import { openCommitDiff } from './DiffTab';
 import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
+import styles from './GitPanel.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 /** コミット差分ファイルのステータス表示 (A/M/D/T) */
 const COMMIT_FILE_STATUS: Record<string, { label: string; cls: string }> = {
@@ -122,11 +126,11 @@ export function GitPanel({ tab }: { tab: GitTab }) {
 
   if (!repoRoot) {
     return (
-      <div className="git-panel">
-        <div className="empty-hint">
+      <div className={cx("git-panel")}>
+        <div className={cx("empty-hint")}>
           <p>このフォルダは Git リポジトリではありません。</p>
           <button
-            className="btn"
+            className={cx("btn")}
             onClick={() =>
               void confirmDialog('Git リポジトリを作成', `${explorerPath} で git init を実行しますか?`).then(
                 (ok) => {
@@ -143,7 +147,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           >
             git init
           </button>{' '}
-          <button className="btn" onClick={() => openCloneDialog(explorerPath)}>
+          <button className={cx("btn")} onClick={() => openCloneDialog(explorerPath)}>
             Git Clone…
           </button>
         </div>
@@ -443,23 +447,23 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     return (
       <div
         key={key}
-        className={`git-file-row${selected ? ' selected' : ''}`}
+        className={cx(`git-file-row${selected ? ' selected' : ''}`)}
         onClick={(e) => rowClick(e, key)}
         onDoubleClick={() => openDefaultWorkingDiff(f, stagedSide)}
         onContextMenu={(e) => workingFileMenu(e, f, stagedSide, key)}
       >
         <span
-          className="git-file-name"
+          className={cx("git-file-name")}
           title={
             `${f.path}\nクリックで選択 / Ctrl・Shift で複数選択 / 右クリックでメニュー` +
             (defaultTool >= 0 ? `\nダブルクリックで ${diffTools[defaultTool].label}` : '')
           }
         >
-          <span className="git-file-status">{statusLabel(f, stagedSide)}</span> {f.path}
+          <span className={cx("git-file-status")}>{statusLabel(f, stagedSide)}</span> {f.path}
         </span>
         {stagedSide ? (
           <button
-            className="status-btn"
+            className={cx("status-btn")}
             title="ステージ解除"
             onClick={(e) => {
               e.stopPropagation();
@@ -471,7 +475,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         ) : (
           <>
             <button
-              className="status-btn"
+              className={cx("status-btn")}
               title="ステージ"
               onClick={(e) => {
                 e.stopPropagation();
@@ -481,7 +485,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
               ＋
             </button>
             <button
-              className="status-btn danger"
+              className={cx("status-btn danger")}
               title="変更を破棄"
               onClick={(e) => {
                 e.stopPropagation();
@@ -503,18 +507,18 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   };
 
   return (
-    <div className="git-panel">
-      <div className="git-header">
-        <span className="git-repo-name" title={repoRoot}>
+    <div className={cx("git-panel")}>
+      <div className={cx("git-header")}>
+        <span className={cx("git-repo-name")} title={repoRoot}>
           🌿 {status?.branch ?? '?'}
           {status?.tracking ? ` ↑${status.ahead}↓${status.behind}` : ''}
         </span>
         {/* Fetch/Pull/Stash は即時実行せず、確認ダイアログを挟む (Push と同じフロー) */}
-        <button className="status-btn" disabled={busy} onClick={openFetchDialog}>
+        <button className={cx("status-btn")} disabled={busy} onClick={openFetchDialog}>
           Fetch
         </button>
         <button
-          className="status-btn"
+          className={cx("status-btn")}
           disabled={busy}
           onClick={() =>
             void confirmDialog('Pull', 'git pull を実行しますか?').then((ok) => {
@@ -524,39 +528,39 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         >
           Pull
         </button>
-        <button className="status-btn" disabled={busy} onClick={openPushDialog}>
+        <button className={cx("status-btn")} disabled={busy} onClick={openPushDialog}>
           Push
         </button>
-        <button className="status-btn" disabled={busy} onClick={openStashDialog}>
+        <button className={cx("status-btn")} disabled={busy} onClick={openStashDialog}>
           Stash
         </button>
         <button
-          className="status-btn"
+          className={cx("status-btn")}
           title="このリポジトリの認証設定 (SSH 鍵 / 資格情報ヘルパー)"
           onClick={openAuthDialog}
         >
           🔑 認証
         </button>
         {!repositories.includes(repoRoot) && (
-          <button className="status-btn" onClick={() => addRepository(repoRoot)} title="サイドバーに登録">
+          <button className={cx("status-btn")} onClick={() => addRepository(repoRoot)} title="サイドバーに登録">
             ★ 登録
           </button>
         )}
-        <span className="status-spacer" />
+        <span className={cx("status-spacer")} />
       </div>
 
       {mergeState.inProgress && (
-        <div className="merge-banner">
+        <div className={cx("merge-banner")}>
           ⚠ {mergeState.inProgress === 'merge' ? 'マージ' : mergeState.inProgress === 'rebase' ? 'リベース' : 'cherry-pick'}
           が進行中です
           {mergeState.conflicted.length > 0 && ` (競合 ${mergeState.conflicted.length} 件)`}
           {mergeState.conflicted.length > 0 ? (
-            <button className="btn" onClick={() => openConflictResolver('')}>
+            <button className={cx("btn")} onClick={() => openConflictResolver('')}>
               競合を解消…
             </button>
           ) : (
             <button
-              className="btn"
+              className={cx("btn")}
               onClick={() =>
                 void runGitCommands(
                   repoRoot,
@@ -575,7 +579,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             </button>
           )}
           <button
-            className="btn danger"
+            className={cx("btn danger")}
             onClick={() =>
               void confirmDialog('中止', '進行中の操作を中止して開始前の状態へ戻します。よろしいですか?', true).then(
                 (ok) => {
@@ -600,17 +604,17 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         </div>
       )}
 
-      <div className="git-body">
+      <div className={cx("git-body")}>
         {/* ログタブはスクロールを .graph-rows 側に持たせる (スクロール位置の保存/復元のため) */}
-        <div className={`git-left${tab === 'log' ? ' graph-host' : ''}`}>
+        <div className={cx(`git-left${tab === 'log' ? ' graph-host' : ''}`)}>
           {tab === 'changes' && (
             <>
-              <div className="git-section-title">
+              <div className={cx("git-section-title")}>
                 ステージ済み ({staged.length})
-                <span className="git-section-actions">
+                <span className={cx("git-section-actions")}>
                   {selectedStaged.length > 0 && (
                     <button
-                      className="status-btn"
+                      className={cx("status-btn")}
                       title="選択したファイルをステージ解除"
                       onClick={() => void run(() => api.gitUnstage(repoRoot, selectedStaged))}
                     >
@@ -619,7 +623,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   )}
                   {staged.length > 0 && (
                     <button
-                      className="status-btn"
+                      className={cx("status-btn")}
                       onClick={() => void run(() => api.gitUnstage(repoRoot, staged.map((f) => f.path)))}
                     >
                       すべて解除
@@ -628,12 +632,12 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                 </span>
               </div>
               {staged.map((f) => fileRow(f, true))}
-              <div className="git-section-title">
+              <div className={cx("git-section-title")}>
                 変更 ({unstaged.length})
-                <span className="git-section-actions">
+                <span className={cx("git-section-actions")}>
                   {selectedUnstaged.length > 0 && (
                     <button
-                      className="status-btn"
+                      className={cx("status-btn")}
                       title="選択したファイルをステージ"
                       onClick={() => void run(() => api.gitStage(repoRoot, selectedUnstaged))}
                     >
@@ -642,7 +646,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   )}
                   {unstaged.length > 0 && (
                     <button
-                      className="status-btn"
+                      className={cx("status-btn")}
                       onClick={() => void run(() => api.gitStage(repoRoot, unstaged.map((f) => f.path)))}
                     >
                       すべてステージ
@@ -652,11 +656,11 @@ export function GitPanel({ tab }: { tab: GitTab }) {
               </div>
               {unstaged.map((f) => fileRow(f, false))}
 
-              <div className="commit-box">
-                <div className="commit-message-head">
-                  <span className="git-section-title-text">コミットメッセージ</span>
+              <div className={cx("commit-box")}>
+                <div className={cx("commit-message-head")}>
+                  <span className={cx("git-section-title-text")}>コミットメッセージ</span>
                   <button
-                    className="status-btn"
+                    className={cx("status-btn")}
                     title="過去のコミットメッセージから選ぶ"
                     onClick={pickCommitMessage}
                   >
@@ -664,7 +668,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   </button>
                 </div>
                 <textarea
-                  className="commit-message"
+                  className={cx("commit-message")}
                   placeholder="コミットメッセージ (Ctrl+Enter でコミット)"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
@@ -676,15 +680,15 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                     }
                   }}
                 />
-                <label className="amend-label">
+                <label className={cx("amend-label")}>
                   <input type="checkbox" checked={amend} onChange={(e) => setAmend(e.target.checked)} />
                   amend (直前のコミットを修正)
                 </label>
                 <div>
-                  <button className="btn primary" disabled={!canCommit} onClick={() => doCommit(false)}>
+                  <button className={cx("btn primary")} disabled={!canCommit} onClick={() => doCommit(false)}>
                     Commit
                   </button>{' '}
-                  <button className="btn" disabled={!canCommit} onClick={() => doCommit(true)}>
+                  <button className={cx("btn")} disabled={!canCommit} onClick={() => doCommit(true)}>
                     Commit & Push
                   </button>
                 </div>
@@ -696,11 +700,11 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             // コミット DAG をグラフ描画 (002.md §5)。パス絞り込み時も同じグラフ表示
             <>
               {logFilter && (
-                <div className="log-filter-bar">
-                  <span className="log-filter-path" title={logFilter.path}>
+                <div className={cx("log-filter-bar")}>
+                  <span className={cx("log-filter-path")} title={logFilter.path}>
                     {logFilter.path} の履歴{logFilter.follow ? ' (リネーム追跡)' : ''}
                   </span>
-                  <button className="status-btn" onClick={() => useGit.getState().showLogFor('', false)}>
+                  <button className={cx("status-btn")} onClick={() => useGit.getState().showLogFor('', false)}>
                     絞り込み解除
                   </button>
                 </div>
@@ -715,9 +719,9 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           )}
 
           {tab === 'branches' && (
-            <div className="git-branches">
+            <div className={cx("git-branches")}>
               <button
-                className="btn"
+                className={cx("btn")}
                 onClick={() =>
                   void promptDialog('新しいブランチ', '', { message: '作成して切り替えるブランチ名' }).then(
                     (name) => {
@@ -729,27 +733,27 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                 ＋ ブランチ作成
               </button>
               {branches.map((b) => (
-                <div key={b.name} className="branch-row">
-                  <span className={b.current ? 'branch-current' : ''}>
+                <div key={b.name} className={cx("branch-row")}>
+                  <span className={cx(b.current ? 'branch-current' : '')}>
                     {b.current ? '● ' : '  '}
                     {b.name}
                   </span>
                   {!b.current && !b.name.startsWith('remotes/') && (
                     <>
                       <button
-                        className="status-btn"
+                        className={cx("status-btn")}
                         onClick={() => void runGitCommands(repoRoot, [['checkout', b.name]], 'ブランチ切替')}
                       >
                         切替
                       </button>
                       <button
-                        className="status-btn"
+                        className={cx("status-btn")}
                         onClick={() => void runGitCommands(repoRoot, [['merge', b.name]], 'マージ')}
                       >
                         マージ
                       </button>
                       <button
-                        className="status-btn danger"
+                        className={cx("status-btn danger")}
                         onClick={() =>
                           void confirmDialog('ブランチ削除', `${b.name} を削除しますか?`, true).then((ok) => {
                             if (ok) void runGitCommands(repoRoot, [['branch', '-d', b.name]], 'ブランチ削除');
@@ -766,45 +770,45 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           )}
         </div>
 
-        <div className="git-right">
+        <div className={cx("git-right")}>
           {/* 差分ファイル一覧はログタブ選択時のみ表示 (変更/ブランチでは非表示) */}
           {tab === 'log' ? (
             commitDetail ? (
-              <div className="commit-detail">
-                <div className="commit-detail-head">
+              <div className={cx("commit-detail")}>
+                <div className={cx("commit-detail-head")}>
                   {/* 1 行目を見出し、2 行目以降は本文として全体を表示する */}
-                  <div className="commit-full-message">
+                  <div className={cx("commit-full-message")}>
                     <b>{commitDetail.message.split('\n')[0]}</b>
                     {commitDetail.message.includes('\n') && (
-                      <div className="commit-body">
+                      <div className={cx("commit-body")}>
                         {commitDetail.message.split('\n').slice(1).join('\n').replace(/^\n+|\s+$/g, '')}
                       </div>
                     )}
                   </div>
-                  <div className="log-meta">
+                  <div className={cx("log-meta")}>
                     {commitDetail.author} · {commitDetail.date} · {commitDetail.hash.slice(0, 12)}
                   </div>
                 </div>
-                <div className="cf-filter-bar">
+                <div className={cx("cf-filter-bar")}>
                   <input
-                    className="cf-filter"
+                    className={cx("cf-filter")}
                     type="text"
                     placeholder="パスで絞り込み (部分一致)"
                     value={fileFilter}
                     onChange={(e) => changeFileFilter(e.target.value)}
                   />
-                  <span className="cf-count">
+                  <span className={cx("cf-count")}>
                     {matchedFiles.length}/{commitDetail.files.length} 件
                   </span>
                 </div>
                 {/* 差分ファイル一覧: ダブルクリックで 2 ペイン差分タブ、右クリックでメニュー */}
-                <table className="commit-files">
+                <table className={cx("commit-files")}>
                   <thead>
                     <tr>
                       <th>ステータス</th>
                       <th>ファイル</th>
-                      <th className="num">追加</th>
-                      <th className="num">削除</th>
+                      <th className={cx("num")}>追加</th>
+                      <th className={cx("num")}>削除</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -813,7 +817,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                       return (
                         <tr
                           key={f.path}
-                          className={focusedFile === f.path ? 'focused' : ''}
+                          className={cx(focusedFile === f.path ? 'focused' : '')}
                           title={
                             defaultTool >= 0
                               ? `ダブルクリックで ${diffTools[defaultTool].label} / 右クリックでメニュー`
@@ -823,44 +827,44 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                           onDoubleClick={() => openDefaultCommitDiff(f, commitDetail)}
                           onContextMenu={(e) => commitFileMenu(e, f, commitDetail)}
                         >
-                          <td className={`cf-status ${st.cls}`}>{st.label}</td>
-                          <td className="cf-path" title={f.path}>{f.path}</td>
-                          <td className="num cf-added">{f.binary ? '–' : `+${f.added ?? 0}`}</td>
-                          <td className="num cf-deleted">{f.binary ? '–' : `−${f.deleted ?? 0}`}</td>
+                          <td className={cx(`cf-status ${st.cls}`)}>{st.label}</td>
+                          <td className={cx("cf-path")} title={f.path}>{f.path}</td>
+                          <td className={cx("num cf-added")}>{f.binary ? '–' : `+${f.added ?? 0}`}</td>
+                          <td className={cx("num cf-deleted")}>{f.binary ? '–' : `−${f.deleted ?? 0}`}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-                {commitDetail.files.length === 0 && <div className="empty-hint">変更ファイルはありません</div>}
+                {commitDetail.files.length === 0 && <div className={cx("empty-hint")}>変更ファイルはありません</div>}
                 {commitDetail.files.length > 0 && matchedFiles.length === 0 && (
-                  <div className="empty-hint">フィルタに一致するファイルがありません</div>
+                  <div className={cx("empty-hint")}>フィルタに一致するファイルがありません</div>
                 )}
                 {matchedFiles.length > shownFiles.length && (
-                  <div className="commit-files-hint">
+                  <div className={cx("commit-files-hint")}>
                     表示上限 {filesLimit} 件 (該当 {matchedFiles.length} 件)。上限は config.json の
                     commitFilesLimit で変更できます
                   </div>
                 )}
-                <div className="commit-files-hint">
+                <div className={cx("commit-files-hint")}>
                   {defaultTool >= 0
                     ? `行をダブルクリックすると ${diffTools[defaultTool].label} で差分を開きます (アプリ内の差分は右クリック →「差分を表示」)`
                     : '行をダブルクリックすると 2 ペインの差分を表示します'}
                 </div>
               </div>
             ) : (
-              <div className="empty-hint">コミットを選択すると差分ファイル一覧を表示します</div>
+              <div className={cx("empty-hint")}>コミットを選択すると差分ファイル一覧を表示します</div>
             )
           ) : tab === 'changes' ? (
             focusFiles.length > 0 ? (
               <WorkingDiff repo={repoRoot} files={focusFiles} onApplied={() => void refreshStatus()} />
             ) : (
-              <div className="empty-hint">
+              <div className={cx("empty-hint")}>
                 ファイルを選択すると差分を表示します (Ctrl / Shift で複数選択)
               </div>
             )
           ) : (
-            <div className="empty-hint">ファイルを選択すると差分を表示します</div>
+            <div className={cx("empty-hint")}>ファイルを選択すると差分を表示します</div>
           )}
         </div>
       </div>

@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
+import styles from './CommitMessageDialog.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 /**
  * 過去のコミットメッセージから 1 件選ぶダイアログ。
@@ -50,19 +54,19 @@ export function CommitMessageDialog() {
   };
 
   return (
-    <div className="dialog-backdrop" onMouseDown={() => finish(null)}>
-      <div className="dialog msg-history-dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="dialog-title">コミットメッセージの履歴</div>
+    <div className={cx("dialog-backdrop")} onMouseDown={() => finish(null)}>
+      <div className={cx("dialog msg-history-dialog")} onMouseDown={(e) => e.stopPropagation()}>
+        <div className={cx("dialog-title")}>コミットメッセージの履歴</div>
         {loading ? (
-          <div className="empty-hint">読み込み中…</div>
+          <div className={cx("empty-hint")}>読み込み中…</div>
         ) : messages.length === 0 ? (
-          <div className="empty-hint">保存されたコミットメッセージはありません</div>
+          <div className={cx("empty-hint")}>保存されたコミットメッセージはありません</div>
         ) : (
-          <div className="msg-history-list">
+          <div className={cx("msg-history-list")}>
             {messages.map((m, i) => (
               <button
                 key={i}
-                className="msg-history-row"
+                className={cx("msg-history-row")}
                 title="クリックで選択"
                 onClick={() => finish(m)}
               >
@@ -71,8 +75,8 @@ export function CommitMessageDialog() {
             ))}
           </div>
         )}
-        <div className="dialog-buttons">
-          <button className="btn" onClick={() => finish(null)}>
+        <div className={cx("dialog-buttons")}>
+          <button className={cx("btn")} onClick={() => finish(null)}>
             キャンセル
           </button>
         </div>

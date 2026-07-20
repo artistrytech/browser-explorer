@@ -4,6 +4,10 @@ import { useEditor } from '../../stores/editor';
 import { useSettings } from '../../stores/settings';
 import { promptDialog } from '../../stores/dialog';
 import { parentPath, joinPath } from '../../lib/paths';
+import styles from './EditorPane.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 export function EditorPane() {
   const { tabs, activePath, activate, close, updateContent, save, saveAll, saveAs, setCursor } =
@@ -112,12 +116,12 @@ export function EditorPane() {
   };
 
   return (
-    <div className="editor-pane">
-      <div className="editor-tabs">
+    <div className={cx("editor-pane")}>
+      <div className={cx("editor-tabs")}>
         {tabs.map((t) => (
           <div
             key={t.path}
-            className={`editor-tab${t.path === activePath ? ' active' : ''}`}
+            className={cx(`editor-tab${t.path === activePath ? ' active' : ''}`)}
             title={t.path}
             onClick={() => activate(t.path)}
             onAuxClick={(e) => {
@@ -129,7 +133,7 @@ export function EditorPane() {
               {t.name}
             </span>
             <button
-              className="tab-close"
+              className={cx("tab-close")}
               onClick={(e) => {
                 e.stopPropagation();
                 void close(t.path);
@@ -139,19 +143,19 @@ export function EditorPane() {
             </button>
           </div>
         ))}
-        <span className="editor-tab-actions">
-          <button className="status-btn" title="上書き保存 (Ctrl+S)" onClick={() => void save()}>
+        <span className={cx("editor-tab-actions")}>
+          <button className={cx("status-btn")} title="上書き保存 (Ctrl+S)" onClick={() => void save()}>
             保存
           </button>
-          <button className="status-btn" title="名前を付けて保存" onClick={() => void doSaveAs()}>
+          <button className={cx("status-btn")} title="名前を付けて保存" onClick={() => void doSaveAs()}>
             別名保存
           </button>
-          <button className="status-btn" title="すべて保存 (Ctrl+Shift+S)" onClick={() => void saveAll()}>
+          <button className={cx("status-btn")} title="すべて保存 (Ctrl+Shift+S)" onClick={() => void saveAll()}>
             すべて保存
           </button>
         </span>
       </div>
-      <div ref={containerRef} className="monaco-container" />
+      <div ref={containerRef} className={cx("monaco-container")} />
     </div>
   );
 }

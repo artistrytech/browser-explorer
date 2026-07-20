@@ -32,6 +32,10 @@ import { openConflictResolver } from '../git/ConflictResolver';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
 import type { FsEntry, SortKey } from '../../types';
+import styles from './FileList.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 /** 詳細表示のカラム定義 (「一覧」表示では先頭の「名前」のみ使う) */
 const COLUMNS: { key: SortKey; label: string }[] = [
@@ -73,7 +77,7 @@ function GitOverlay({ path, dirCode }: { path: string; dirCode?: OverlayCode }) 
   // /status 由来 (変更/ステージ/競合) を優先し、無ければフォルダ単位の判定 (無視/管理外)
   const info = OVERLAY_MARK[code ?? dirCode ?? 'normal'];
   return (
-    <span className={`git-overlay ${info.cls}`} title={info.title}>
+    <span className={cx(`git-overlay ${info.cls}`)} title={info.title}>
       {info.mark}
     </span>
   );
@@ -653,9 +657,9 @@ export function FileList() {
       }
     >
       {label}
-      {settings.sortKey === key && <span className="sort-arrow">{settings.sortAsc ? ' ▲' : ' ▼'}</span>}
+      {settings.sortKey === key && <span className={cx("sort-arrow")}>{settings.sortAsc ? ' ▲' : ' ▼'}</span>}
       <span
-        className="col-resizer"
+        className={cx("col-resizer")}
         title="ドラッグで幅を変更 (ダブルクリックで既定幅)"
         onMouseDown={(e) => startResize(e, key)}
         onClick={(e) => e.stopPropagation()}
@@ -670,7 +674,7 @@ export function FileList() {
   const renderName = (entry: FsEntry) =>
     renaming === entry.path ? (
       <input
-        className="rename-input"
+        className={cx("rename-input")}
         autoFocus
         value={renameValue}
         onChange={(ev) => setRenameValue(ev.target.value)}
@@ -687,13 +691,13 @@ export function FileList() {
         onClick={(ev) => ev.stopPropagation()}
       />
     ) : (
-      <span className="entry-name">
-        <span className="entry-icon">
+      <span className={cx("entry-name")}>
+        <span className={cx("entry-icon")}>
           {fileIcon(entry)}
           <GitOverlay path={entry.path} dirCode={dirOverlay[entry.path]} />
         </span>
         <span
-          className={`entry-label${clipboard?.op === 'cut' && clipboard.paths.includes(entry.path) ? ' cut-pending' : ''}`}
+          className={cx(`entry-label${clipboard?.op === 'cut' && clipboard.paths.includes(entry.path) ? ' cut-pending' : ''}`)}
         >
           {entry.name}
         </span>
@@ -724,7 +728,7 @@ export function FileList() {
   return (
     <div
       ref={containerRef}
-      className="file-list"
+      className={cx("file-list")}
       tabIndex={0}
       onKeyDown={onKeyDown}
       onContextMenu={backgroundMenu}
@@ -735,30 +739,30 @@ export function FileList() {
       onDrop={(e) => void onDropTo(e, path)}
     >
       {searchResults && (
-        <div className="search-banner">
+        <div className={cx("search-banner")}>
           「{searchQuery}」の検索結果: {displayed.length} 件
         </div>
       )}
       {loading && (
-        <div className="loading-spinner" role="status" aria-label="読み込み中">
-          <div className="spinner-ring" />
+        <div className={cx("loading-spinner")} role="status" aria-label="読み込み中">
+          <div className={cx("spinner-ring")} />
         </div>
       )}
 
       {settings.viewMode === 'icons' ? (
-        <div className="icon-grid">
+        <div className={cx("icon-grid")}>
           {displayed.map((entry) => (
             <div key={entry.path} {...rowProps(entry)}>
-              <div className="big-icon">
+              <div className={cx("big-icon")}>
                 {fileIcon(entry)}
                 <GitOverlay path={entry.path} dirCode={dirOverlay[entry.path]} />
               </div>
-              {renaming === entry.path ? renderName(entry) : <div className="icon-label">{entry.name}</div>}
+              {renaming === entry.path ? renderName(entry) : <div className={cx("icon-label")}>{entry.name}</div>}
             </div>
           ))}
         </div>
       ) : (
-        <table className="details-table" style={{ width: tableWidth }}>
+        <table className={cx("details-table")} style={{ width: tableWidth }}>
           <colgroup>
             {columns.map((c) => (
               <col key={c.key} style={{ width: widths[c.key] }} />
@@ -773,7 +777,7 @@ export function FileList() {
                 <td>{renderName(entry)}</td>
                 {settings.viewMode === 'details' && <td>{kindLabel(entry)}</td>}
                 {settings.viewMode === 'details' && (
-                  <td className="col-size">{formatSize(entry.size, entry.type === 'dir')}</td>
+                  <td className={cx("col-size")}>{formatSize(entry.size, entry.type === 'dir')}</td>
                 )}
                 {settings.viewMode === 'details' && <td>{formatDate(entry.mtime)}</td>}
               </tr>
@@ -782,7 +786,7 @@ export function FileList() {
         </table>
       )}
       {!loading && displayed.length === 0 && (
-        <div className="empty-hint">{searchResults ? '該当なし' : 'このフォルダは空です'}</div>
+        <div className={cx("empty-hint")}>{searchResults ? '該当なし' : 'このフォルダは空です'}</div>
       )}
     </div>
   );

@@ -1,0 +1,170 @@
+.spinner-ring {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 4px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spinner-rotate 0.8s linear infinite;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px;
+  min-width: 380px;
+  max-width: 560px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.dialog-title {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn.primary.danger,
+.btn.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.dialog-backdrop.nested {
+  z-index: 1300;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.gitcmd-dialog {
+  width: 640px;
+  max-width: 94vw;
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+}
+
+.gitcmd-body {
+  overflow: auto;
+  flex: 1;
+  min-height: 80px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-alt);
+  padding: 8px;
+  margin: 8px 0;
+}
+
+.gitcmd-step + .gitcmd-step {
+  margin-top: 10px;
+}
+
+.gitcmd-command {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.gitcmd-prompt {
+  color: var(--accent);
+}
+
+.gitcmd-running {
+  color: var(--text-dim);
+  font-weight: normal;
+}
+
+.gitcmd-output {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  border-left: 3px solid var(--border);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-dim);
+}
+
+.gitcmd-output.failed {
+  color: var(--danger);
+  border-left-color: var(--danger);
+}
+
+.gitcmd-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  padding: 2px 0;
+}
+
+.gitcmd-status.ok {
+  color: var(--add, #107c10);
+}
+
+.gitcmd-status.error {
+  color: var(--danger);
+}
+
+.gitcmd-status.running {
+  color: var(--text-dim);
+}
+
+.spinner-ring.small {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  display: inline-block;
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spinner-fade-in {
+  to {
+    opacity: 1;
+  }
+}

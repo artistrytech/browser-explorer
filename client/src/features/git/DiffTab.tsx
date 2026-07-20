@@ -5,6 +5,10 @@ import { monaco, languageForPath } from '../editor/monacoSetup';
 import { useSettings } from '../../stores/settings';
 import { switchView, replaceView, useUi } from '../../stores/ui';
 import { toastError } from '../../stores/toast';
+import styles from './DiffTab.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 /**
  * コミット差分タブ: 選択ファイルのコミット前後を Monaco DiffEditor で
@@ -140,24 +144,24 @@ export function DiffTab() {
   const short = current.hash.slice(0, 7);
 
   return (
-    <div className="diff-tab">
-      <div className="diff-tab-head">
-        <span className="graph-hash">{short}</span>
-        <b className="diff-tab-path" title={current.path}>
+    <div className={cx("diff-tab")}>
+      <div className={cx("diff-tab-head")}>
+        <span className={cx("graph-hash")}>{short}</span>
+        <b className={cx("diff-tab-path")} title={current.path}>
           {current.path}
         </b>
-        <span className="diff-tab-subject" title={current.subject}>
+        <span className={cx("diff-tab-subject")} title={current.subject}>
           {current.subject}
         </span>
-        <span className="status-spacer" />
-        <span className="diff-tab-legend">
+        <span className={cx("status-spacer")} />
+        <span className={cx("diff-tab-legend")}>
           左: {short}^ (変更前) / 右: {short} (変更後)
         </span>
         {/* 外部差分ツール (設定の diffTools) で同じ比較を開く */}
         {diffTools.map((t) => (
           <button
             key={t.id}
-            className="status-btn"
+            className={cx("status-btn")}
             title={`${t.label} でこの差分を開く`}
             onClick={() =>
               void api.gitDiffTool(t.id, current.repo, current.path, 'commit', current.hash).catch(toastError)
@@ -166,18 +170,18 @@ export function DiffTab() {
             {t.label}
           </button>
         ))}
-        <button className="dialog-close" title="差分タブを閉じる" onClick={closeDiffTab}>
+        <button className={cx("dialog-close")} title="差分タブを閉じる" onClick={closeDiffTab}>
           ✕
         </button>
       </div>
       {!data ? (
-        <div className="empty-hint">読み込み中…</div>
+        <div className={cx("empty-hint")}>読み込み中…</div>
       ) : data.binary ? (
-        <div className="empty-hint">バイナリファイルのため差分を表示できません</div>
+        <div className={cx("empty-hint")}>バイナリファイルのため差分を表示できません</div>
       ) : !isText ? (
-        <div className="empty-hint">内容を取得できませんでした</div>
+        <div className={cx("empty-hint")}>内容を取得できませんでした</div>
       ) : (
-        <div className="diff-tab-editor" ref={hostRef} />
+        <div className={cx("diff-tab-editor")} ref={hostRef} />
       )}
     </div>
   );

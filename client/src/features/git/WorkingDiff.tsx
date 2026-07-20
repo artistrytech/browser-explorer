@@ -4,6 +4,10 @@ import { toastError } from '../../stores/toast';
 import { confirmDialog } from '../../stores/dialog';
 import { useExplorer } from '../../stores/explorer';
 import { parseFileDiff, buildHunkPatch, buildLinesPatch, isChangeLine, type FileDiff } from '../../lib/diffPatch';
+import styles from './WorkingDiff.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 /** コミットタブでフォーカス中のファイル (ステージ済み / 変更 / 未追跡) */
 export interface FocusFile {
@@ -25,7 +29,7 @@ export function WorkingDiff({
   onApplied: () => void;
 }) {
   return (
-    <div className="work-diff">
+    <div className={cx("work-diff")}>
       {files.map((f) => (
         <FileDiffBlock key={`${f.side}:${f.path}`} repo={repo} file={f} onApplied={onApplied} />
       ))}
@@ -127,18 +131,18 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
   };
 
   return (
-    <div className="work-diff-file">
-      <div className="work-diff-head">
-        <span className={`wd-side wd-side-${file.side}`}>{sideLabel}</span>
-        <span className="wd-path" title={file.path}>
+    <div className={cx("work-diff-file")}>
+      <div className={cx("work-diff-head")}>
+        <span className={cx(`wd-side wd-side-${file.side}`)}>{sideLabel}</span>
+        <span className={cx("wd-path")} title={file.path}>
           {file.path}
         </span>
       </div>
 
       {loading ? (
-        <div className="empty-hint">読み込み中…</div>
+        <div className={cx("empty-hint")}>読み込み中…</div>
       ) : !parsed || parsed.hunks.length === 0 ? (
-        <div className="empty-hint">差分はありません</div>
+        <div className={cx("empty-hint")}>差分はありません</div>
       ) : (
         parsed.hunks.map((hunk, hIdx) => {
           const hunkSel = new Set<number>();
@@ -147,14 +151,14 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
             if (h === hIdx) hunkSel.add(l);
           });
           return (
-            <div key={hIdx} className="wd-hunk">
-              <div className="wd-hunk-head">
-                <span className="wd-hunk-info">{hunk.header}</span>
+            <div key={hIdx} className={cx("wd-hunk")}>
+              <div className={cx("wd-hunk-head")}>
+                <span className={cx("wd-hunk-info")}>{hunk.header}</span>
                 {partialAvailable && (
-                  <span className="wd-hunk-actions">
+                  <span className={cx("wd-hunk-actions")}>
                     {hunkSel.size > 0 && (
                       <button
-                        className="status-btn"
+                        className={cx("status-btn")}
                         disabled={busy}
                         title={`選択した ${hunkSel.size} 行を${actionLabel}`}
                         onClick={() =>
@@ -168,7 +172,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
                       </button>
                     )}
                     <button
-                      className="status-btn"
+                      className={cx("status-btn")}
                       disabled={busy}
                       title={`この Hunk を${actionLabel}`}
                       onClick={() => void apply(buildHunkPatch(parsed.header, [hunk]), '')}
@@ -178,7 +182,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
                     {!reverse && (
                       // 変更 (作業ツリー) 側のみ破棄可能。ステージ側は「解除」で戻す
                       <button
-                        className="status-btn danger"
+                        className={cx("status-btn danger")}
                         disabled={busy}
                         title="この Hunk の変更を破棄"
                         onClick={() => void discardHunk(hunk)}
@@ -189,7 +193,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
                   </span>
                 )}
               </div>
-              <pre className="diff-view">
+              <pre className={cx("diff-view")}>
                 {hunk.lines.map((line, lIdx) => {
                   const tag = line[0];
                   const cls =
@@ -199,7 +203,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
                   return (
                     <div
                       key={lIdx}
-                      className={`diff-line ${cls}${selectable ? ' wd-selectable' : ''}${isSel ? ' wd-line-sel' : ''}`}
+                      className={cx(`diff-line ${cls}${selectable ? ' wd-selectable' : ''}${isSel ? ' wd-line-sel' : ''}`)}
                       onClick={selectable ? (e) => clickLine(e, hIdx, lIdx) : undefined}
                     >
                       {line || ' '}

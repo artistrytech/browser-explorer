@@ -3,6 +3,10 @@ import { create } from 'zustand';
 import { api } from '../../api/client';
 import { useGit } from '../../stores/git';
 import { useExplorer } from '../../stores/explorer';
+import styles from './GitCommandDialog.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 /**
  * Git コマンド実行ダイアログ:
@@ -93,26 +97,26 @@ export function GitCommandDialog() {
   const status = running ? 'running' : failed ? 'error' : 'ok';
 
   return (
-    <div className="dialog-backdrop">
-      <div className="dialog gitcmd-dialog">
-        <div className="dialog-title">{title}</div>
-        <div className="gitcmd-body" ref={bodyRef}>
+    <div className={cx("dialog-backdrop")}>
+      <div className={cx("dialog gitcmd-dialog")}>
+        <div className={cx("dialog-title")}>{title}</div>
+        <div className={cx("gitcmd-body")} ref={bodyRef}>
           {steps.map((s, i) => (
-            <div key={i} className="gitcmd-step">
-              <div className="gitcmd-command">
-                <span className="gitcmd-prompt">$</span> {s.command}
-                {s.ok === null && <span className="gitcmd-running"> 実行中…</span>}
+            <div key={i} className={cx("gitcmd-step")}>
+              <div className={cx("gitcmd-command")}>
+                <span className={cx("gitcmd-prompt")}>$</span> {s.command}
+                {s.ok === null && <span className={cx("gitcmd-running")}> 実行中…</span>}
               </div>
               {s.output && (
-                <pre className={`gitcmd-output${s.ok === false ? ' failed' : ''}`}>{s.output}</pre>
+                <pre className={cx(`gitcmd-output${s.ok === false ? ' failed' : ''}`)}>{s.output}</pre>
               )}
             </div>
           ))}
         </div>
-        <div className={`gitcmd-status ${status}`}>
+        <div className={cx(`gitcmd-status ${status}`)}>
           {status === 'running' ? (
             <>
-              <span className="spinner-ring small" /> 実行中…
+              <span className={cx("spinner-ring small")} /> 実行中…
             </>
           ) : status === 'error' ? (
             '✖ 失敗しました'
@@ -120,8 +124,8 @@ export function GitCommandDialog() {
             '✔ 成功しました'
           )}
         </div>
-        <div className="dialog-buttons">
-          <button className="btn primary" disabled={running} onClick={close}>
+        <div className={cx("dialog-buttons")}>
+          <button className={cx("btn primary")} disabled={running} onClick={close}>
             閉じる
           </button>
         </div>

@@ -1,0 +1,146 @@
+.empty-hint {
+  padding: 28px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.status-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 3px;
+  padding: 1px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.status-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.status-btn:disabled {
+  opacity: 0.45;
+}
+
+.status-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.status-btn.danger {
+  color: var(--danger);
+}
+
+.work-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.work-diff-file {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.work-diff-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+.wd-side {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.wd-side-staged { color: var(--add); }
+
+.wd-side-unstaged { color: #e08a00; }
+
+.wd-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.wd-hunk {
+  border-top: 1px solid var(--border);
+}
+
+.wd-hunk:first-child {
+  border-top: none;
+}
+
+.wd-hunk-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  background: var(--bg-alt);
+}
+
+.wd-hunk-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.wd-hunk-actions {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+
+.diff-line.wd-selectable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.diff-line.wd-line-sel {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  filter: brightness(1.15);
+}
+
+.diff-view {
+  margin: 0;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.diff-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 0 6px;
+}
+
+.diff-add {
+  background: var(--add-bg);
+  color: var(--add);
+}
+
+.diff-del {
+  background: var(--del-bg);
+  color: var(--del);
+}
+
+.diff-meta {
+  color: var(--text-dim);
+}

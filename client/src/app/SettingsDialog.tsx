@@ -5,6 +5,10 @@ import { api, APP_TOKEN } from '../api/client';
 import { useToast, toastError } from '../stores/toast';
 import { externalToolPresets, diffToolPresets } from '../lib/toolPresets';
 import type { AppSettings, DiffToolDef, ExternalToolDef } from '../types';
+import styles from './SettingsDialog.module.scss';
+import { createCssModuleClassNames } from '../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 type Tab = 'general' | 'menu' | 'tools' | 'diff';
 
@@ -44,8 +48,8 @@ const parseArgs = (text: string) => text.split('\n').filter((s) => s.length > 0)
 /** ラベル + コントロールを 2 カラムグリッドで揃えて並べる */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="settings-field">
-      <span className="settings-field-label">{label}</span>
+    <label className={cx("settings-field")}>
+      <span className={cx("settings-field-label")}>{label}</span>
       {children}
     </label>
   );
@@ -85,26 +89,26 @@ function ExternalToolEditor({
   };
 
   return (
-    <div className="dialog-backdrop nested" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
-      <div className="dialog tool-edit-dialog" role="dialog">
-        <div className="dialog-title">外部ツールの編集</div>
+    <div className={cx("dialog-backdrop nested")} onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
+      <div className={cx("dialog tool-edit-dialog")} role="dialog">
+        <div className={cx("dialog-title")}>外部ツールの編集</div>
         <Field label="ラベル">
-          <input className="dialog-input" value={label} onChange={(e) => setLabel(e.target.value)} />
+          <input className={cx("dialog-input")} value={label} onChange={(e) => setLabel(e.target.value)} />
         </Field>
         <Field label="コマンド">
           <input
-            className="dialog-input"
+            className={cx("dialog-input")}
             placeholder="notepad.exe / 絶対パス"
             value={command}
             onChange={(e) => setCommand(e.target.value)}
           />
         </Field>
         <Field label="引数 (1 行 1 つ)">
-          <textarea className="dialog-input" rows={3} value={argsText} onChange={(e) => setArgsText(e.target.value)} />
+          <textarea className={cx("dialog-input")} rows={3} value={argsText} onChange={(e) => setArgsText(e.target.value)} />
         </Field>
         <Field label="グループ">
           <input
-            className="dialog-input"
+            className={cx("dialog-input")}
             placeholder="開く / 削除 / Git / 任意名 (空=直下)"
             value={group}
             onChange={(e) => setGroup(e.target.value)}
@@ -119,26 +123,26 @@ function ExternalToolEditor({
         </Field>
         <Field label="対象拡張子">
           <input
-            className="dialog-input"
+            className={cx("dialog-input")}
             placeholder="sh, bat, png (カンマ区切り・空=全部)"
             value={extText}
             onChange={(e) => setExtText(e.target.value)}
           />
         </Field>
         <Field label="起動前に確認">
-          <label className="inline-check">
+          <label className={cx("inline-check")}>
             <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />
             確認ダイアログを出す
           </label>
         </Field>
-        <p className="settings-hint">
+        <p className={cx("settings-hint")}>
           args の <code>{'${paths}'}</code> が選択パスに展開されます (無ければ末尾に追加)。
         </p>
-        <div className="dialog-buttons">
-          <button className="btn primary" onClick={save}>
+        <div className={cx("dialog-buttons")}>
+          <button className={cx("btn primary")} onClick={save}>
             OK
           </button>
-          <button className="btn" onClick={onCancel}>
+          <button className={cx("btn")} onClick={onCancel}>
             キャンセル
           </button>
         </div>
@@ -174,38 +178,38 @@ function DiffToolEditor({
   };
 
   return (
-    <div className="dialog-backdrop nested" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
-      <div className="dialog tool-edit-dialog" role="dialog">
-        <div className="dialog-title">差分ツールの編集</div>
+    <div className={cx("dialog-backdrop nested")} onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
+      <div className={cx("dialog tool-edit-dialog")} role="dialog">
+        <div className={cx("dialog-title")}>差分ツールの編集</div>
         <Field label="ラベル">
-          <input className="dialog-input" value={label} onChange={(e) => setLabel(e.target.value)} />
+          <input className={cx("dialog-input")} value={label} onChange={(e) => setLabel(e.target.value)} />
         </Field>
         <Field label="コマンド">
           <input
-            className="dialog-input"
+            className={cx("dialog-input")}
             placeholder="絶対パス推奨"
             value={command}
             onChange={(e) => setCommand(e.target.value)}
           />
         </Field>
         <Field label="引数 (1 行 1 つ)">
-          <textarea className="dialog-input" rows={4} value={argsText} onChange={(e) => setArgsText(e.target.value)} />
+          <textarea className={cx("dialog-input")} rows={4} value={argsText} onChange={(e) => setArgsText(e.target.value)} />
         </Field>
         <Field label="既定にする">
-          <label className="inline-check">
+          <label className={cx("inline-check")}>
             <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
             ダブルクリック時にこのツールで開く
           </label>
         </Field>
-        <p className="settings-hint">
+        <p className={cx("settings-hint")}>
           args の <code>{'${left}'}</code> / <code>{'${right}'}</code> が比較対象、
           <code>{'${leftTitle}'}</code> / <code>{'${rightTitle}'}</code> が見出しに展開されます。
         </p>
-        <div className="dialog-buttons">
-          <button className="btn primary" onClick={save}>
+        <div className={cx("dialog-buttons")}>
+          <button className={cx("btn primary")} onClick={save}>
             OK
           </button>
-          <button className="btn" onClick={onCancel}>
+          <button className={cx("btn")} onClick={onCancel}>
             キャンセル
           </button>
         </div>
@@ -307,8 +311,8 @@ export function SettingsDialog() {
   };
 
   const row = (label: string, control: React.ReactNode) => (
-    <div className="settings-row">
-      <span className="settings-label">{label}</span>
+    <div className={cx("settings-row")}>
+      <span className={cx("settings-label")}>{label}</span>
       {control}
     </div>
   );
@@ -372,24 +376,24 @@ export function SettingsDialog() {
   };
 
   const tabBtn = (id: Tab, label: string) => (
-    <button className={`settings-tab${tab === id ? ' active' : ''}`} onClick={() => setTab(id)}>
+    <button className={cx(`settings-tab${tab === id ? ' active' : ''}`)} onClick={() => setTab(id)}>
       {label}
     </button>
   );
 
   return (
-    <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setSettingsOpen(false)}>
-      <div className="dialog settings-dialog" role="dialog">
-        <div className="dialog-title">設定</div>
+    <div className={cx("dialog-backdrop")} onMouseDown={(e) => e.target === e.currentTarget && setSettingsOpen(false)}>
+      <div className={cx("dialog settings-dialog")} role="dialog">
+        <div className={cx("dialog-title")}>設定</div>
 
-        <div className="settings-tabs">
+        <div className={cx("settings-tabs")}>
           {tabBtn('general', '一般')}
           {tabBtn('menu', 'コンテキストメニュー')}
           {tabBtn('tools', '外部ツール')}
           {tabBtn('diff', '差分ツール')}
         </div>
 
-        <div className="settings-body">
+        <div className={cx("settings-body")}>
           {tab === 'general' && (
             <>
               {row(
@@ -413,7 +417,7 @@ export function SettingsDialog() {
               )}
               {row(
                 '一覧のカラム幅',
-                <button className="btn" onClick={() => update({ columnWidths: DEFAULT_COLUMN_WIDTHS })}>
+                <button className={cx("btn")} onClick={() => update({ columnWidths: DEFAULT_COLUMN_WIDTHS })}>
                   既定に戻す
                 </button>,
               )}
@@ -480,10 +484,10 @@ export function SettingsDialog() {
 
           {tab === 'menu' && (
             <div>
-              <p className="settings-hint">チェックを外した項目はコンテキストメニューに表示されません。</p>
+              <p className={cx("settings-hint")}>チェックを外した項目はコンテキストメニューに表示されません。</p>
               {draft &&
                 MENU_ITEMS.map(({ key, label }) => (
-                  <label key={key} className="settings-check-row">
+                  <label key={key} className={cx("settings-check-row")}>
                     <input
                       type="checkbox"
                       checked={draft.contextMenu[key] !== false}
@@ -496,34 +500,34 @@ export function SettingsDialog() {
           )}
 
           {tab === 'tools' && draft && (
-            <div className="tool-editor">
-              <p className="settings-hint">
+            <div className={cx("tool-editor")}>
+              <p className={cx("settings-hint")}>
                 コンテキストメニューから起動するツール。行をクリックすると編集ダイアログを開きます。
               </p>
-              {draft.externalTools.length === 0 && <p className="settings-empty">ツールがありません。</p>}
+              {draft.externalTools.length === 0 && <p className={cx("settings-empty")}>ツールがありません。</p>}
               {draft.externalTools.map((t, i) => (
-                <div className="tool-list-row" key={t.id}>
-                  <button className="tool-list-main" onClick={() => setEditingTool({ index: i, tool: t })}>
-                    <span className="tool-list-label">{t.label || '(無題)'}</span>
-                    <span className="tool-list-sub">{toolSummary(t)}</span>
+                <div className={cx("tool-list-row")} key={t.id}>
+                  <button className={cx("tool-list-main")} onClick={() => setEditingTool({ index: i, tool: t })}>
+                    <span className={cx("tool-list-label")}>{t.label || '(無題)'}</span>
+                    <span className={cx("tool-list-sub")}>{toolSummary(t)}</span>
                   </button>
-                  <div className="tool-list-actions">
-                    <button className="btn" title="上へ" onClick={() => moveTool(i, -1)}>
+                  <div className={cx("tool-list-actions")}>
+                    <button className={cx("btn")} title="上へ" onClick={() => moveTool(i, -1)}>
                       ▲
                     </button>
-                    <button className="btn" title="下へ" onClick={() => moveTool(i, 1)}>
+                    <button className={cx("btn")} title="下へ" onClick={() => moveTool(i, 1)}>
                       ▼
                     </button>
-                    <button className="btn danger" title="削除" onClick={() => removeTool(i)}>
+                    <button className={cx("btn danger")} title="削除" onClick={() => removeTool(i)}>
                       ✕
                     </button>
                   </div>
                 </div>
               ))}
 
-              <div className="tool-add-row">
+              <div className={cx("tool-add-row")}>
                 <button
-                  className="btn"
+                  className={cx("btn")}
                   onClick={() =>
                     setEditingTool({ index: -1, tool: { id: crypto.randomUUID(), label: '新しいツール', command: '', kind: 'any' } })
                   }
@@ -550,14 +554,14 @@ export function SettingsDialog() {
                 </select>
               </div>
 
-              <div className="settings-subtitle">拡張子ごとの既定ツール (ダブルクリック / Enter)</div>
-              <p className="settings-hint">
+              <div className={cx("settings-subtitle")}>拡張子ごとの既定ツール (ダブルクリック / Enter)</div>
+              <p className={cx("settings-hint")}>
                 設定した拡張子のファイルは、ダブルクリック時にそのツールで開きます (未設定はアプリ内エディタ)。
               </p>
               {extRows.map((r, i) => (
-                <div className="ext-default-row" key={i}>
+                <div className={cx("ext-default-row")} key={i}>
                   <input
-                    className="dialog-input ext-input"
+                    className={cx("dialog-input ext-input")}
                     placeholder="png"
                     value={r.ext}
                     onChange={(e) => updateExtRow(i, { ext: e.target.value })}
@@ -573,13 +577,13 @@ export function SettingsDialog() {
                       </option>
                     ))}
                   </select>
-                  <button className="btn danger" title="削除" onClick={() => removeExtRow(i)}>
+                  <button className={cx("btn danger")} title="削除" onClick={() => removeExtRow(i)}>
                     ✕
                   </button>
                 </div>
               ))}
-              <div className="tool-add-row">
-                <button className="btn" onClick={addExtRow}>
+              <div className={cx("tool-add-row")}>
+                <button className={cx("btn")} onClick={addExtRow}>
                   + 拡張子を追加
                 </button>
               </div>
@@ -587,30 +591,30 @@ export function SettingsDialog() {
           )}
 
           {tab === 'diff' && draft && (
-            <div className="tool-editor">
-              <p className="settings-hint">
+            <div className={cx("tool-editor")}>
+              <p className={cx("settings-hint")}>
                 差分表示に使う外部ツール (WinMerge / Meld / VS Code など)。行をクリックすると編集ダイアログを開きます。
               </p>
-              {draft.diffTools.length === 0 && <p className="settings-empty">ツールがありません。</p>}
+              {draft.diffTools.length === 0 && <p className={cx("settings-empty")}>ツールがありません。</p>}
               {draft.diffTools.map((t, i) => (
-                <div className="tool-list-row" key={t.id}>
-                  <button className="tool-list-main" onClick={() => setEditingDiff({ index: i, tool: t })}>
-                    <span className="tool-list-label">
+                <div className={cx("tool-list-row")} key={t.id}>
+                  <button className={cx("tool-list-main")} onClick={() => setEditingDiff({ index: i, tool: t })}>
+                    <span className={cx("tool-list-label")}>
                       {t.label || '(無題)'}
-                      {t.default && <span className="tool-badge">既定</span>}
+                      {t.default && <span className={cx("tool-badge")}>既定</span>}
                     </span>
-                    <span className="tool-list-sub">{t.command || '(コマンド未設定)'}</span>
+                    <span className={cx("tool-list-sub")}>{t.command || '(コマンド未設定)'}</span>
                   </button>
-                  <div className="tool-list-actions">
-                    <button className="btn danger" title="削除" onClick={() => removeDiff(i)}>
+                  <div className={cx("tool-list-actions")}>
+                    <button className={cx("btn danger")} title="削除" onClick={() => removeDiff(i)}>
                       ✕
                     </button>
                   </div>
                 </div>
               ))}
-              <div className="tool-add-row">
+              <div className={cx("tool-add-row")}>
                 <button
-                  className="btn"
+                  className={cx("btn")}
                   onClick={() =>
                     setEditingDiff({ index: -1, tool: { id: crypto.randomUUID(), label: '新しい差分ツール', command: '' } })
                   }
@@ -640,13 +644,13 @@ export function SettingsDialog() {
           )}
         </div>
 
-        <div className="settings-row">
-          <span className="settings-label">エクスポート / インポート</span>
+        <div className={cx("settings-row")}>
+          <span className={cx("settings-label")}>エクスポート / インポート</span>
           <span>
-            <button className="btn" onClick={() => void doExport()}>
+            <button className={cx("btn")} onClick={() => void doExport()}>
               エクスポート
             </button>{' '}
-            <button className="btn" onClick={() => fileRef.current?.click()}>
+            <button className={cx("btn")} onClick={() => fileRef.current?.click()}>
               インポート
             </button>
             <input
@@ -663,12 +667,12 @@ export function SettingsDialog() {
           </span>
         </div>
 
-        <div className="dialog-buttons">
-          {dirty && <span className="settings-dirty">未保存の変更があります</span>}
-          <button className="btn primary" onClick={() => void doSave()} disabled={!dirty || saving}>
+        <div className={cx("dialog-buttons")}>
+          {dirty && <span className={cx("settings-dirty")}>未保存の変更があります</span>}
+          <button className={cx("btn primary")} onClick={() => void doSave()} disabled={!dirty || saving}>
             {saving ? '保存中…' : '保存'}
           </button>
-          <button className="btn" onClick={() => setSettingsOpen(false)}>
+          <button className={cx("btn")} onClick={() => setSettingsOpen(false)}>
             閉じる
           </button>
         </div>

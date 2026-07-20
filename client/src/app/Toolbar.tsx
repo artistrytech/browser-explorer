@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useExplorer } from '../stores/explorer';
 import { useUi } from '../stores/ui';
 import { breadcrumbs, parentPath, isRootPath } from '../lib/paths';
+import styles from './Toolbar.module.scss';
+import { createCssModuleClassNames } from '../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 export function Toolbar() {
   const { path, navigate, runSearch, searchQuery, clearSearch } = useExplorer();
@@ -31,15 +35,15 @@ export function Toolbar() {
   };
 
   return (
-    <div className="toolbar">
-      <button className="tool-btn" title="戻る (Alt+←)" onClick={() => history.back()}>
+    <div className={cx("toolbar")}>
+      <button className={cx("tool-btn")} title="戻る (Alt+←)" onClick={() => history.back()}>
         ←
       </button>
-      <button className="tool-btn" title="進む (Alt+→)" onClick={() => history.forward()}>
+      <button className={cx("tool-btn")} title="進む (Alt+→)" onClick={() => history.forward()}>
         →
       </button>
       <button
-        className="tool-btn"
+        className={cx("tool-btn")}
         title="上の階層へ (Alt+↑)"
         disabled={isRootPath(path)}
         onClick={() => void navigate(parentPath(path))}
@@ -47,11 +51,11 @@ export function Toolbar() {
         ↑
       </button>
 
-      <div className="address-bar" onClick={() => !editing && setEditing(true)}>
+      <div className={cx("address-bar")} onClick={() => !editing && setEditing(true)}>
         {editing ? (
           <input
             ref={inputRef}
-            className="address-input"
+            className={cx("address-input")}
             value={addressValue}
             onChange={(e) => setAddressValue(e.target.value)}
             onBlur={submitAddress}
@@ -64,11 +68,11 @@ export function Toolbar() {
             }}
           />
         ) : (
-          <div className="breadcrumbs">
+          <div className={cx("breadcrumbs")}>
             {breadcrumbs(path).map((c, i, arr) => (
-              <span key={c.path} className="crumb-wrap">
+              <span key={c.path} className={cx("crumb-wrap")}>
                 <button
-                  className="crumb"
+                  className={cx("crumb")}
                   onClick={(e) => {
                     e.stopPropagation();
                     void navigate(c.path);
@@ -76,16 +80,16 @@ export function Toolbar() {
                 >
                   {c.name}
                 </button>
-                {i < arr.length - 1 && <span className="crumb-sep">›</span>}
+                {i < arr.length - 1 && <span className={cx("crumb-sep")}>›</span>}
               </span>
             ))}
           </div>
         )}
       </div>
 
-      <div className="search-box">
+      <div className={cx("search-box")}>
         <input
-          className="search-input"
+          className={cx("search-input")}
           placeholder="🔍 名前で検索"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -99,7 +103,7 @@ export function Toolbar() {
         />
         {searchQuery && (
           <button
-            className="tool-btn"
+            className={cx("tool-btn")}
             title="検索をクリア"
             onClick={() => {
               setSearch('');
@@ -111,7 +115,7 @@ export function Toolbar() {
         )}
       </div>
 
-      <button className="tool-btn" title="設定" onClick={() => setSettingsOpen(true)}>
+      <button className={cx("tool-btn")} title="設定" onClick={() => setSettingsOpen(true)}>
         ⚙
       </button>
     </div>

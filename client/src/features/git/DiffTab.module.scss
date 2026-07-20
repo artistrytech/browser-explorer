@@ -1,0 +1,95 @@
+.empty-hint {
+  padding: 28px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.status-spacer {
+  flex: 1;
+}
+
+.status-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 3px;
+  padding: 1px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.status-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.status-btn:disabled {
+  opacity: 0.45;
+}
+
+.status-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.status-btn.danger {
+  color: var(--danger);
+}
+
+.graph-hash {
+  flex: none;
+  font-family: Consolas, 'Courier New', monospace;
+  color: var(--text-dim);
+}
+
+.dialog-close {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.dialog-close:hover {
+  color: var(--danger);
+}
+
+.diff-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.diff-tab-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+}
+
+.diff-tab-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-tab-subject {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+
+.diff-tab-legend {
+  color: var(--text-dim);
+  font-size: 11px;
+  flex: none;
+}
+
+.diff-tab-editor {
+  flex: 1;
+  min-height: 0;
+}

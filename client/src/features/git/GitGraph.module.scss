@@ -1,0 +1,147 @@
+.empty-hint {
+  padding: 28px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn.primary.danger,
+.btn.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.git-graph {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.graph-toolbar {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.graph-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.graph-rows {
+  overflow: auto;
+  flex: 1;
+}
+
+.graph-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  padding: 0 6px 0 2px;
+  font-size: 12px;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.graph-row:hover {
+  background: var(--bg-hover);
+}
+
+.graph-row.active {
+  background: var(--bg-selected);
+}
+
+.graph-cell {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.graph-svg {
+  display: block;
+}
+
+.graph-hash {
+  flex: none;
+  font-family: Consolas, 'Courier New', monospace;
+  color: var(--text-dim);
+}
+
+.graph-subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.graph-meta {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.graph-more {
+  margin: 8px;
+}
+
+.ref-chip {
+  flex: none;
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+}
+
+.ref-chip.ref-head {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.ref-chip.ref-remote {
+  color: var(--text-dim);
+}
+
+.ref-chip.ref-tag {
+  border-color: #b8860b;
+  color: #b8860b;
+}

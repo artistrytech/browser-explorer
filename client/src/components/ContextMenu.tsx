@@ -1,5 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
+import styles from './ContextMenu.module.scss';
+import { createCssModuleClassNames } from '../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 export interface MenuItem {
   label?: string;
@@ -46,7 +50,7 @@ function Submenu({ items, close }: { items: MenuItem[]; close: () => void }) {
     }
   }, []);
   return (
-    <div ref={ref} className="context-menu submenu">
+    <div ref={ref} className={cx("context-menu submenu")}>
       <MenuList items={items} close={close} />
     </div>
   );
@@ -60,28 +64,28 @@ function MenuList({ items, close }: { items: MenuItem[]; close: () => void }) {
     <>
       {items.map((item, i) =>
         item.separator ? (
-          <div key={i} className="menu-separator" />
+          <div key={i} className={cx("menu-separator")} />
         ) : item.submenu ? (
           <div
             key={i}
-            className="menu-group"
+            className={cx("menu-group")}
             onMouseEnter={() => setOpenIndex(i)}
             onMouseLeave={() => setOpenIndex((cur) => (cur === i ? null : cur))}
           >
             <button
-              className={`menu-item has-submenu${openIndex === i ? ' open' : ''}`}
+              className={cx(`menu-item has-submenu${openIndex === i ? ' open' : ''}`)}
               disabled={item.disabled}
               onClick={() => setOpenIndex(i)}
             >
               <span>{item.label}</span>
-              <span className="menu-arrow">▶</span>
+              <span className={cx("menu-arrow")}>▶</span>
             </button>
             {openIndex === i && <Submenu items={item.submenu} close={close} />}
           </div>
         ) : (
           <button
             key={i}
-            className={`menu-item${item.danger ? ' danger' : ''}`}
+            className={cx(`menu-item${item.danger ? ' danger' : ''}`)}
             disabled={item.disabled}
             onClick={(e) => {
               close();
@@ -134,7 +138,7 @@ export function ContextMenuHost() {
   if (!visible) return null;
 
   return (
-    <div ref={ref} className="context-menu" style={{ left: x, top: y }}>
+    <div ref={ref} className={cx("context-menu")} style={{ left: x, top: y }}>
       <MenuList items={items} close={close} />
     </div>
   );

@@ -1,0 +1,90 @@
+.sidebar {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-alt);
+  padding: 6px 0;
+}
+
+.side-section {
+  margin-bottom: 12px;
+}
+
+.side-heading {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 4px 12px;
+  text-transform: none;
+}
+
+.side-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 5px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.side-item:hover {
+  background: var(--bg-hover);
+}
+
+.side-item.active {
+  background: var(--bg-selected);
+}
+
+.side-icon {
+  width: 18px;
+  text-align: center;
+  flex: none;
+}
+
+.side-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-empty {
+  color: var(--text-dim);
+  padding: 2px 12px;
+  font-size: 12px;
+}
+
+.side-item-wrap {
+  position: relative;
+  display: flex;
+}
+
+.side-item-wrap .side-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.side-unpin {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.side-item-wrap:hover .side-unpin,
+.side-item-wrap:focus-within .side-unpin {
+  display: block;
+}
+
+.side-unpin:hover {
+  background: var(--bg-selected);
+  color: var(--danger);
+}

@@ -1,0 +1,384 @@
+.empty-hint {
+  padding: 28px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn.primary.danger,
+.btn.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.status-spacer {
+  flex: 1;
+}
+
+.status-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 3px;
+  padding: 1px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.status-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.status-btn:disabled {
+  opacity: 0.45;
+}
+
+.status-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.status-btn.danger {
+  color: var(--danger);
+}
+
+.git-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.git-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+  flex-wrap: wrap;
+}
+
+.git-repo-name {
+  font-weight: 600;
+}
+
+.git-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.git-left {
+  width: 44%;
+  min-width: 300px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding: 8px;
+}
+
+.git-left.graph-host {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.git-right {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+}
+
+.git-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin: 10px 0 4px;
+}
+
+.git-file-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.git-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.git-file-name:hover {
+  background: var(--bg-hover);
+}
+
+.git-file-status {
+  display: inline-block;
+  min-width: 42px;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.git-file-row {
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+}
+
+.git-file-row:hover {
+  background: var(--bg-hover);
+}
+
+.git-file-row.selected,
+.git-file-row.selected:hover {
+  background: var(--bg-selected);
+}
+
+.git-file-row.selected:hover .git-file-name,
+.git-file-row.selected .git-file-name:hover {
+  background: transparent;
+}
+
+.git-file-name {
+  display: block;
+}
+
+.git-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.commit-box {
+  margin-top: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.commit-message {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+}
+
+.amend-label {
+  display: block;
+  margin: 6px 0 10px;
+  color: var(--text-dim);
+}
+
+.commit-message-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.git-section-title-text {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.commit-full-message .commit-body {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.log-meta {
+  grid-column: 2;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.branch-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.branch-row > span {
+  flex: 1;
+  white-space: pre;
+}
+
+.branch-current {
+  font-weight: 700;
+  color: var(--add);
+}
+
+.git-branches .btn {
+  margin-bottom: 8px;
+}
+
+.commit-detail-head {
+  padding: 6px 4px 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.log-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+  position: sticky;
+  top: 0;
+}
+
+.log-filter-path {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merge-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--del-bg, #fdeaea);
+  border-bottom: 1px solid var(--danger);
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.commit-files {
+  width: 100%;
+  border-collapse: collapse;
+  user-select: none;
+  font-size: 12px;
+}
+
+.commit-files th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-dim);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+}
+
+.commit-files td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.commit-files tbody tr {
+  cursor: pointer;
+}
+
+.commit-files tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.commit-files tbody tr.focused {
+  background: var(--bg-selected);
+}
+
+.commit-files .num {
+  text-align: right;
+  width: 60px;
+  font-family: Consolas, 'Courier New', monospace;
+}
+
+.cf-status {
+  width: 72px;
+  font-weight: 600;
+}
+
+.cf-status.st-add { color: var(--add); }
+
+.cf-status.st-mod { color: #e08a00; }
+
+.cf-status.st-del { color: var(--danger); }
+
+.cf-path {
+  max-width: 0;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cf-added { color: var(--add); }
+
+.cf-deleted { color: var(--danger); }
+
+.commit-files-hint {
+  padding: 6px 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.cf-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px;
+}
+
+.cf-filter {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.cf-count {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}

@@ -1,0 +1,64 @@
+:global {
+  * {
+    box-sizing: border-box;
+  }
+
+  :root,
+  body[data-theme='light'] {
+    --bg: #ffffff;
+    --bg-alt: #f3f3f3;
+    --bg-hover: #e8f0fe;
+    --bg-selected: #cce4ff;
+    --border: #d9d9d9;
+    --text: #1f1f1f;
+    --text-dim: #707070;
+    --accent: #0067c0;
+    --danger: #c42b1c;
+    --add: #107c10;
+    --add-bg: #e6f4e6;
+    --del: #c42b1c;
+    --del-bg: #fde7e9;
+  }
+
+  body[data-theme='dark'] {
+    --bg: #1e1e1e;
+    --bg-alt: #252526;
+    --bg-hover: #2a2d2e;
+    --bg-selected: #094771;
+    --border: #3c3c3c;
+    --text: #d4d4d4;
+    --text-dim: #9a9a9a;
+    --accent: #4daafc;
+    --danger: #f48771;
+    --add: #4ec94e;
+    --add-bg: #173117;
+    --del: #f48771;
+    --del-bg: #3b1a1d;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    font-family: 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', Meiryo, sans-serif;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  button {
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+  }
+}
+
+:global(body.col-resizing) {
+  cursor: col-resize;
+  user-select: none;
+}

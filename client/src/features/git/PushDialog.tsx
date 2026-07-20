@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { useGit } from '../../stores/git';
 import { runGitCommands } from './GitCommandDialog';
+import styles from './PushDialog.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 /**
  * Push オプションダイアログ:
@@ -72,35 +76,35 @@ export function PushDialog() {
   };
 
   return (
-    <div className="dialog-backdrop">
-      <div className="dialog push-dialog">
-        <div className="dialog-title">Push</div>
-        <div className="clone-form">
-          <div className="clone-row">
-            <span className="clone-label wide">ローカル:</span>
+    <div className={cx("dialog-backdrop")}>
+      <div className={cx("dialog push-dialog")}>
+        <div className={cx("dialog-title")}>Push</div>
+        <div className={cx("clone-form")}>
+          <div className={cx("clone-row")}>
+            <span className={cx("clone-label wide")}>ローカル:</span>
             <b>{branch || '(不明)'}</b>
           </div>
-          <label className="clone-row">
-            <span className="clone-label wide">リモート:</span>
+          <label className={cx("clone-row")}>
+            <span className={cx("clone-label wide")}>リモート:</span>
             <input
-              className="clone-input small"
+              className={cx("clone-input small")}
               value={remote}
               onChange={(e) => setRemote(e.target.value)}
             />
           </label>
-          <label className="clone-row">
-            <span className="clone-label wide">リモートブランチ:</span>
+          <label className={cx("clone-row")}>
+            <span className={cx("clone-label wide")}>リモートブランチ:</span>
             <input
-              className="clone-input"
+              className={cx("clone-input")}
               value={remoteBranch}
               placeholder={branch ? `(空欄で ${branch} と同名)` : ''}
               onChange={(e) => setRemoteBranch(e.target.value)}
             />
           </label>
           {tracking && (
-            <div className="clone-row push-tracking-note">現在のトラッキング先: {tracking}</div>
+            <div className={cx("clone-row push-tracking-note")}>現在のトラッキング先: {tracking}</div>
           )}
-          <label className="clone-row">
+          <label className={cx("clone-row")}>
             <input
               type="checkbox"
               checked={forceWithLease}
@@ -109,11 +113,11 @@ export function PushDialog() {
             <span>force with lease (--force-with-lease)</span>
           </label>
         </div>
-        <div className="dialog-buttons">
-          <button className="btn" onClick={close}>
+        <div className={cx("dialog-buttons")}>
+          <button className={cx("btn")} onClick={close}>
             キャンセル
           </button>
-          <button className="btn primary" disabled={!branch} onClick={doPush}>
+          <button className={cx("btn primary")} disabled={!branch} onClick={doPush}>
             Push
           </button>
         </div>

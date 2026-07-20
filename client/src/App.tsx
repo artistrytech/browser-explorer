@@ -35,6 +35,10 @@ import {
 import { onFsChange } from './api/ws';
 import { api } from './api/client';
 import { parentPath, isRootPath, baseName } from './lib/paths';
+import styles from './App.module.scss';
+import { createCssModuleClassNames } from './lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 export default function App() {
   const path = useExplorer((s) => s.path);
@@ -174,30 +178,30 @@ export default function App() {
   }, [view, diffTarget]);
 
   return (
-    <div className="app">
+    <div className={cx("app")}>
       <Toolbar />
-      <div className="view-tabs">
-        <button className={`view-tab${view === 'files' ? ' active' : ''}`} onClick={() => switchView('files')}>
+      <div className={cx("view-tabs")}>
+        <button className={cx(`view-tab${view === 'files' ? ' active' : ''}`)} onClick={() => switchView('files')}>
           📁 ファイル
         </button>
         {tabs.length > 0 && (
-          <button className={`view-tab${view === 'editor' ? ' active' : ''}`} onClick={() => switchView('editor')}>
+          <button className={cx(`view-tab${view === 'editor' ? ' active' : ''}`)} onClick={() => switchView('editor')}>
             📝 エディタ ({tabs.length})
           </button>
         )}
         {/* Git 系は独立した最上位タブ (コミットは旧「変更」と同機能)。履歴もそれぞれ独立 */}
-        <button className={`view-tab${view === 'commit' ? ' active' : ''}`} onClick={() => switchView('commit')}>
+        <button className={cx(`view-tab${view === 'commit' ? ' active' : ''}`)} onClick={() => switchView('commit')}>
           🌿 コミット
         </button>
-        <button className={`view-tab${view === 'log' ? ' active' : ''}`} onClick={() => switchView('log')}>
+        <button className={cx(`view-tab${view === 'log' ? ' active' : ''}`)} onClick={() => switchView('log')}>
           📜 ログ
         </button>
-        <button className={`view-tab${view === 'branches' ? ' active' : ''}`} onClick={() => switchView('branches')}>
+        <button className={cx(`view-tab${view === 'branches' ? ' active' : ''}`)} onClick={() => switchView('branches')}>
           🔀 ブランチ
         </button>
         {diffTarget && (
           <button
-            className={`view-tab${view === 'diff' ? ' active' : ''}`}
+            className={cx(`view-tab${view === 'diff' ? ' active' : ''}`)}
             onClick={() => switchView('diff')}
             onMouseDown={(e) => {
               // 中クリックでも閉じられるように (エディタタブと同様)
@@ -209,7 +213,7 @@ export default function App() {
           >
             ± {baseName(diffTarget.path)}
             <span
-              className="view-tab-close"
+              className={cx("view-tab-close")}
               title="差分タブを閉じる"
               onClick={(e) => {
                 e.stopPropagation();
@@ -221,26 +225,26 @@ export default function App() {
           </button>
         )}
       </div>
-      <PanelGroup direction="horizontal" className="main-split">
+      <PanelGroup direction="horizontal" className={cx("main-split")}>
         <Panel defaultSize={18} minSize={12} maxSize={40}>
           <Sidebar />
         </Panel>
-        <PanelResizeHandle className="resize-handle" />
+        <PanelResizeHandle className={cx("resize-handle")} />
         <Panel>
-          <div className="main-area">
-            <div className={`main-view${view === 'files' ? '' : ' hidden'}`}>
+          <div className={cx("main-area")}>
+            <div className={cx(`main-view${view === 'files' ? '' : ' hidden'}`)}>
               <FileList />
             </div>
-            <div className={`main-view${view === 'editor' ? '' : ' hidden'}`}>
+            <div className={cx(`main-view${view === 'editor' ? '' : ' hidden'}`)}>
               {tabs.length > 0 && <EditorPane />}
             </div>
-            <div className={`main-view${isGitView(view) ? '' : ' hidden'}`}>
+            <div className={cx(`main-view${isGitView(view) ? '' : ' hidden'}`)}>
               {/* コミット/ログ/ブランチ間の切替では GitPanel をアンマウントせず状態を保つ */}
               {isGitView(view) && (
                 <GitPanel tab={view === 'commit' ? 'changes' : view === 'log' ? 'log' : 'branches'} />
               )}
             </div>
-            <div className={`main-view${view === 'diff' ? '' : ' hidden'}`}>
+            <div className={cx(`main-view${view === 'diff' ? '' : ' hidden'}`)}>
               {view === 'diff' && <DiffTab />}
             </div>
           </div>

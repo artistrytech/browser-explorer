@@ -6,6 +6,10 @@ import { useExplorer } from '../../stores/explorer';
 import { useSettings } from '../../stores/settings';
 import { useToast, toastError } from '../../stores/toast';
 import { joinPath } from '../../lib/paths';
+import styles from './CloneDialog.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 /** Git Clone ダイアログ (002.md §3): TortoiseGit のクローンダイアログに倣った UI */
 
@@ -131,14 +135,14 @@ export function CloneDialog() {
   };
 
   return (
-    <div className="dialog-backdrop">
-      <div className="dialog clone-dialog">
-        <div className="dialog-title">Git Clone</div>
-        <div className="clone-form">
-          <label className="clone-row">
-            <span className="clone-label">URL:</span>
+    <div className={cx("dialog-backdrop")}>
+      <div className={cx("dialog clone-dialog")}>
+        <div className={cx("dialog-title")}>Git Clone</div>
+        <div className={cx("clone-form")}>
+          <label className={cx("clone-row")}>
+            <span className={cx("clone-label")}>URL:</span>
             <input
-              className="clone-input"
+              className={cx("clone-input")}
               autoFocus
               placeholder="https://github.com/user/repo.git"
               value={url}
@@ -146,10 +150,10 @@ export function CloneDialog() {
               onChange={(e) => setUrl(e.target.value)}
             />
           </label>
-          <label className="clone-row">
-            <span className="clone-label">保存先:</span>
+          <label className={cx("clone-row")}>
+            <span className={cx("clone-label")}>保存先:</span>
             <input
-              className="clone-input"
+              className={cx("clone-input")}
               value={dir}
               disabled={busy}
               onChange={(e) => {
@@ -158,22 +162,22 @@ export function CloneDialog() {
               }}
             />
           </label>
-          <div className="clone-options-title">オプション</div>
-          <label className="clone-row">
+          <div className={cx("clone-options-title")}>オプション</div>
+          <label className={cx("clone-row")}>
             <input type="checkbox" checked={useBranch} disabled={busy} onChange={(e) => setUseBranch(e.target.checked)} />
             <span>ブランチ指定</span>
             <input
-              className="clone-input small"
+              className={cx("clone-input small")}
               value={branch}
               disabled={busy || !useBranch}
               onChange={(e) => setBranch(e.target.value)}
             />
           </label>
-          <label className="clone-row">
+          <label className={cx("clone-row")}>
             <input type="checkbox" checked={useDepth} disabled={busy} onChange={(e) => setUseDepth(e.target.checked)} />
             <span>Shallow (depth)</span>
             <input
-              className="clone-input tiny"
+              className={cx("clone-input tiny")}
               type="number"
               min={1}
               value={depth}
@@ -181,27 +185,27 @@ export function CloneDialog() {
               onChange={(e) => setDepth(Math.max(1, Number(e.target.value) || 1))}
             />
           </label>
-          <label className="clone-row">
+          <label className={cx("clone-row")}>
             <input type="checkbox" checked={recursive} disabled={busy} onChange={(e) => setRecursive(e.target.checked)} />
             <span>サブモジュールも取得 (--recursive)</span>
           </label>
-          <label className="clone-row">
+          <label className={cx("clone-row")}>
             <input type="checkbox" checked={openAfter} disabled={busy} onChange={(e) => setOpenAfter(e.target.checked)} />
             <span>クローン後に開く</span>
           </label>
         </div>
 
         {(busy || log.length > 0) && (
-          <pre ref={logRef} className={`clone-log${failed ? ' failed' : ''}`}>
+          <pre ref={logRef} className={cx(`clone-log${failed ? ' failed' : ''}`)}>
             {busy && log.length === 0 ? 'clone を開始しています…' : log.join('\n')}
           </pre>
         )}
 
-        <div className="dialog-buttons">
-          <button className="btn" disabled={busy} onClick={close}>
+        <div className={cx("dialog-buttons")}>
+          <button className={cx("btn")} disabled={busy} onClick={close}>
             キャンセル
           </button>
-          <button className="btn primary" disabled={busy || !url.trim() || !dir.trim()} onClick={() => void startClone()}>
+          <button className={cx("btn primary")} disabled={busy || !url.trim() || !dir.trim()} onClick={() => void startClone()}>
             {busy ? 'Clone 中…' : 'Clone'}
           </button>
         </div>

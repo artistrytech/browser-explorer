@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { useGit } from '../../stores/git';
 import { runGitCommands } from './GitCommandDialog';
+import styles from './FetchDialog.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 /** Fetch 確認ダイアログ: Prune オプションを選んで実行する (Push と同様のフロー) */
 
@@ -38,21 +42,21 @@ export function FetchDialog() {
   };
 
   return (
-    <div className="dialog-backdrop">
-      <div className="dialog push-dialog">
-        <div className="dialog-title">Fetch</div>
-        <div className="clone-form">
-          <div className="clone-row">リモートの最新状態を取得します (git fetch)。</div>
-          <label className="clone-row">
+    <div className={cx("dialog-backdrop")}>
+      <div className={cx("dialog push-dialog")}>
+        <div className={cx("dialog-title")}>Fetch</div>
+        <div className={cx("clone-form")}>
+          <div className={cx("clone-row")}>リモートの最新状態を取得します (git fetch)。</div>
+          <label className={cx("clone-row")}>
             <input type="checkbox" checked={prune} onChange={(e) => setPrune(e.target.checked)} />
             <span>Prune: リモートで削除されたブランチの追跡情報も削除 (--prune)</span>
           </label>
         </div>
-        <div className="dialog-buttons">
-          <button className="btn" onClick={close}>
+        <div className={cx("dialog-buttons")}>
+          <button className={cx("btn")} onClick={close}>
             キャンセル
           </button>
-          <button className="btn primary" onClick={doFetch}>
+          <button className={cx("btn primary")} onClick={doFetch}>
             Fetch
           </button>
         </div>

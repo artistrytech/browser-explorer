@@ -1,0 +1,87 @@
+.status-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 3px;
+  padding: 1px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.status-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.status-btn:disabled {
+  opacity: 0.45;
+}
+
+.status-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.status-btn.danger {
+  color: var(--danger);
+}
+
+.editor-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.editor-tabs {
+  display: flex;
+  align-items: center;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex: none;
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 14px;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.editor-tab.active {
+  background: var(--bg);
+  border-bottom: 2px solid var(--accent);
+}
+
+.editor-tab:hover:not(.active) {
+  background: var(--bg-hover);
+}
+
+.tab-close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0 4px;
+  color: var(--text-dim);
+}
+
+.tab-close:hover {
+  background: var(--bg-hover);
+  color: var(--danger);
+}
+
+.editor-tab-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  padding: 0 10px;
+}
+
+.monaco-container {
+  flex: 1;
+  min-height: 0;
+}

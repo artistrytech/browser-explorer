@@ -7,6 +7,10 @@ import { useSettings } from '../../stores/settings';
 import { useToast, toastError } from '../../stores/toast';
 import { confirmDialog } from '../../stores/dialog';
 import type { ConflictFile, ConflictVersions } from '../../types';
+import styles from './ConflictResolver.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 /**
  * マージ競合の解消 (002.md §2):
@@ -149,39 +153,39 @@ function ConflictList() {
 
   return (
     <>
-      <div className="conflict-head">
+      <div className={cx("conflict-head")}>
         <b>競合を解消{dir ? `: ${dir}/` : ''} ({files.length} 件)</b>
-        <span className="status-spacer" />
-        <button className="dialog-close" onClick={close} title="閉じる">✕</button>
+        <span className={cx("status-spacer")} />
+        <button className={cx("dialog-close")} onClick={close} title="閉じる">✕</button>
       </div>
-      <div className="conflict-list">
+      <div className={cx("conflict-list")}>
         {files.map((f) => (
-          <button key={f.path} className="conflict-row" onClick={() => openFile(f.path)}>
-            <span className="ov-conflicted">⚠</span>
-            <span className="conflict-path">{f.path}</span>
-            <span className="conflict-kind">
+          <button key={f.path} className={cx("conflict-row")} onClick={() => openFile(f.path)}>
+            <span className={cx("ov-conflicted")}>⚠</span>
+            <span className={cx("conflict-path")}>{f.path}</span>
+            <span className={cx("conflict-kind")}>
               {f.kind}
               {f.binary ? ' (binary)' : ''}
             </span>
           </button>
         ))}
-        {resolvedCount > 0 && <div className="conflict-resolved-note">✔ {resolvedCount} 件 解決済み</div>}
+        {resolvedCount > 0 && <div className={cx("conflict-resolved-note")}>✔ {resolvedCount} 件 解決済み</div>}
         {files.length === 0 && (
-          <div className="empty-hint">
+          <div className={cx("empty-hint")}>
             {mergeState.inProgress ? 'すべての競合が解決されました。' : '競合はありません。'}
           </div>
         )}
       </div>
-      <div className="conflict-actions">
-        <button className="btn" disabled={busy || files.length === 0} onClick={() => takeAll('ours')}>
+      <div className={cx("conflict-actions")}>
+        <button className={cx("btn")} disabled={busy || files.length === 0} onClick={() => takeAll('ours')}>
           すべて自分 (ours) を採用
         </button>
-        <button className="btn" disabled={busy || files.length === 0} onClick={() => takeAll('theirs')}>
+        <button className={cx("btn")} disabled={busy || files.length === 0} onClick={() => takeAll('theirs')}>
           すべて相手 (theirs) を採用
         </button>
         {mergeState.inProgress && files.length === 0 && (
           <button
-            className="btn primary"
+            className={cx("btn primary")}
             disabled={busy}
             onClick={() =>
               void run(() => api.gitMergeContinue(repoRoot), 'マージを完了しました').then(() =>
@@ -192,11 +196,11 @@ function ConflictList() {
             マージを完了 (コミット)
           </button>
         )}
-        <span className="status-spacer" />
-        <span className="conflict-remaining">残り: {files.length} 件</span>
+        <span className={cx("status-spacer")} />
+        <span className={cx("conflict-remaining")}>残り: {files.length} 件</span>
         {mergeState.inProgress && (
           <button
-            className="btn danger"
+            className={cx("btn danger")}
             disabled={busy}
             onClick={() =>
               void confirmDialog('マージを中止', '進行中の操作を中止して開始前の状態へ戻します。よろしいですか?', true).then(
@@ -349,7 +353,7 @@ function MergeTool({ file }: { file: string }) {
     return segs.map((seg, i) => {
       if (seg.type === 'text') {
         return (
-          <pre key={i} className="merge-text">
+          <pre key={i} className={cx("merge-text")}>
             {seg.lines.join('\n')}
           </pre>
         );
@@ -360,23 +364,23 @@ function MergeTool({ file }: { file: string }) {
       const r = res[idx];
       const adopted = r === side || r === 'both' || r === 'both-rev';
       return (
-        <div key={i} className={`merge-conflict${r !== null ? (adopted ? ' adopted' : ' rejected') : ''}`}>
-          <div className="merge-conflict-bar">
-            <span className="merge-conflict-no">#{idx + 1}</span>
+        <div key={i} className={cx(`merge-conflict${r !== null ? (adopted ? ' adopted' : ' rejected') : ''}`)}>
+          <div className={cx("merge-conflict-bar")}>
+            <span className={cx("merge-conflict-no")}>#{idx + 1}</span>
             {side === 'ours' ? (
               <>
-                <button className="status-btn" onClick={() => adopt(idx, 'ours')}>◀ この塊を採用</button>
-                <button className="status-btn" onClick={() => adopt(idx, 'both')}>両方採用 (自分→相手)</button>
-                <button className="status-btn" onClick={() => adopt(idx, 'both-rev')}>両方 (相手→自分)</button>
+                <button className={cx("status-btn")} onClick={() => adopt(idx, 'ours')}>◀ この塊を採用</button>
+                <button className={cx("status-btn")} onClick={() => adopt(idx, 'both')}>両方採用 (自分→相手)</button>
+                <button className={cx("status-btn")} onClick={() => adopt(idx, 'both-rev')}>両方 (相手→自分)</button>
               </>
             ) : (
-              <button className="status-btn" onClick={() => adopt(idx, 'theirs')}>この塊を採用 ▶</button>
+              <button className={cx("status-btn")} onClick={() => adopt(idx, 'theirs')}>この塊を採用 ▶</button>
             )}
             {r !== null && (
-              <button className="status-btn" onClick={() => adopt(idx, null)} title="未解決に戻す">↺</button>
+              <button className={cx("status-btn")} onClick={() => adopt(idx, null)} title="未解決に戻す">↺</button>
             )}
           </div>
-          <pre className="merge-conflict-body">{lines.join('\n') || '(空)'}</pre>
+          <pre className={cx("merge-conflict-body")}>{lines.join('\n') || '(空)'}</pre>
         </div>
       );
     });
@@ -394,11 +398,11 @@ function MergeTool({ file }: { file: string }) {
   if (!versions) {
     return (
       <>
-        <div className="conflict-head">
-          <button className="btn" onClick={backToList}>← 一覧へ</button>
+        <div className={cx("conflict-head")}>
+          <button className={cx("btn")} onClick={backToList}>← 一覧へ</button>
           <b>{file}</b>
         </div>
-        <div className="empty-hint">読み込み中…</div>
+        <div className={cx("empty-hint")}>読み込み中…</div>
       </>
     );
   }
@@ -409,12 +413,12 @@ function MergeTool({ file }: { file: string }) {
     const theirsMissing = versions.theirs === null;
     return (
       <>
-        <div className="conflict-head">
-          <button className="btn" onClick={backToList}>← 一覧へ</button>
+        <div className={cx("conflict-head")}>
+          <button className={cx("btn")} onClick={backToList}>← 一覧へ</button>
           <b>{file} の競合を解消</b>
-          <span className="conflict-kind">{versions.kind}{versions.binary ? ' (binary)' : ''}</span>
+          <span className={cx("conflict-kind")}>{versions.kind}{versions.binary ? ' (binary)' : ''}</span>
         </div>
-        <div className="conflict-binary">
+        <div className={cx("conflict-binary")}>
           <p>
             {versions.binary
               ? 'バイナリファイルのため 3-way マージはできません。採用する側を選択してください。'
@@ -425,10 +429,10 @@ function MergeTool({ file }: { file: string }) {
                   : '採用する側を選択してください。'}
           </p>
           <div>
-            <button className="btn" disabled={busy} onClick={() => void take('ours')}>
+            <button className={cx("btn")} disabled={busy} onClick={() => void take('ours')}>
               {oursMissing ? '削除する (自分を採用)' : '自分 (ours) を採用'}
             </button>{' '}
-            <button className="btn" disabled={busy} onClick={() => void take('theirs')}>
+            <button className={cx("btn")} disabled={busy} onClick={() => void take('theirs')}>
               {theirsMissing ? '削除する (相手を採用)' : '相手 (theirs) を採用'}
             </button>
           </div>
@@ -439,33 +443,33 @@ function MergeTool({ file }: { file: string }) {
 
   return (
     <>
-      <div className="conflict-head">
-        <button className="btn" onClick={backToList}>← 一覧へ</button>
+      <div className={cx("conflict-head")}>
+        <button className={cx("btn")} onClick={backToList}>← 一覧へ</button>
         <b>{file} の競合を解消</b>
-        <span className="conflict-kind">{versions.kind}</span>
-        <span className="status-spacer" />
-        <span className="merge-hint">ブロック採用で結果を再生成します (結果ペインの手編集はその際に失われます)</span>
+        <span className={cx("conflict-kind")}>{versions.kind}</span>
+        <span className={cx("status-spacer")} />
+        <span className={cx("merge-hint")}>ブロック採用で結果を再生成します (結果ペインの手編集はその際に失われます)</span>
       </div>
-      <div className="merge-top">
-        <div className="merge-pane" ref={minePaneRef} onScroll={() => syncScroll('mine')}>
-          <div className="merge-pane-title mine">{labels.mine}</div>
+      <div className={cx("merge-top")}>
+        <div className={cx("merge-pane")} ref={minePaneRef} onScroll={() => syncScroll('mine')}>
+          <div className={cx("merge-pane-title mine")}>{labels.mine}</div>
           {renderPane('ours')}
         </div>
-        <div className="merge-pane" ref={theirsPaneRef} onScroll={() => syncScroll('theirs')}>
-          <div className="merge-pane-title theirs">{labels.theirs}</div>
+        <div className={cx("merge-pane")} ref={theirsPaneRef} onScroll={() => syncScroll('theirs')}>
+          <div className={cx("merge-pane-title theirs")}>{labels.theirs}</div>
           {renderPane('theirs')}
         </div>
       </div>
-      <div className="merge-result-title">統合結果 (編集可能 / Monaco)</div>
-      <div className="merge-result" ref={editorHostRef} />
-      <div className="conflict-actions">
-        <span className="conflict-remaining">未解決 {unresolved}/{res.length}</span>
-        <button className="status-btn" onClick={() => jumpToConflict(-1)} title="前の未解決競合">▲ 前</button>
-        <button className="status-btn" onClick={() => jumpToConflict(1)} title="次の未解決競合">▼ 次</button>
-        <span className="status-spacer" />
-        <button className="btn" disabled={busy} onClick={() => adoptAll('ours')}>自分を全採用</button>
-        <button className="btn" disabled={busy} onClick={() => adoptAll('theirs')}>相手を全採用</button>
-        <button className="btn primary" disabled={busy} onClick={() => void markResolved()}>
+      <div className={cx("merge-result-title")}>統合結果 (編集可能 / Monaco)</div>
+      <div className={cx("merge-result")} ref={editorHostRef} />
+      <div className={cx("conflict-actions")}>
+        <span className={cx("conflict-remaining")}>未解決 {unresolved}/{res.length}</span>
+        <button className={cx("status-btn")} onClick={() => jumpToConflict(-1)} title="前の未解決競合">▲ 前</button>
+        <button className={cx("status-btn")} onClick={() => jumpToConflict(1)} title="次の未解決競合">▼ 次</button>
+        <span className={cx("status-spacer")} />
+        <button className={cx("btn")} disabled={busy} onClick={() => adoptAll('ours')}>自分を全採用</button>
+        <button className={cx("btn")} disabled={busy} onClick={() => adoptAll('theirs')}>相手を全採用</button>
+        <button className={cx("btn primary")} disabled={busy} onClick={() => void markResolved()}>
           解決としてマーク
         </button>
       </div>
@@ -486,8 +490,8 @@ export function ConflictResolver() {
   if (!open || !repoRoot) return null;
 
   return (
-    <div className="conflict-overlay">
-      <div className="conflict-window">{file ? <MergeTool file={file} /> : <ConflictList />}</div>
+    <div className={cx("conflict-overlay")}>
+      <div className={cx("conflict-window")}>{file ? <MergeTool file={file} /> : <ConflictList />}</div>
     </div>
   );
 }

@@ -4,6 +4,10 @@ import { useGit } from '../stores/git';
 import { useUi } from '../stores/ui';
 import { useSettings } from '../stores/settings';
 import type { Eol } from '../types';
+import styles from './StatusBar.module.scss';
+import { createCssModuleClassNames } from '../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 const ENCODINGS = ['UTF-8', 'Shift_JIS', 'EUC-JP', 'UTF-16LE', 'UTF-16BE'];
 const EOLS: Eol[] = ['LF', 'CRLF', 'CR'];
@@ -19,7 +23,7 @@ export function StatusBar() {
   const visible = (searchResults ?? entries).filter((e) => showHidden || !e.hidden);
 
   return (
-    <div className="statusbar">
+    <div className={cx("statusbar")}>
       <span>{visible.length} 項目</span>
       {selection.length > 0 && <span>{selection.length} 個を選択</span>}
       {status?.branch && (
@@ -28,14 +32,14 @@ export function StatusBar() {
           {status.tracking ? ` ↑${status.ahead}↓${status.behind}` : ''}
         </span>
       )}
-      <span className="status-spacer" />
+      <span className={cx("status-spacer")} />
       {view === 'editor' && tab && (
         <>
           <span>
             行 {cursor.line}, 列 {cursor.col}
           </span>
           <select
-            className="status-select"
+            className={cx("status-select")}
             title="エンコーディング (変更後「再読込」でこのエンコで開き直し / Ctrl+S でこのエンコに変換保存)"
             value={tab.encoding}
             onChange={(e) => setEncoding(tab.path, e.target.value)}
@@ -47,14 +51,14 @@ export function StatusBar() {
             ))}
           </select>
           <button
-            className="status-btn"
+            className={cx("status-btn")}
             title="選択中のエンコーディングでファイルを開き直す"
             onClick={() => void reload(tab.path, tab.encoding)}
           >
             再読込
           </button>
           <select
-            className="status-select"
+            className={cx("status-select")}
             title="改行コード"
             value={tab.eol}
             onChange={(e) => setEol(tab.path, e.target.value as Eol)}
@@ -66,7 +70,7 @@ export function StatusBar() {
             ))}
           </select>
           <button
-            className={`status-btn${tab.bom ? ' on' : ''}`}
+            className={cx(`status-btn${tab.bom ? ' on' : ''}`)}
             title="BOM の有無を切替"
             onClick={() => setBom(tab.path, !tab.bom)}
           >

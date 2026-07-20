@@ -1,0 +1,77 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.view-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px;
+}
+
+.view-tab {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.view-tab.active {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.view-tab:hover {
+  background: var(--bg-hover);
+}
+
+.main-split {
+  flex: 1;
+  min-height: 0;
+}
+
+.resize-handle {
+  width: 4px;
+  background: var(--bg-alt);
+  cursor: col-resize;
+}
+
+.resize-handle:hover {
+  background: var(--accent);
+}
+
+.main-area {
+  height: 100%;
+  position: relative;
+}
+
+.main-view {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-view.hidden {
+  visibility: hidden;
+  z-index: -1;
+}
+
+.view-tab-close {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 3px;
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.view-tab-close:hover {
+  background: var(--bg-selected);
+  color: var(--danger);
+}

@@ -3,6 +3,10 @@ import { create } from 'zustand';
 import { api } from '../../api/client';
 import { useGit } from '../../stores/git';
 import { toastError, useToast } from '../../stores/toast';
+import styles from './AuthDialog.module.scss';
+import { createCssModuleClassNames } from '../../lib/cssModule';
+
+const cx = createCssModuleClassNames(styles);
 
 /**
  * リポジトリ単位の認証設定 (A 案)。
@@ -83,21 +87,21 @@ export function AuthDialog() {
   const usesSsh = remotes.some((r) => /^(git@|ssh:\/\/)/.test(r.url));
 
   return (
-    <div className="dialog-backdrop">
-      <div className="dialog auth-dialog">
-        <div className="dialog-title">認証設定 (このリポジトリ)</div>
+    <div className={cx("dialog-backdrop")}>
+      <div className={cx("dialog auth-dialog")}>
+        <div className={cx("dialog-title")}>認証設定 (このリポジトリ)</div>
         {loading ? (
-          <div className="empty-hint">読み込み中…</div>
+          <div className={cx("empty-hint")}>読み込み中…</div>
         ) : (
-          <div className="clone-form">
-            <div className="auth-note">
+          <div className={cx("clone-form")}>
+            <div className={cx("auth-note")}>
               秘密情報 (パスフレーズ・トークン) はアプリに保存しません。使用する鍵とヘルパーの指定のみ保存します。
             </div>
 
-            <div className="stash-section-title">SSH (git@… / ssh://…)</div>
-            <label className="clone-row">
-              <span className="clone-label wide">秘密鍵:</span>
-              <select className="clone-input" value={sshKey} onChange={(e) => setSshKey(e.target.value)}>
+            <div className={cx("stash-section-title")}>SSH (git@… / ssh://…)</div>
+            <label className={cx("clone-row")}>
+              <span className={cx("clone-label wide")}>秘密鍵:</span>
+              <select className={cx("clone-input")} value={sshKey} onChange={(e) => setSshKey(e.target.value)}>
                 <option value="">(既定の鍵を使う)</option>
                 {keys.map((k) => (
                   <option key={k} value={k}>
@@ -107,36 +111,36 @@ export function AuthDialog() {
                 {sshKey && !keys.includes(sshKey) && <option value={sshKey}>{sshKey}</option>}
               </select>
             </label>
-            <label className="clone-row">
-              <span className="clone-label wide">鍵のパス:</span>
+            <label className={cx("clone-row")}>
+              <span className={cx("clone-label wide")}>鍵のパス:</span>
               <input
-                className="clone-input"
+                className={cx("clone-input")}
                 value={sshKey}
                 placeholder="~/.ssh 以外の鍵は直接パスを入力"
                 onChange={(e) => setSshKey(e.target.value)}
               />
             </label>
             {usesSsh && (
-              <div className="auth-note">
+              <div className={cx("auth-note")}>
                 パスフレーズ付きの鍵は ssh-agent への登録が必要です (未登録だと認証エラーになります)。
               </div>
             )}
 
-            <div className="stash-section-title">HTTPS</div>
-            <label className="clone-row">
-              <span className="clone-label wide">資格情報ヘルパー:</span>
+            <div className={cx("stash-section-title")}>HTTPS</div>
+            <label className={cx("clone-row")}>
+              <span className={cx("clone-label wide")}>資格情報ヘルパー:</span>
               <input
-                className="clone-input"
+                className={cx("clone-input")}
                 value={helper}
                 placeholder="(空欄で git の既定設定に従う) 例: manager"
                 onChange={(e) => setHelper(e.target.value)}
               />
             </label>
 
-            <div className="stash-section-title">接続テスト</div>
-            <div className="clone-row">
-              <span className="clone-label wide">リモート:</span>
-              <select className="clone-input small" value={remote} onChange={(e) => setRemote(e.target.value)}>
+            <div className={cx("stash-section-title")}>接続テスト</div>
+            <div className={cx("clone-row")}>
+              <span className={cx("clone-label wide")}>リモート:</span>
+              <select className={cx("clone-input small")} value={remote} onChange={(e) => setRemote(e.target.value)}>
                 {remotes.length === 0 && <option value="origin">origin</option>}
                 {remotes.map((r) => (
                   <option key={r.name} value={r.name}>
@@ -144,28 +148,28 @@ export function AuthDialog() {
                   </option>
                 ))}
               </select>
-              <button className="btn" disabled={testing} onClick={test}>
+              <button className={cx("btn")} disabled={testing} onClick={test}>
                 {testing ? 'テスト中…' : '接続テスト'}
               </button>
             </div>
             {remotes.find((r) => r.name === remote) && (
-              <div className="clone-row auth-note">{remotes.find((r) => r.name === remote)?.url}</div>
+              <div className={cx("clone-row auth-note")}>{remotes.find((r) => r.name === remote)?.url}</div>
             )}
             {result && (
               <>
-                <div className={`gitcmd-status ${result.ok ? 'ok' : 'error'}`}>
+                <div className={cx(`gitcmd-status ${result.ok ? 'ok' : 'error'}`)}>
                   {result.ok ? '✔ 接続に成功しました' : '✖ 接続に失敗しました'}
                 </div>
-                <pre className={`gitcmd-output${result.ok ? '' : ' failed'}`}>{result.output || '(出力なし)'}</pre>
+                <pre className={cx(`gitcmd-output${result.ok ? '' : ' failed'}`)}>{result.output || '(出力なし)'}</pre>
               </>
             )}
           </div>
         )}
-        <div className="dialog-buttons">
-          <button className="btn" onClick={close}>
+        <div className={cx("dialog-buttons")}>
+          <button className={cx("btn")} onClick={close}>
             キャンセル
           </button>
-          <button className="btn primary" disabled={loading} onClick={() => void save()}>
+          <button className={cx("btn primary")} disabled={loading} onClick={() => void save()}>
             保存
           </button>
         </div>
