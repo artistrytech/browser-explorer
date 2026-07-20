@@ -9,7 +9,7 @@ import { useExplorer } from '../../stores/explorer';
 import { useSettings } from '../../stores/settings';
 import { useToast, toastError } from '../../stores/toast';
 import { confirmDialog, promptDialog } from '../../stores/dialog';
-import { DiffView } from './DiffView';
+import { WorkingDiff, type FocusFile } from './WorkingDiff';
 import { GitGraph } from './GitGraph';
 import { openCloneDialog } from './CloneDialog';
 import { openConflictResolver } from './ConflictResolver';
@@ -51,8 +51,11 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const [message, setMessage] = useState('');
   const [amend, setAmend] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [diff, setDiff] = useState<{ title: string; text: string } | null>(null);
   const [branches, setBranches] = useState<GitBranch[]>([]);
+  /** コミットタブ 変更一覧の選択 (フォーカス)。キーは `S:`(ステージ側)/`W:`(作業ツリー側)+path */
+  const [selKeys, setSelKeys] = useState<Set<string>>(new Set());
+  /** Shift 範囲選択の起点 */
+  const [anchorKey, setAnchorKey] = useState<string | null>(null);
   const [commitDetail, setCommitDetail] = useState<CommitFilesResult | null>(null);
   /** 差分ファイル一覧のフィルタ (パス部分一致)。sessionStorage に保持 */
   const [fileFilter, setFileFilter] = useState('');
@@ -165,6 +168,60 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     (f) => (f.workingDir !== ' ' && f.workingDir !== '') || f.index === '?',
   );
 
+  // 変更一覧の表示順 (ステージ済み → 変更)。範囲選択・選択操作はこの並びを基準にする
+  const orderedRows = [
+    ...staged.map((f) => ({ key: `S:${f.path}`, side: true as const, f })),
+    ...unstaged.map((f) => ({ key: `W:${f.path}`, side: false as const, f })),
+  ];
+
+  /** 行クリック: 単一選択 / Ctrl でトグル / Shift で範囲選択 */
+  const rowClick = (e: React.MouseEvent, key: string) => {
+    if (e.shiftKey && anchorKey) {
+      const a = orderedRows.findIndex((r) => r.key === anchorKey);
+      const b = orderedRows.findIndex((r) => r.key === key);
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        setSelKeys(new Set(orderedRows.slice(lo, hi + 1).map((r) => r.key)));
+        return;
+      }
+    }
+    if (e.ctrlKey || e.metaKey) {
+      setSelKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+    } else {
+      setSelKeys(new Set([key]));
+    }
+    setAnchorKey(key);
+  };
+
+  const selectSingle = (key: string) => {
+    setSelKeys(new Set([key]));
+    setAnchorKey(key);
+  };
+
+  /** 右クリック時のフォーカス: 未選択の行なら単一選択にし、選択済み (複数選択中も含む) なら維持 */
+  const focusForMenu = (key: string) => {
+    if (selKeys.has(key)) return;
+    setSelKeys(new Set([key]));
+    setAnchorKey(key);
+  };
+
+  const selectedStaged = orderedRows.filter((r) => r.side && selKeys.has(r.key)).map((r) => r.f.path);
+  const selectedUnstaged = orderedRows.filter((r) => !r.side && selKeys.has(r.key)).map((r) => r.f.path);
+
+  // フォーカス中ファイルの差分 (WorkingDiff 用)。消えた行のキーは自然に除外される
+  const focusFiles: FocusFile[] = orderedRows
+    .filter((r) => selKeys.has(r.key))
+    .map((r) => ({
+      path: r.f.path,
+      side: r.side ? 'staged' : 'unstaged',
+      untracked: !r.side && (r.f.index === '?' || r.f.workingDir === '?'),
+    }));
+
   // 差分ファイル一覧: パス部分一致フィルタ → 表示上限 (config.json の commitFilesLimit)
   const filterText = fileFilter.trim().toLowerCase();
   const matchedFiles = commitDetail
@@ -174,13 +231,6 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     : [];
   const filesLimit = commitDetail?.limit ?? 100;
   const shownFiles = matchedFiles.slice(0, filesLimit);
-
-  const showFileDiff = (f: GitFileStatus, stagedSide: boolean) => {
-    api
-      .gitDiff(repoRoot, f.path, stagedSide)
-      .then((r) => setDiff({ title: `${f.path} (${stagedSide ? 'ステージ vs HEAD' : '作業ツリー'})`, text: r.diff }))
-      .catch(toastError);
-  };
 
   /**
    * 外部差分ツールで開くメニュー項目 (設定の diffTools)。
@@ -217,14 +267,16 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         .catch(toastError);
       return;
     }
-    showFileDiff(f, stagedSide);
+    // 既定の外部ツールが無ければアプリ内差分 (フォーカス) にフォールバック
+    selectSingle(`${stagedSide ? 'S' : 'W'}:${f.path}`);
   };
 
   /** 変更ファイル行 (コミットタブ) の右クリックメニュー */
-  const workingFileMenu = (e: React.MouseEvent, f: GitFileStatus, stagedSide: boolean) => {
+  const workingFileMenu = (e: React.MouseEvent, f: GitFileStatus, stagedSide: boolean, key: string) => {
     e.preventDefault();
+    focusForMenu(key); // 未選択なら単一選択、選択済みなら現在の選択を維持
     const items: MenuItem[] = [
-      { label: '差分を表示', action: () => showFileDiff(f, stagedSide) },
+      { label: '差分を表示', action: () => selectSingle(key) },
     ];
     const tools = diffToolItems(f.path, stagedSide ? 'staged' : 'worktree');
     if (tools.length > 0) items.push({ separator: true }, ...tools);
@@ -317,59 +369,70 @@ export function GitPanel({ tab }: { tab: GitTab }) {
       });
   };
 
-  const fileRow = (f: GitFileStatus, stagedSide: boolean) => (
-    <div
-      key={`${stagedSide}-${f.path}`}
-      className="git-file-row"
-      onContextMenu={(e) => workingFileMenu(e, f, stagedSide)}
-    >
-      <button
-        className="git-file-name"
-        title={
-          `${f.path}\nクリックで差分表示 / 右クリックでメニュー` +
-          (defaultTool >= 0 ? `\nダブルクリックで ${diffTools[defaultTool].label}` : '')
-        }
-        onClick={() => showFileDiff(f, stagedSide)}
+  const fileRow = (f: GitFileStatus, stagedSide: boolean) => {
+    const key = `${stagedSide ? 'S' : 'W'}:${f.path}`;
+    const selected = selKeys.has(key);
+    return (
+      <div
+        key={key}
+        className={`git-file-row${selected ? ' selected' : ''}`}
+        onClick={(e) => rowClick(e, key)}
         onDoubleClick={() => openDefaultWorkingDiff(f, stagedSide)}
+        onContextMenu={(e) => workingFileMenu(e, f, stagedSide, key)}
       >
-        <span className="git-file-status">{statusLabel(f, stagedSide)}</span> {f.path}
-      </button>
-      {stagedSide ? (
-        <button
-          className="status-btn"
-          title="ステージ解除"
-          onClick={() => void run(() => api.gitUnstage(repoRoot, [f.path]))}
+        <span
+          className="git-file-name"
+          title={
+            `${f.path}\nクリックで選択 / Ctrl・Shift で複数選択 / 右クリックでメニュー` +
+            (defaultTool >= 0 ? `\nダブルクリックで ${diffTools[defaultTool].label}` : '')
+          }
         >
-          −
-        </button>
-      ) : (
-        <>
+          <span className="git-file-status">{statusLabel(f, stagedSide)}</span> {f.path}
+        </span>
+        {stagedSide ? (
           <button
             className="status-btn"
-            title="ステージ"
-            onClick={() => void run(() => api.gitStage(repoRoot, [f.path]))}
+            title="ステージ解除"
+            onClick={(e) => {
+              e.stopPropagation();
+              void run(() => api.gitUnstage(repoRoot, [f.path]));
+            }}
           >
-            ＋
+            −
           </button>
-          <button
-            className="status-btn danger"
-            title="変更を破棄"
-            onClick={() =>
-              void confirmDialog('変更を破棄', `${f.path} の変更を破棄しますか?`, true).then((ok) => {
-                if (ok)
-                  void run(
-                    () => api.gitDiscard(repoRoot, [f.path]).then(() => useExplorer.getState().refresh()),
-                    '破棄しました',
-                  );
-              })
-            }
-          >
-            ↩
-          </button>
-        </>
-      )}
-    </div>
-  );
+        ) : (
+          <>
+            <button
+              className="status-btn"
+              title="ステージ"
+              onClick={(e) => {
+                e.stopPropagation();
+                void run(() => api.gitStage(repoRoot, [f.path]));
+              }}
+            >
+              ＋
+            </button>
+            <button
+              className="status-btn danger"
+              title="変更を破棄"
+              onClick={(e) => {
+                e.stopPropagation();
+                void confirmDialog('変更を破棄', `${f.path} の変更を破棄しますか?`, true).then((ok) => {
+                  if (ok)
+                    void run(
+                      () => api.gitDiscard(repoRoot, [f.path]).then(() => useExplorer.getState().refresh()),
+                      '破棄しました',
+                    );
+                });
+              }}
+            >
+              ↩
+            </button>
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="git-panel">
@@ -476,26 +539,48 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             <>
               <div className="git-section-title">
                 ステージ済み ({staged.length})
-                {staged.length > 0 && (
-                  <button
-                    className="status-btn"
-                    onClick={() => void run(() => api.gitUnstage(repoRoot, staged.map((f) => f.path)))}
-                  >
-                    すべて解除
-                  </button>
-                )}
+                <span className="git-section-actions">
+                  {selectedStaged.length > 0 && (
+                    <button
+                      className="status-btn"
+                      title="選択したファイルをステージ解除"
+                      onClick={() => void run(() => api.gitUnstage(repoRoot, selectedStaged))}
+                    >
+                      選択を解除 ({selectedStaged.length})
+                    </button>
+                  )}
+                  {staged.length > 0 && (
+                    <button
+                      className="status-btn"
+                      onClick={() => void run(() => api.gitUnstage(repoRoot, staged.map((f) => f.path)))}
+                    >
+                      すべて解除
+                    </button>
+                  )}
+                </span>
               </div>
               {staged.map((f) => fileRow(f, true))}
               <div className="git-section-title">
                 変更 ({unstaged.length})
-                {unstaged.length > 0 && (
-                  <button
-                    className="status-btn"
-                    onClick={() => void run(() => api.gitStage(repoRoot, unstaged.map((f) => f.path)))}
-                  >
-                    すべてステージ
-                  </button>
-                )}
+                <span className="git-section-actions">
+                  {selectedUnstaged.length > 0 && (
+                    <button
+                      className="status-btn"
+                      title="選択したファイルをステージ"
+                      onClick={() => void run(() => api.gitStage(repoRoot, selectedUnstaged))}
+                    >
+                      選択をステージ ({selectedUnstaged.length})
+                    </button>
+                  )}
+                  {unstaged.length > 0 && (
+                    <button
+                      className="status-btn"
+                      onClick={() => void run(() => api.gitStage(repoRoot, unstaged.map((f) => f.path)))}
+                    >
+                      すべてステージ
+                    </button>
+                  )}
+                </span>
               </div>
               {unstaged.map((f) => fileRow(f, false))}
 
@@ -701,11 +786,14 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             ) : (
               <div className="empty-hint">コミットを選択すると差分ファイル一覧を表示します</div>
             )
-          ) : diff ? (
-            <>
-              <div className="diff-title">{diff.title}</div>
-              <DiffView diff={diff.text} />
-            </>
+          ) : tab === 'changes' ? (
+            focusFiles.length > 0 ? (
+              <WorkingDiff repo={repoRoot} files={focusFiles} onApplied={() => void refreshStatus()} />
+            ) : (
+              <div className="empty-hint">
+                ファイルを選択すると差分を表示します (Ctrl / Shift で複数選択)
+              </div>
+            )
           ) : (
             <div className="empty-hint">ファイルを選択すると差分を表示します</div>
           )}

@@ -427,13 +427,81 @@ gitRouter.post('/difftool', async (req, res) => {
 
 gitRouter.get('/diff', async (req, res) => {
   const g = git(req.query.repo);
+  const repo = String(req.query.repo);
   const p = typeof req.query.path === 'string' ? req.query.path : undefined;
   const staged = req.query.staged === 'true';
+  // 未追跡ファイルは通常の diff が空になるため、ファイル全体を追加行として表示する
+  const untracked = req.query.untracked === 'true';
+  if (untracked && !staged && p) {
+    res.json({ diff: await untrackedDiff(repo, relPath(p)) });
+    return;
+  }
   const args: string[] = [];
   if (staged) args.push('--cached');
   if (p) args.push('--', p);
   const diff = await g.diff(args);
   res.json({ diff });
+});
+
+/**
+ * 未追跡ファイルの差分を「全行追加」として得る (git diff --no-index -- /dev/null <file>)。
+ * --no-index は差分があると終了コード 1 を返すため、stdout を拾って正常扱いにする。
+ * /dev/null は git が全プラットフォームで空ファイルとして特別扱いする。
+ */
+async function untrackedDiff(repo: string, rel: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync('git', ['diff', '--no-index', '--', '/dev/null', rel], {
+      cwd: repo,
+      maxBuffer: DIFF_MAX_BUFFER,
+    });
+    return stdout;
+  } catch (e) {
+    const err = e as { code?: number; stdout?: string };
+    if (err.code === 1 && typeof err.stdout === 'string') return err.stdout; // 差分あり (正常)
+    return '';
+  }
+}
+
+/**
+ * 部分ステージ/解除 (SourceTree のような Hunk・行単位)。
+ * クライアントが組み立てた unified patch を git apply --cached に流し込む。
+ * reverse=true でステージ解除 (--reverse)。--recount で行数のズレを許容する。
+ */
+gitRouter.post('/apply-patch', (req, res) => {
+  const { repo, patch, reverse, cached } = (req.body ?? {}) as {
+    repo?: unknown;
+    patch?: unknown;
+    reverse?: unknown;
+    cached?: unknown;
+  };
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  if (typeof patch !== 'string' || patch.length === 0) badRequest('patch is required');
+  // cached 既定 true (index へ)。false なら作業ツリーへ適用 (Hunk の破棄などに使う)
+  const args = ['apply', '--recount', '--whitespace=nowarn'];
+  if (cached !== false) args.push('--cached');
+  if (reverse) args.push('--reverse');
+  args.push('-');
+  const child = spawn('git', args, { cwd: repo, windowsHide: true });
+  let err = '';
+  child.stderr.on('data', (c: Buffer) => {
+    err += c.toString('utf8');
+  });
+  let sent = false;
+  const done = (fn: () => void) => {
+    if (sent) return;
+    sent = true;
+    fn();
+  };
+  child.on('error', (e) => done(() => res.status(500).json({ error: 'apply_failed', message: e.message })));
+  child.on('close', (code) =>
+    done(() =>
+      code === 0
+        ? res.json({ ok: true })
+        : res.status(400).json({ error: 'apply_failed', message: err.trim() || `git apply exited ${code}` }),
+    ),
+  );
+  child.stdin.on('error', () => {});
+  child.stdin.end(patch);
 });
 
 gitRouter.post('/stage', async (req, res) => {

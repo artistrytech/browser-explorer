@@ -1158,6 +1158,127 @@ body.col-resizing {
   font-size: 11px;
 }
 
+/* --- コミットタブ 変更一覧: 選択(フォーカス) --- */
+.git-file-row {
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+}
+
+.git-file-row:hover {
+  background: var(--bg-hover);
+}
+
+/* 選択中はマウスオーバーより選択色を優先する (行・内側の名前 span とも) */
+.git-file-row.selected,
+.git-file-row.selected:hover {
+  background: var(--bg-selected);
+}
+
+.git-file-row.selected:hover .git-file-name,
+.git-file-row.selected .git-file-name:hover {
+  background: transparent;
+}
+
+/* span 化した行名でも省略記号が効くように block 化 */
+.git-file-name {
+  display: block;
+}
+
+.git-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* --- コミットタブ 差分パネル: Hunk / 行単位のステージ・解除 --- */
+.work-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.work-diff-file {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.work-diff-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+.wd-side {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.wd-side-staged { color: var(--add); }
+.wd-side-unstaged { color: #e08a00; }
+
+.wd-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.wd-hunk {
+  border-top: 1px solid var(--border);
+}
+
+.wd-hunk:first-child {
+  border-top: none;
+}
+
+.wd-hunk-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  background: var(--bg-alt);
+}
+
+.wd-hunk-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.wd-hunk-actions {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+
+/* 選択可能な変更行 (クリックで行選択)。Shift 範囲選択時の文字列選択を抑止 */
+.diff-line.wd-selectable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.diff-line.wd-line-sel {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  filter: brightness(1.15);
+}
+
 .commit-box {
   margin-top: 14px;
   border-top: 1px solid var(--border);

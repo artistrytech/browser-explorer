@@ -139,10 +139,14 @@ export const api = {
     get<{ hash: string; author: string; date: string; message: string; patch: string }>(
       `/api/git/show?repo=${q(repo)}&hash=${q(hash)}`,
     ),
-  gitDiff: (repo: string, path?: string, staged = false) =>
+  gitDiff: (repo: string, path?: string, staged = false, untracked = false) =>
     get<{ diff: string }>(
-      `/api/git/diff?repo=${q(repo)}${path ? `&path=${q(path)}` : ''}&staged=${staged}`,
+      `/api/git/diff?repo=${q(repo)}${path ? `&path=${q(path)}` : ''}&staged=${staged}` +
+        (untracked ? '&untracked=true' : ''),
     ),
+  /** Hunk・行単位の部分ステージ/解除。reverse でステージ解除、cached=false で作業ツリーへ適用 (破棄) */
+  gitApplyPatch: (repo: string, patch: string, reverse: boolean, cached = true) =>
+    post<{ ok: true }>('/api/git/apply-patch', { repo, patch, reverse, cached }),
   /** 外部差分ツール (設定の diffTools) で比較を開く。tool は設定の id */
   gitDiffTool: (
     tool: string,
