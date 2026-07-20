@@ -388,6 +388,26 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     openRemoteCheckoutDialog(b.name);
   };
 
+  const copyBranchName = async (name: string) => {
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(name);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = name;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      show('success', 'ブランチ名をコピーしました');
+    } catch (e) {
+      toastError(e);
+    }
+  };
+
   const branchDoubleClick = (b: GitBranch) => {
     if (isRemoteBranch(b)) checkoutRemoteBranch(b);
     else checkoutBranch(b);
@@ -452,11 +472,24 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           onContextMenu={(e) => branchMenu(e, b)}
           title="右クリックでメニュー、ダブルクリックで操作"
         >
-          <span className={cx(b.current ? 'branch-current' : '')} title={b.name}>
+          <span className={cx(`branch-name${b.current ? ' branch-current' : ''}`)} title={b.name}>
             {b.current ? '● ' : '  '}
             {node.label}
             {branchSyncLabel(b)}
           </span>
+          <button
+            className={cx("branch-copy")}
+            title="ブランチ名をコピー"
+            aria-label={`${b.name} をコピー`}
+            onClick={(e) => {
+              e.stopPropagation();
+              void copyBranchName(b.name);
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.stopPropagation()}
+          >
+            <span className={cx("branch-copy-icon")} aria-hidden="true" />
+          </button>
         </div>
       );
     }
@@ -474,7 +507,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           <button className={cx("branch-toggle")} tabIndex={-1}>
             {collapsed ? '▶' : '▼'}
           </button>
-          <span title={node.key}>{node.label}</span>
+          <span className={cx("branch-folder-name")} title={node.key}>{node.label}</span>
         </div>
         {!collapsed && node.children.map((child) => renderBranchNode(child, depth + 1))}
       </div>

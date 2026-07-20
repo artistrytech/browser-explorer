@@ -244,7 +244,15 @@
   user-select: none;
 }
 
-.branch-row > span {
+.branch-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.branch-folder-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -281,6 +289,54 @@
 
 .branch-leaf {
   color: var(--text);
+}
+
+.branch-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 0;
+  cursor: pointer;
+}
+
+.branch-copy:hover {
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.branch-copy-icon {
+  position: relative;
+  width: 12px;
+  height: 12px;
+}
+
+.branch-copy-icon::before,
+.branch-copy-icon::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 1px solid currentColor;
+  border-radius: 1px;
+  background: var(--bg);
+}
+
+.branch-copy-icon::before {
+  left: 1px;
+  top: 3px;
+}
+
+.branch-copy-icon::after {
+  left: 4px;
+  top: 0;
 }
 
 .git-branches .btn {
