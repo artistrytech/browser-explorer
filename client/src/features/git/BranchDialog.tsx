@@ -7,14 +7,16 @@ import { createCssModuleClassNames } from '../../lib/cssModule';
 
 const cx = createCssModuleClassNames(styles);
 
-type BranchDialogMode = 'create' | 'remoteCheckout';
+type BranchDialogMode = 'create' | 'remoteCheckout' | 'rename';
 
 interface BranchDialogStore {
   open: boolean;
   mode: BranchDialogMode;
   remoteBranch: string;
+  branchName: string;
   showCreate: () => void;
   showRemoteCheckout: (remoteBranch: string) => void;
+  showRename: (branchName: string) => void;
   close: () => void;
 }
 
@@ -22,8 +24,10 @@ export const useBranchDialog = create<BranchDialogStore>((set) => ({
   open: false,
   mode: 'create',
   remoteBranch: '',
-  showCreate: () => set({ open: true, mode: 'create', remoteBranch: '' }),
-  showRemoteCheckout: (remoteBranch) => set({ open: true, mode: 'remoteCheckout', remoteBranch }),
+  branchName: '',
+  showCreate: () => set({ open: true, mode: 'create', remoteBranch: '', branchName: '' }),
+  showRemoteCheckout: (remoteBranch) => set({ open: true, mode: 'remoteCheckout', remoteBranch, branchName: '' }),
+  showRename: (branchName) => set({ open: true, mode: 'rename', remoteBranch: '', branchName }),
   close: () => set({ open: false }),
 }));
 
@@ -33,6 +37,10 @@ export function openCreateBranchDialog(): void {
 
 export function openRemoteCheckoutDialog(remoteBranch: string): void {
   useBranchDialog.getState().showRemoteCheckout(remoteBranch);
+}
+
+export function openRenameBranchDialog(branchName: string): void {
+  useBranchDialog.getState().showRename(branchName);
 }
 
 function remoteRef(name: string): string {
@@ -46,7 +54,7 @@ function defaultLocalName(remoteBranch: string): string {
 }
 
 export function BranchDialog() {
-  const { open, mode, remoteBranch, close } = useBranchDialog();
+  const { open, mode, remoteBranch, branchName, close } = useBranchDialog();
   const repoRoot = useGit((s) => s.repoRoot);
   const baseBranch = useGit((s) => s.status?.branch ?? null);
   const [name, setName] = useState('');
@@ -58,11 +66,13 @@ export function BranchDialog() {
     if (mode === 'remoteCheckout') {
       setName(defaultLocalName(remoteBranch));
       setTrackRemote(true);
+    } else if (mode === 'rename') {
+      setName(branchName);
     } else {
       setName('');
       setSwitchAfterCreate(true);
     }
-  }, [open, mode, remoteBranch]);
+  }, [open, mode, remoteBranch, branchName]);
 
   if (!open || !repoRoot) return null;
 
@@ -84,14 +94,21 @@ export function BranchDialog() {
     void runGitCommands(repoRoot, [args], 'リモートブランチをチェックアウト');
   };
 
+  const doRename = () => {
+    if (!trimmedName || trimmedName === branchName) return;
+    close();
+    void runGitCommands(repoRoot, [['branch', '-m', branchName, trimmedName]], 'ブランチ名変更');
+  };
+
   const isCreate = mode === 'create';
-  const submit = isCreate ? doCreate : doRemoteCheckout;
+  const isRename = mode === 'rename';
+  const submit = isCreate ? doCreate : isRename ? doRename : doRemoteCheckout;
 
   return (
     <div className={cx("dialog-backdrop")}>
       <div className={cx("dialog branch-dialog")}>
         <div className={cx("dialog-title")}>
-          {isCreate ? '新しいブランチ' : 'リモートブランチをチェックアウト'}
+          {isCreate ? '新しいブランチ' : isRename ? 'ブランチ名変更' : 'リモートブランチをチェックアウト'}
         </div>
         <div className={cx("branch-form")}>
           {isCreate ? (
@@ -99,6 +116,13 @@ export function BranchDialog() {
               <span className={cx("branch-label")}>ベースブランチ:</span>
               <b className={cx("branch-value")} title={baseBranch ?? 'HEAD'}>
                 {baseBranch ?? 'HEAD'}
+              </b>
+            </div>
+          ) : isRename ? (
+            <div className={cx("branch-row")}>
+              <span className={cx("branch-label")}>現在のブランチ名:</span>
+              <b className={cx("branch-value")} title={branchName}>
+                {branchName}
               </b>
             </div>
           ) : (
@@ -110,7 +134,7 @@ export function BranchDialog() {
             </div>
           )}
           <label className={cx("branch-row")}>
-            <span className={cx("branch-label")}>ローカルブランチ名:</span>
+            <span className={cx("branch-label")}>{isRename ? '新しいブランチ名:' : 'ローカルブランチ名:'}</span>
             <input
               className={cx("branch-input")}
               autoFocus
@@ -122,7 +146,7 @@ export function BranchDialog() {
               }}
             />
           </label>
-          {isCreate ? (
+          {isRename ? null : isCreate ? (
             <label className={cx("branch-row")}>
               <span className={cx("branch-label")} />
               <input
@@ -148,8 +172,8 @@ export function BranchDialog() {
           <button className={cx("btn")} onClick={close}>
             キャンセル
           </button>
-          <button className={cx("btn primary")} disabled={!trimmedName} onClick={submit}>
-            {isCreate ? '作成' : 'チェックアウト'}
+          <button className={cx("btn primary")} disabled={!trimmedName || (isRename && trimmedName === branchName)} onClick={submit}>
+            {isCreate ? '作成' : isRename ? '変更' : 'チェックアウト'}
           </button>
         </div>
       </div>

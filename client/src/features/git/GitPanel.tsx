@@ -19,7 +19,7 @@ import { openFetchDialog } from './FetchDialog';
 import { openStashDialog } from './StashDialog';
 import { openAuthDialog } from './AuthDialog';
 import { openCommitMessagePicker } from './CommitMessageDialog';
-import { openCreateBranchDialog, openRemoteCheckoutDialog } from './BranchDialog';
+import { openCreateBranchDialog, openRemoteCheckoutDialog, openRenameBranchDialog } from './BranchDialog';
 import { openCommitDiff } from './DiffTab';
 import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
 import styles from './GitPanel.module.scss';
@@ -50,11 +50,16 @@ function createBranchTreeNode(key: string, label: string): MutableBranchTreeNode
   return { key, label, branch: null, children: [], childMap: new Map() };
 }
 
-function buildBranchTree(branches: GitBranch[]): BranchTreeNode[] {
+function branchTreeParts(branch: GitBranch): string[] {
+  const parts = branch.name.split('/').filter(Boolean);
+  return branch.name.startsWith('remotes/') ? parts.slice(1) : parts;
+}
+
+function buildBranchTree(branches: GitBranch[], keyPrefix: string): BranchTreeNode[] {
   const root = new Map<string, MutableBranchTreeNode>();
 
   for (const branch of branches) {
-    const parts = branch.name.split('/').filter(Boolean);
+    const parts = branchTreeParts(branch);
     if (parts.length === 0) continue;
     let level = root;
     let node: MutableBranchTreeNode | undefined;
@@ -64,7 +69,7 @@ function buildBranchTree(branches: GitBranch[]): BranchTreeNode[] {
       key = key ? `${key}/${part}` : part;
       node = level.get(part);
       if (!node) {
-        node = createBranchTreeNode(key, part);
+        node = createBranchTreeNode(`${keyPrefix}:${key}`, part);
         level.set(part, node);
       }
       if (index === parts.length - 1) node.branch = branch;
@@ -436,6 +441,10 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             action: () => void runGitCommands(repoRoot, [['merge', b.name]], 'マージ'),
           },
           {
+            label: '名前変更',
+            action: () => openRenameBranchDialog(b.name),
+          },
+          {
             label: '削除',
             disabled: b.current,
             danger: true,
@@ -458,7 +467,24 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     });
   };
 
-  const branchTree = buildBranchTree(branches);
+  const localBranches = branches.filter((b) => !isRemoteBranch(b));
+  const remoteBranches = branches.filter((b) => isRemoteBranch(b));
+  const localBranchTree = buildBranchTree(localBranches, 'local');
+  const remoteBranchTree = buildBranchTree(remoteBranches, 'remote');
+
+  const renderBranchSection = (title: string, count: number, tree: BranchTreeNode[]) => (
+    <div className={cx("branch-section")}>
+      <div className={cx("branch-section-title")}>
+        {title} ({count})
+      </div>
+      {tree.length > 0 ? (
+        tree.map((node) => renderBranchNode(node))
+      ) : (
+        <div className={cx("branch-empty")}>ブランチはありません</div>
+      )}
+    </div>
+  );
+
   const renderBranchNode = (node: BranchTreeNode, depth = 0): React.ReactNode => {
     const indent = 4 + depth * 16;
     if (node.branch) {
@@ -937,7 +963,8 @@ export function GitPanel({ tab }: { tab: GitTab }) {
               >
                 ＋ ブランチ作成
               </button>
-              {branchTree.map((node) => renderBranchNode(node))}
+              {renderBranchSection('ローカルブランチ', localBranches.length, localBranchTree)}
+              {renderBranchSection('リモートブランチ', remoteBranches.length, remoteBranchTree)}
             </div>
           )}
         </div>
