@@ -21,6 +21,7 @@ import { openAuthDialog } from './AuthDialog';
 import { openCommitMessagePicker } from './CommitMessageDialog';
 import { openCreateBranchDialog, openRemoteCheckoutDialog, openRenameBranchDialog } from './BranchDialog';
 import { openRebaseDialog } from './Rebase';
+import { openDiscardAllDialog } from './DiscardAllDialog';
 import { openCommitDiff } from './DiffTab';
 import { useRebase } from '../../stores/rebase';
 import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus, RebaseBackup } from '../../types';
@@ -465,45 +466,51 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     openMenu(e.clientX, e.clientY, items);
   };
 
-  /** ヘッダの「ツール」メニュー: リベース用バックアップ (backup/rebase/*) の削除 */
+  /** ヘッダの「ツール」メニュー: 変更の一括破棄 / リベース用バックアップ (backup/rebase/*) の削除 */
   const openToolsMenu = (e: React.MouseEvent) => {
     const { clientX: x, clientY: y } = e;
+    const deleteItem = (bk: RebaseBackup): MenuItem => ({
+      label: `🗑 ${bk.name}`,
+      danger: true,
+      action: () =>
+        void confirmDialog(
+          'バックアップブランチを削除',
+          `${bk.name}\n(${bk.hash} ${bk.date} ${bk.subject}) を削除しますか?`,
+          true,
+        ).then((ok) => {
+          if (!ok) return;
+          void api
+            .gitRebaseBackupDelete(repoRoot, bk.name)
+            .then(() => {
+              show('success', 'バックアップブランチを削除しました');
+              if (tab === 'branches')
+                api.gitBranches(repoRoot).then((r) => setBranches(r.branches)).catch(toastError);
+            })
+            .catch(toastError);
+        }),
+    });
+    const buildMenu = (backupItems: MenuItem[]): MenuItem[] => [
+      {
+        label: '変更をすべて破棄…',
+        danger: true,
+        action: () => openDiscardAllDialog(),
+      },
+      { separator: true },
+      {
+        label: 'リベースのバックアップを削除',
+        submenu: backupItems,
+      },
+    ];
     void api
       .gitRebaseBackups(repoRoot)
       .then(({ backups }) => {
-        const deleteItem = (bk: RebaseBackup): MenuItem => ({
-          label: `🗑 ${bk.name}`,
-          danger: true,
-          action: () =>
-            void confirmDialog(
-              'バックアップブランチを削除',
-              `${bk.name}\n(${bk.hash} ${bk.date} ${bk.subject}) を削除しますか?`,
-              true,
-            ).then((ok) => {
-              if (!ok) return;
-              void api
-                .gitRebaseBackupDelete(repoRoot, bk.name)
-                .then(() => {
-                  show('success', 'バックアップブランチを削除しました');
-                  if (tab === 'branches')
-                    api.gitBranches(repoRoot).then((r) => setBranches(r.branches)).catch(toastError);
-                })
-                .catch(toastError);
-            }),
-        });
-        const backupItems: MenuItem[] =
+        const backupItems =
           backups.length > 0
             ? backups.map(deleteItem)
             : [{ label: '(バックアップはありません)', disabled: true }];
-        const items: MenuItem[] = [
-          {
-            label: 'リベースのバックアップを削除',
-            submenu: backupItems,
-          },
-        ];
-        openMenu(x, y, items);
+        openMenu(x, y, buildMenu(backupItems));
       })
-      .catch(toastError);
+      .catch(() => openMenu(x, y, buildMenu([{ label: '(取得に失敗しました)', disabled: true }])));
   };
 
   const toggleBranchGroup = (key: string) => {

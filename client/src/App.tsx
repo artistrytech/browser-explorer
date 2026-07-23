@@ -17,6 +17,7 @@ import { AuthDialog } from './features/git/AuthDialog';
 import { CommitMessageDialog } from './features/git/CommitMessageDialog';
 import { BranchDialog } from './features/git/BranchDialog';
 import { RebaseDialog, RebaseOverlay } from './features/git/Rebase';
+import { DiscardAllDialog } from './features/git/DiscardAllDialog';
 import { DiffTab, useDiffTab, closeDiffTab, diffTargetFromUrl } from './features/git/DiffTab';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
@@ -299,6 +300,7 @@ export default function App() {
       <CommitMessageDialog />
       <BranchDialog />
       <RebaseDialog />
+      <DiscardAllDialog />
       {/* 実行結果ダイアログは他ダイアログより手前に出すため最後にマウント */}
       <GitCommandDialog />
     </div>
