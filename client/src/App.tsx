@@ -16,6 +16,7 @@ import { StashDialog } from './features/git/StashDialog';
 import { AuthDialog } from './features/git/AuthDialog';
 import { CommitMessageDialog } from './features/git/CommitMessageDialog';
 import { BranchDialog } from './features/git/BranchDialog';
+import { RebaseDialog, RebaseOverlay } from './features/git/Rebase';
 import { DiffTab, useDiffTab, closeDiffTab, diffTargetFromUrl } from './features/git/DiffTab';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
@@ -33,7 +34,8 @@ import {
   logFilterFromUrl,
   refreshUiConfig,
 } from './stores/ui';
-import { onFsChange } from './api/ws';
+import { onFsChange, onWsEvent } from './api/ws';
+import { useRebase } from './stores/rebase';
 import { api } from './api/client';
 import { parentPath, isRootPath, baseName } from './lib/paths';
 import styles from './App.module.scss';
@@ -130,12 +132,14 @@ export default function App() {
     });
   }, []);
 
-  // ブラウザのタブにフォーカスが戻ったら変更一覧 (Git status) と一覧を最新化する
+  // ブラウザのタブにフォーカスが戻ったら変更一覧 (Git status)・一覧・リベース状態を最新化する
   useEffect(() => {
     const refresh = () => {
       if (document.visibilityState === 'hidden') return;
       void useGit.getState().refreshStatus();
       void useExplorer.getState().refresh();
+      const repo = useGit.getState().repoRoot;
+      if (repo) void useRebase.getState().refresh(repo);
     };
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
@@ -143,6 +147,19 @@ export default function App() {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
+  }, []);
+
+  // リベースセッションの取得/同期: リポジトリ切替時と、他タブからの変更 (WS) で更新する
+  useEffect(() => {
+    if (repoRoot) void useRebase.getState().refresh(repoRoot);
+    else useRebase.setState({ session: null });
+  }, [repoRoot]);
+
+  useEffect(() => {
+    return onWsEvent('git:rebase', () => {
+      const repo = useGit.getState().repoRoot;
+      if (repo) void useRebase.getState().refresh(repo);
+    });
   }, []);
 
   // グローバルキー: Alt+↑ 上へ / Alt+← 戻る / Alt+→ 進む (plan §1.2)
@@ -272,6 +289,8 @@ export default function App() {
       <ToastHost />
       <SettingsDialog />
       <CloneDialog />
+      {/* リベース中の全画面ロック。ConflictResolver より前に置き、解消ツールを手前に重ねる */}
+      <RebaseOverlay />
       <ConflictResolver />
       <PushDialog />
       <FetchDialog />
@@ -279,6 +298,7 @@ export default function App() {
       <AuthDialog />
       <CommitMessageDialog />
       <BranchDialog />
+      <RebaseDialog />
       {/* 実行結果ダイアログは他ダイアログより手前に出すため最後にマウント */}
       <GitCommandDialog />
     </div>

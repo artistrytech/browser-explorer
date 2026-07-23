@@ -10,7 +10,16 @@ import path from 'node:path';
 import { norm } from '../services/fsService.js';
 import { broadcastEvent } from '../ws/watcher.js';
 import { launchChecked } from './os.js';
-import { getGitAuth, setGitAuth, listCommitMessages, addCommitMessage } from '../services/stateStore.js';
+import {
+  getGitAuth,
+  setGitAuth,
+  listCommitMessages,
+  addCommitMessage,
+  getRebaseSession,
+  setRebaseSession,
+  clearRebaseSession,
+  type RebaseSession,
+} from '../services/stateStore.js';
 import { getDiffToolById, getAppConfig } from '../services/appConfigStore.js';
 
 export const gitRouter = Router();
@@ -940,6 +949,242 @@ gitRouter.post('/merge/abort', async (req, res) => {
   else if (inProgress === 'rebase') await g.raw(['rebase', '--abort']);
   else await g.raw(['cherry-pick', '--abort']);
   res.json({ ok: true });
+});
+
+// --- リベース (アプリ起点: バックアップ + DB セッションによる全画面ロック) ---
+
+/** git を非対話で実行し、成否と出力 (stdout+stderr) を返す。エディタは起動させない */
+async function runGitCapture(repo: string, args: string[]): Promise<{ ok: boolean; output: string }> {
+  try {
+    const { stdout, stderr } = await execFileAsync('git', [...noninteractiveArgs(repo), ...args], {
+      cwd: repo,
+      env: gitEnv(repo),
+      windowsHide: true,
+      maxBuffer: DIFF_MAX_BUFFER,
+    });
+    return { ok: true, output: `${stdout ?? ''}${stderr ?? ''}`.trim() };
+  } catch (e) {
+    const err = e as { stdout?: string; stderr?: string; message?: string };
+    const out = `${err.stdout ?? ''}${err.stderr ?? ''}`.trim();
+    return { ok: false, output: out || err.message || 'git の実行に失敗しました' };
+  }
+}
+
+/** ローカルブランチが存在するか */
+async function branchExists(repo: string, name: string): Promise<boolean> {
+  return (await runGitCapture(repo, ['show-ref', '--verify', '--quiet', `refs/heads/${name}`])).ok;
+}
+
+/** リベース用バックアップ名に使えるよう、ブランチ名を平坦化する (D/F 競合と不正文字を回避) */
+function sanitizeRefName(name: string): string {
+  return name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '') || 'branch';
+}
+
+/** バックアップブランチ名の接頭辞 (ツールメニューでの列挙・削除対象) */
+const REBASE_BACKUP_PREFIX = 'backup/rebase/';
+
+/** YYYYMMDD-HHmmss (ローカル時刻) */
+function backupTimestamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+/** 成功時の後始末: 任意でバックアップを削除し、セッションを消す */
+async function finalizeRebaseSuccess(repo: string, session: RebaseSession): Promise<string[]> {
+  const notes: string[] = [];
+  if (session.deleteBackupOnSuccess) {
+    if (await branchExists(repo, session.backupBranch)) {
+      const del = await runGitCapture(repo, ['branch', '-D', session.backupBranch]);
+      if (del.ok) notes.push(`バックアップブランチ ${session.backupBranch} を削除しました`);
+      else notes.push(`バックアップブランチの削除に失敗しました: ${del.output}`);
+    }
+  } else {
+    notes.push(`バックアップブランチ: ${session.backupBranch}`);
+  }
+  clearRebaseSession(repo);
+  return notes;
+}
+
+/** セッション + 現在の進行状態を返す (別タブ・リロードからの復元、ロック判定に使う) */
+gitRouter.get('/rebase/session', async (req, res) => {
+  const g = git(req.query.repo);
+  const repo = String(req.query.repo);
+  res.json({ session: getRebaseSession(repo), mergeState: await getMergeState(g) });
+});
+
+/** リベース開始: バックアップ作成 → セッション記録 → git rebase <onto> */
+gitRouter.post('/rebase/start', async (req, res) => {
+  const { repo, onto, deleteBackupOnSuccess } = (req.body ?? {}) as Record<string, unknown>;
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  if (typeof onto !== 'string' || onto.length === 0 || /[\r\n\0]/.test(onto)) badRequest('onto is required');
+  if (getRebaseSession(repo)) badRequest('このリポジトリではリベースが既に進行中です');
+
+  const g = git(repo);
+  const { inProgress } = await getMergeState(g);
+  if (inProgress) badRequest(`${inProgress} が進行中のためリベースを開始できません`);
+  const st = await g.status();
+  if (!st.current) badRequest('現在のブランチを特定できません (detached HEAD)');
+  // 追跡ファイルの変更/ステージがあると git rebase が拒否するため事前に案内する
+  // (未追跡ファイル '??' はリベースを妨げないので除外する)
+  const dirty = st.files.filter((f) => !(f.index === '?' && f.working_dir === '?'));
+  if (dirty.length > 0) {
+    badRequest('作業ツリーに未コミットの変更があります。コミットまたは退避してからリベースしてください');
+  }
+
+  const baseBranch = st.current;
+  const backupBranch = `${REBASE_BACKUP_PREFIX}${backupTimestamp()}-${sanitizeRefName(baseBranch)}`;
+
+  const backup = await runGitCapture(repo, ['branch', backupBranch, baseBranch]);
+  if (!backup.ok) {
+    res.json({ ok: false, phase: 'backup', output: backup.output });
+    return;
+  }
+
+  const session: RebaseSession = {
+    repo,
+    onto,
+    baseBranch,
+    backupBranch,
+    deleteBackupOnSuccess: deleteBackupOnSuccess === true,
+    createdAt: new Date().toISOString(),
+  };
+  setRebaseSession(session);
+
+  const result = await runGitCapture(repo, ['rebase', onto]);
+  const mergeState = await getMergeState(g);
+  broadcastEvent('git:rebase', { repo });
+
+  if (mergeState.inProgress) {
+    // 競合等で一時停止 → セッションは保持し、競合解消 UI へ誘導する
+    res.json({ ok: result.ok, phase: 'conflict', output: result.output, session, mergeState });
+    return;
+  }
+
+  if (result.ok) {
+    // 競合なく完走 (up-to-date 含む) → 成功として後始末
+    const notes = await finalizeRebaseSuccess(repo, session);
+    res.json({ ok: true, phase: 'done', output: result.output, notes, mergeState });
+    return;
+  }
+
+  // 進行中でもなく失敗 (onto 不正等、リベースが始まらなかった) → 作ったバックアップを片付ける
+  clearRebaseSession(repo);
+  if (await branchExists(repo, backupBranch)) await runGitCapture(repo, ['branch', '-D', backupBranch]);
+  broadcastEvent('git:rebase', { repo });
+  res.json({ ok: false, phase: 'failed', output: result.output, mergeState });
+});
+
+/** リベース続行 (競合解消後): git rebase --continue */
+gitRouter.post('/rebase/continue', async (req, res) => {
+  const { repo } = (req.body ?? {}) as Record<string, unknown>;
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  const session = getRebaseSession(repo);
+  if (!session) badRequest('リベースセッションがありません');
+
+  const g = git(repo);
+  const before = await getMergeState(g);
+  if (!before.inProgress) {
+    // git 側は既にリベース中でない (アプリ外で完了/中止された) → セッション終了で復帰させる
+    res.json({ ok: false, phase: 'desynced', output: '', session, mergeState: before });
+    return;
+  }
+  if (before.conflicted.length > 0) badRequest(`未解決の競合が ${before.conflicted.length} 件あります`);
+
+  const result = await runGitCapture(repo, ['rebase', '--continue']);
+  const mergeState = await getMergeState(g);
+  broadcastEvent('git:rebase', { repo });
+
+  if (mergeState.inProgress) {
+    res.json({ ok: result.ok, phase: 'conflict', output: result.output, session, mergeState });
+    return;
+  }
+  if (result.ok) {
+    const notes = await finalizeRebaseSuccess(repo, session);
+    res.json({ ok: true, phase: 'done', output: result.output, notes, mergeState });
+    return;
+  }
+  res.json({ ok: false, phase: 'conflict', output: result.output, session, mergeState });
+});
+
+/** リベース中止: 途中経過を wip バックアップへ退避 → abort → 元バックアップで厳密復元 → セッション終了 */
+gitRouter.post('/rebase/abort', async (req, res) => {
+  const { repo } = (req.body ?? {}) as Record<string, unknown>;
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  const session = getRebaseSession(repo);
+  if (!session) badRequest('リベースセッションがありません');
+
+  const g = git(repo);
+  const warnings: string[] = [];
+  let wipBranch: string | null = null;
+
+  const { inProgress } = await getMergeState(g);
+  if (inProgress) {
+    // 途中経過 (適用済みコミット) を新しいバックアップへ退避 (ベストエフォート)
+    wipBranch = `${REBASE_BACKUP_PREFIX}${backupTimestamp()}-${sanitizeRefName(session.baseBranch)}-wip`;
+    const wip = await runGitCapture(repo, ['branch', '--force', wipBranch, 'HEAD']);
+    if (!wip.ok) {
+      wipBranch = null;
+      warnings.push('途中経過の退避に失敗しました (続行して中止します)');
+    }
+    const abort = await runGitCapture(repo, ['rebase', '--abort']);
+    if (!abort.ok) warnings.push(`rebase --abort に失敗しました: ${abort.output}`);
+  }
+
+  // 元のバックアップで厳密に復元 (ユーザーが削除済みならエラー扱いだがロックは解除する)
+  if (await branchExists(repo, session.backupBranch)) {
+    const reset = await runGitCapture(repo, ['reset', '--hard', session.backupBranch]);
+    if (!reset.ok) warnings.push(`バックアップからの復元に失敗しました: ${reset.output}`);
+  } else {
+    warnings.push(
+      `元のバックアップブランチ ${session.backupBranch} が見つかりません。復元をスキップしてリベースを終了します`,
+    );
+  }
+
+  clearRebaseSession(repo);
+  broadcastEvent('git:rebase', { repo });
+  res.json({ ok: true, phase: 'aborted', warnings, wipBranch, mergeState: await getMergeState(g) });
+});
+
+/** セッションのみ終了しロック解除 (git 実状態とズレた場合の復帰用。バックアップは残す) */
+gitRouter.post('/rebase/session/clear', async (req, res) => {
+  const { repo } = (req.body ?? {}) as Record<string, unknown>;
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  clearRebaseSession(repo);
+  broadcastEvent('git:rebase', { repo });
+  res.json({ ok: true });
+});
+
+/** リベース用バックアップブランチ (backup/rebase/*) の一覧 */
+gitRouter.get('/rebase/backups', async (req, res) => {
+  const repo = String(req.query.repo ?? '');
+  if (!repo) badRequest('repo is required');
+  const out = await runGitCapture(repo, [
+    'for-each-ref',
+    '--sort=-committerdate',
+    `--format=%(refname:short)%00%(objectname:short)%00%(committerdate:short)%00%(contents:subject)`,
+    `refs/heads/${REBASE_BACKUP_PREFIX}`,
+  ]);
+  const backups = out.ok
+    ? out.output
+        .split('\n')
+        .map((line) => line.split('\0'))
+        .filter((f) => f[0])
+        .map(([name, hash, date, subject]) => ({ name, hash, date, subject: subject ?? '' }))
+    : [];
+  res.json({ backups });
+});
+
+/** リベース用バックアップブランチの削除 (backup/rebase/ 配下のみ) */
+gitRouter.post('/rebase/backups/delete', async (req, res) => {
+  const { repo, name } = (req.body ?? {}) as Record<string, unknown>;
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  if (typeof name !== 'string' || !name.startsWith(REBASE_BACKUP_PREFIX) || /[\r\n\0]/.test(name)) {
+    badRequest('削除できるのは backup/rebase/ 配下のブランチのみです');
+  }
+  const del = await runGitCapture(repo, ['branch', '-D', name]);
+  if (!del.ok) badRequest(del.output || 'ブランチの削除に失敗しました');
+  res.json({ ok: true, output: del.output });
 });
 
 // --- グラフ上のコミット操作 (§5.5) ---

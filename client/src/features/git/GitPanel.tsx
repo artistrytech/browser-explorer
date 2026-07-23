@@ -20,8 +20,10 @@ import { openStashDialog } from './StashDialog';
 import { openAuthDialog } from './AuthDialog';
 import { openCommitMessagePicker } from './CommitMessageDialog';
 import { openCreateBranchDialog, openRemoteCheckoutDialog, openRenameBranchDialog } from './BranchDialog';
+import { openRebaseDialog } from './Rebase';
 import { openCommitDiff } from './DiffTab';
-import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
+import { useRebase } from '../../stores/rebase';
+import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus, RebaseBackup } from '../../types';
 import styles from './GitPanel.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -380,6 +382,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     selectSingle(`${stagedSide ? 'S' : 'W'}:${f.path}`);
   };
 
+  const currentBranch = status?.branch ?? null;
   const isRemoteBranch = (b: GitBranch) => b.name.startsWith('remotes/');
   const isRemoteHead = (b: GitBranch) => /^remotes\/[^/]+\/HEAD$/.test(b.name);
 
@@ -441,6 +444,11 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             action: () => void runGitCommands(repoRoot, [['merge', b.name]], 'マージ'),
           },
           {
+            label: 'リベース (現在のブランチをこの上に移動)',
+            disabled: b.current || !currentBranch,
+            action: () => currentBranch && openRebaseDialog(b.name, currentBranch),
+          },
+          {
             label: '名前変更',
             action: () => openRenameBranchDialog(b.name),
           },
@@ -455,6 +463,47 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           },
         ];
     openMenu(e.clientX, e.clientY, items);
+  };
+
+  /** ヘッダの「ツール」メニュー: リベース用バックアップ (backup/rebase/*) の削除 */
+  const openToolsMenu = (e: React.MouseEvent) => {
+    const { clientX: x, clientY: y } = e;
+    void api
+      .gitRebaseBackups(repoRoot)
+      .then(({ backups }) => {
+        const deleteItem = (bk: RebaseBackup): MenuItem => ({
+          label: `🗑 ${bk.name}`,
+          danger: true,
+          action: () =>
+            void confirmDialog(
+              'バックアップブランチを削除',
+              `${bk.name}\n(${bk.hash} ${bk.date} ${bk.subject}) を削除しますか?`,
+              true,
+            ).then((ok) => {
+              if (!ok) return;
+              void api
+                .gitRebaseBackupDelete(repoRoot, bk.name)
+                .then(() => {
+                  show('success', 'バックアップブランチを削除しました');
+                  if (tab === 'branches')
+                    api.gitBranches(repoRoot).then((r) => setBranches(r.branches)).catch(toastError);
+                })
+                .catch(toastError);
+            }),
+        });
+        const backupItems: MenuItem[] =
+          backups.length > 0
+            ? backups.map(deleteItem)
+            : [{ label: '(バックアップはありません)', disabled: true }];
+        const items: MenuItem[] = [
+          {
+            label: 'リベースのバックアップを削除',
+            submenu: backupItems,
+          },
+        ];
+        openMenu(x, y, items);
+      })
+      .catch(toastError);
   };
 
   const toggleBranchGroup = (key: string) => {
@@ -776,6 +825,13 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           onClick={openAuthDialog}
         >
           🔑 認証
+        </button>
+        <button
+          className={cx("status-btn")}
+          title="リベース用バックアップの管理など"
+          onClick={openToolsMenu}
+        >
+          🧰 ツール ▾
         </button>
         {!repositories.includes(repoRoot) && (
           <button className={cx("status-btn")} onClick={() => addRepository(repoRoot)} title="サイドバーに登録">

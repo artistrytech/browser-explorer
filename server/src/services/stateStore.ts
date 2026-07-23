@@ -24,6 +24,16 @@ CREATE TABLE IF NOT EXISTS commit_messages (
   message TEXT PRIMARY KEY,
   created_at TEXT NOT NULL
 );
+-- アプリ起点のリベースセッション (repo 単位)。この行の存在が「リベース中ロック」を表す。
+-- バックアップブランチ名や成功時削除フラグ等、git 自身の状態には無いメタデータを保持する。
+CREATE TABLE IF NOT EXISTS rebase_sessions (
+  repo TEXT PRIMARY KEY,
+  onto TEXT NOT NULL,                          -- リベース先 (この上に移動する)
+  base_branch TEXT NOT NULL,                   -- 書き換えられる側 (開始時の現在ブランチ)
+  backup_branch TEXT NOT NULL,                 -- backup/rebase/<ts>-<name>
+  delete_backup_on_success INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
 `);
 
 export interface Favorite {
@@ -186,6 +196,71 @@ export function addCommitMessage(message: string): void {
     ).run();
   });
   tx();
+}
+
+// --- リベースセッション (アプリ起点のリベース中ロック + メタデータ) ---
+
+export interface RebaseSession {
+  repo: string;
+  /** リベース先 (この上に base_branch を移動する) */
+  onto: string;
+  /** 書き換えられる側 (開始時の現在ブランチ) */
+  baseBranch: string;
+  /** 退避用バックアップブランチ名 (backup/rebase/<ts>-<name>) */
+  backupBranch: string;
+  /** リベース成功後にバックアップブランチを削除するか */
+  deleteBackupOnSuccess: boolean;
+  createdAt: string;
+}
+
+export function getRebaseSession(repo: string): RebaseSession | null {
+  const row = db
+    .prepare(
+      'SELECT repo, onto, base_branch, backup_branch, delete_backup_on_success, created_at FROM rebase_sessions WHERE repo = ?',
+    )
+    .get(repo) as
+    | {
+        repo: string;
+        onto: string;
+        base_branch: string;
+        backup_branch: string;
+        delete_backup_on_success: number;
+        created_at: string;
+      }
+    | undefined;
+  if (!row) return null;
+  return {
+    repo: row.repo,
+    onto: row.onto,
+    baseBranch: row.base_branch,
+    backupBranch: row.backup_branch,
+    deleteBackupOnSuccess: row.delete_backup_on_success === 1,
+    createdAt: row.created_at,
+  };
+}
+
+export function setRebaseSession(s: RebaseSession): void {
+  db.prepare(
+    `INSERT INTO rebase_sessions (repo, onto, base_branch, backup_branch, delete_backup_on_success, created_at)
+     VALUES (@repo, @onto, @baseBranch, @backupBranch, @deleteBackupOnSuccess, @createdAt)
+     ON CONFLICT(repo) DO UPDATE SET
+       onto = excluded.onto,
+       base_branch = excluded.base_branch,
+       backup_branch = excluded.backup_branch,
+       delete_backup_on_success = excluded.delete_backup_on_success,
+       created_at = excluded.created_at`,
+  ).run({
+    repo: s.repo,
+    onto: s.onto,
+    baseBranch: s.baseBranch,
+    backupBranch: s.backupBranch,
+    deleteBackupOnSuccess: s.deleteBackupOnSuccess ? 1 : 0,
+    createdAt: s.createdAt,
+  });
+}
+
+export function clearRebaseSession(repo: string): void {
+  db.prepare('DELETE FROM rebase_sessions WHERE repo = ?').run(repo);
 }
 
 export function importState(state: Partial<AppState>): void {

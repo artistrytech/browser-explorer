@@ -75,6 +75,37 @@ export interface MergeState {
   conflicted: string[];
 }
 
+/** アプリ起点のリベースセッション (存在＝リベース中ロック) */
+export interface RebaseSession {
+  repo: string;
+  onto: string;
+  baseBranch: string;
+  backupBranch: string;
+  deleteBackupOnSuccess: boolean;
+  createdAt: string;
+}
+
+/** リベース用バックアップブランチ 1 件 (ツールメニューでの削除対象) */
+export interface RebaseBackup {
+  name: string;
+  hash: string;
+  date: string;
+  subject: string;
+}
+
+/** start/continue/abort の結果。phase で後続 UI を分岐する */
+export interface RebaseActionResult {
+  ok: boolean;
+  /** backup=バックアップ失敗 / conflict=競合で停止 / done=成功完了 / failed=開始失敗 / desynced=git 実状態とズレ / aborted=中止完了 */
+  phase: 'backup' | 'conflict' | 'done' | 'failed' | 'desynced' | 'aborted';
+  output?: string;
+  notes?: string[];
+  warnings?: string[];
+  wipBranch?: string | null;
+  session?: RebaseSession | null;
+  mergeState?: MergeState;
+}
+
 export interface ConflictFile {
   path: string;
   kind: string;

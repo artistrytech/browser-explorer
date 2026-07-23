@@ -12,6 +12,9 @@ import type {
   GitGraphCommit,
   GitStatus,
   MergeState,
+  RebaseActionResult,
+  RebaseBackup,
+  RebaseSession,
   ReadResult,
   VolumeInfo,
 } from '../types';
@@ -222,6 +225,21 @@ export const api = {
     post<{ ok: true }>('/api/git/conflict/take', { repo, paths, side }),
   gitMergeContinue: (repo: string) => post<{ ok: true }>('/api/git/merge/continue', { repo }),
   gitMergeAbort: (repo: string) => post<{ ok: true }>('/api/git/merge/abort', { repo }),
+
+  // --- git: リベース (アプリ起点。バックアップ + セッションによる全画面ロック) ---
+  gitRebaseSession: (repo: string) =>
+    get<{ session: RebaseSession | null; mergeState: MergeState }>(
+      `/api/git/rebase/session?repo=${q(repo)}`,
+    ),
+  gitRebaseStart: (repo: string, onto: string, deleteBackupOnSuccess: boolean) =>
+    post<RebaseActionResult>('/api/git/rebase/start', { repo, onto, deleteBackupOnSuccess }),
+  gitRebaseContinue: (repo: string) => post<RebaseActionResult>('/api/git/rebase/continue', { repo }),
+  gitRebaseAbort: (repo: string) => post<RebaseActionResult>('/api/git/rebase/abort', { repo }),
+  gitRebaseSessionClear: (repo: string) => post<{ ok: true }>('/api/git/rebase/session/clear', { repo }),
+  gitRebaseBackups: (repo: string) =>
+    get<{ backups: RebaseBackup[] }>(`/api/git/rebase/backups?repo=${q(repo)}`),
+  gitRebaseBackupDelete: (repo: string, name: string) =>
+    post<{ ok: true; output: string }>('/api/git/rebase/backups/delete', { repo, name }),
 
   // --- git: グラフ上のコミット操作 (002.md §5.5) ---
   gitCheckoutCommit: (repo: string, hash: string) =>

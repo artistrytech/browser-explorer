@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { api } from '../../api/client';
 import { monaco, languageForPath } from '../editor/monacoSetup';
 import { useGit } from '../../stores/git';
+import { useRebase } from '../../stores/rebase';
 import { useSettings } from '../../stores/settings';
 import { useToast, toastError } from '../../stores/toast';
 import { confirmDialog } from '../../stores/dialog';
@@ -110,6 +111,9 @@ function buildResult(segs: Segment[], res: Resolution[]): string {
 function ConflictList() {
   const repoRoot = useGit((s) => s.repoRoot)!;
   const mergeState = useGit((s) => s.mergeState);
+  // アプリ起点のリベース中は、続行/中止をセッション経由 (バックアップ管理付き) に差し替える
+  const rebaseSession = useRebase((s) => s.session);
+  const isRebaseSession = rebaseSession?.repo === repoRoot && mergeState.inProgress === 'rebase';
   const { dir, openFile, close } = useConflictResolver();
   const [files, setFiles] = useState<ConflictFile[]>([]);
   const [total, setTotal] = useState<number | null>(null);
@@ -183,7 +187,23 @@ function ConflictList() {
         <button className={cx("btn")} disabled={busy || files.length === 0} onClick={() => takeAll('theirs')}>
           すべて相手 (theirs) を採用
         </button>
-        {mergeState.inProgress && files.length === 0 && (
+        {isRebaseSession && files.length === 0 && (
+          <button
+            className={cx("btn primary")}
+            disabled={busy}
+            onClick={() =>
+              void useRebase.getState().continueRebase(repoRoot).then((r) => {
+                // 完了 or さらに次の競合が無ければツールを閉じる (残っていれば一覧に留まる)
+                if (!r || r.phase === 'done' || r.phase === 'desynced') {
+                  useConflictResolver.getState().close();
+                }
+              })
+            }
+          >
+            リベースを続行
+          </button>
+        )}
+        {!isRebaseSession && mergeState.inProgress && files.length === 0 && (
           <button
             className={cx("btn primary")}
             disabled={busy}
@@ -198,7 +218,27 @@ function ConflictList() {
         )}
         <span className={cx("status-spacer")} />
         <span className={cx("conflict-remaining")}>残り: {files.length} 件</span>
-        {mergeState.inProgress && (
+        {isRebaseSession && (
+          <button
+            className={cx("btn danger")}
+            disabled={busy}
+            onClick={() =>
+              void confirmDialog(
+                'リベースを中止',
+                '進行中のリベースを中止します。途中経過は新しいバックアップに退避し、開始前のバックアップから復元します。よろしいですか?',
+                true,
+              ).then((ok) => {
+                if (ok)
+                  void useRebase.getState().abort(repoRoot).then(() =>
+                    useConflictResolver.getState().close(),
+                  );
+              })
+            }
+          >
+            リベースを中止
+          </button>
+        )}
+        {!isRebaseSession && mergeState.inProgress && (
           <button
             className={cx("btn danger")}
             disabled={busy}
