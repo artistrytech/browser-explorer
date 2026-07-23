@@ -706,7 +706,7 @@ export function FileList() {
 
   const rowProps = (entry: FsEntry) => ({
     'data-entry-path': entry.path,
-    className: `${selectedSet.has(entry.path) ? 'selected' : ''}${dropTarget === entry.path ? ' drop-target' : ''}${entry.hidden ? ' hidden-entry' : ''}`,
+    className: cx(`${selectedSet.has(entry.path) ? 'selected' : ''}${dropTarget === entry.path ? ' drop-target' : ''}${entry.hidden ? ' hidden-entry' : ''}`),
     onClick: (e: React.MouseEvent) => clickEntry(e, entry),
     onDoubleClick: () => openWithDefault(entry),
     onContextMenu: (e: React.MouseEvent) => entryMenu(e, entry),
