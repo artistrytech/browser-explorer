@@ -138,6 +138,11 @@ export const api = {
     get<{ path: string; before: string | null; after: string | null; binary: boolean }>(
       `/api/git/commit-file-diff?repo=${q(repo)}&hash=${q(hash)}&path=${q(path)}`,
     ),
+  /** コミット内 1 ファイルの unified 差分 (ログタブのプレビュー用) */
+  gitCommitFilePatch: (repo: string, hash: string, path: string) =>
+    get<{ diff: string }>(
+      `/api/git/commit-file-patch?repo=${q(repo)}&hash=${q(hash)}&path=${q(path)}`,
+    ),
   gitShow: (repo: string, hash: string) =>
     get<{ hash: string; author: string; date: string; message: string; patch: string }>(
       `/api/git/show?repo=${q(repo)}&hash=${q(hash)}`,

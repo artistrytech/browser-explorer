@@ -100,10 +100,47 @@
   padding: 8px;
 }
 
-.git-left.graph-host {
+.git-left.branch-host {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding: 0;
+}
+
+/* ログタブ: 分割された各ペインの中身 */
+.log-pane {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.log-pane.log-pane-scroll {
+  overflow: auto;
+  padding: 8px;
+}
+
+.resize-handle-col,
+.resize-handle-row {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+}
+
+.resize-handle-col {
+  width: 4px;
+  cursor: col-resize;
+  border-width: 0 1px;
+}
+
+.resize-handle-row {
+  height: 4px;
+  cursor: row-resize;
+  border-width: 1px 0;
+}
+
+.resize-handle-col:hover,
+.resize-handle-row:hover {
+  background: var(--accent);
 }
 
 .git-right {
@@ -264,6 +301,17 @@
   background: var(--bg-hover);
 }
 
+.branch-row.selected,
+.branch-row.selected:hover {
+  background: var(--bg-selected);
+}
+
+/* 一覧にフォーカスがあるときは選択行を強調 (キーボード操作の対象が分かるように) */
+.branch-list:focus-visible .branch-row.selected {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 .branch-current {
   font-weight: 700;
   color: var(--add);
@@ -339,8 +387,27 @@
   top: 0;
 }
 
-.git-branches .btn {
-  margin-bottom: 8px;
+.git-branches {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+/* 「ブランチ作成」は固定表示 (一覧だけがスクロールする) */
+.branch-toolbar {
+  flex: none;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+}
+
+.branch-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 8px 8px;
+  outline: none;
 }
 
 .branch-section {
@@ -363,6 +430,11 @@
   padding: 8px 4px;
   color: var(--text-dim);
   font-size: 12px;
+}
+
+.commit-detail {
+  /* 絞り込みバーの高さ。ファイル一覧のヘッダはこの下に貼り付ける */
+  --cf-filter-h: 42px;
 }
 
 .commit-detail-head {
@@ -414,8 +486,12 @@
   padding: 4px 8px;
   border-bottom: 1px solid var(--border);
   position: sticky;
-  top: 0;
+  /* 絞り込みバー (sticky) の下に貼り付く */
+  top: var(--cf-filter-h);
+  z-index: 2;
   background: var(--bg);
+  /* 狭いペインでも見出しは折り返さない */
+  white-space: nowrap;
 }
 
 .commit-files td {
@@ -470,11 +546,19 @@
   font-size: 11px;
 }
 
+/* スクロールしても画面上部に留める (ペインの padding 分は margin で相殺する) */
 .cf-filter-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 0 8px;
+  height: var(--cf-filter-h);
+  box-sizing: border-box;
+  margin: -8px -8px 0;
+  padding: 8px;
+  background: var(--bg);
 }
 
 .cf-filter {

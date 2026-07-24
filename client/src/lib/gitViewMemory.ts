@@ -20,6 +20,8 @@ export interface GitViewRecord {
   focusedFile: string | null;
   /** ブランチ一覧で折りたたんでいる階層キー */
   collapsedBranchGroups: string[];
+  /** ブランチ一覧で選択 (フォーカス) 中の行のキー */
+  selectedBranchKey: string | null;
   ts: number;
 }
 
@@ -43,6 +45,7 @@ export function saveGitView(repo: string, partial: Partial<Omit<GitViewRecord, '
       filesFilter: '',
       focusedFile: null,
       collapsedBranchGroups: [],
+      selectedBranchKey: null,
     };
     sessionStorage.setItem(PREFIX + repo, JSON.stringify({ ...prev, ...partial, ts: Date.now() }));
   } catch {

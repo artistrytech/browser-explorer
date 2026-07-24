@@ -286,6 +286,23 @@ gitRouter.get('/commit-files', async (req, res) => {
   res.json({ hash: h, author, date, message: msg.join('\x1f').trim(), files, limit });
 });
 
+/**
+ * コミット内 1 ファイルの unified 差分 (ログタブのプレビュー用)。
+ * commit-files と同じく第 1 親との差分で、ルートコミットは --root で全追加として得る。
+ */
+gitRouter.get('/commit-file-patch', async (req, res) => {
+  const g = git(req.query.repo);
+  const hash = String(req.query.hash ?? '');
+  if (!hash) badRequest('hash is required');
+  const rel = relPath(req.query.path);
+  const parentsRaw = await g.show([hash, '--no-patch', '--format=%P']);
+  const hasParent = parentsRaw.trim().length > 0;
+  const args = hasParent
+    ? ['diff', '--no-renames', `${hash}^`, hash, '--', rel]
+    : ['diff-tree', '-r', '--root', '--no-renames', '--format=', '-p', hash, '--', rel];
+  res.json({ diff: await g.raw(args) });
+});
+
 /** コミット前後のファイル内容 (2 ペイン差分表示用)。存在しない側は null */
 gitRouter.get('/commit-file-diff', async (req, res) => {
   const g = git(req.query.repo);
