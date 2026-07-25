@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
+import { api } from '../../api/client';
 import { useGit } from '../../stores/git';
+import { toastError } from '../../stores/toast';
 import { runGitCommands } from './GitCommandDialog';
 import styles from './BranchDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -58,6 +60,8 @@ export function BranchDialog() {
   const repoRoot = useGit((s) => s.repoRoot);
   const baseBranch = useGit((s) => s.status?.branch ?? null);
   const [name, setName] = useState('');
+  const [branchNames, setBranchNames] = useState<string[]>([]);
+  const [branchNamesLoaded, setBranchNamesLoaded] = useState(false);
   const [switchAfterCreate, setSwitchAfterCreate] = useState(true);
   const [trackRemote, setTrackRemote] = useState(true);
 
@@ -74,11 +78,45 @@ export function BranchDialog() {
     }
   }, [open, mode, remoteBranch, branchName]);
 
+  useEffect(() => {
+    if (!open || !repoRoot) return;
+    setBranchNamesLoaded(false);
+    setBranchNames([]);
+    let cancelled = false;
+    api
+      .gitBranches(repoRoot)
+      .then((r) => {
+        if (cancelled) return;
+        setBranchNames(r.branches.map((b) => b.name));
+        setBranchNamesLoaded(true);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setBranchNamesLoaded(true);
+        toastError(e);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, repoRoot]);
+
   if (!open || !repoRoot) return null;
 
   const trimmedName = name.trim();
+  const isCreate = mode === 'create';
+  const isRename = mode === 'rename';
+  const conflictingBranchName =
+    isCreate || isRename
+      ? branchNames.find((existingName) => existingName === trimmedName && (!isRename || existingName !== branchName))
+      : undefined;
+  const validationError = conflictingBranchName
+    ? `ブランチ "${conflictingBranchName}" は既に存在します。別の名前を入力してください。`
+    : '';
+  const branchNamesReady = branchNamesLoaded || (!isCreate && !isRename);
+  const canSubmit = branchNamesReady && !!trimmedName && !validationError && (!isRename || trimmedName !== branchName);
+
   const doCreate = () => {
-    if (!trimmedName) return;
+    if (!canSubmit) return;
     close();
     const args = switchAfterCreate ? ['checkout', '-b', trimmedName] : ['branch', trimmedName];
     void runGitCommands(repoRoot, [args], 'ブランチ作成');
@@ -95,13 +133,11 @@ export function BranchDialog() {
   };
 
   const doRename = () => {
-    if (!trimmedName || trimmedName === branchName) return;
+    if (!canSubmit) return;
     close();
     void runGitCommands(repoRoot, [['branch', '-m', branchName, trimmedName]], 'ブランチ名変更');
   };
 
-  const isCreate = mode === 'create';
-  const isRename = mode === 'rename';
   const submit = isCreate ? doCreate : isRename ? doRename : doRemoteCheckout;
 
   return (
@@ -141,11 +177,16 @@ export function BranchDialog() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') submit();
+                if (e.key === 'Enter' && canSubmit) submit();
                 if (e.key === 'Escape') close();
               }}
             />
           </label>
+          {validationError && (
+            <div className={cx("branch-error")} role="alert">
+              {validationError}
+            </div>
+          )}
           {isRename ? null : isCreate ? (
             <label className={cx("branch-row")}>
               <span className={cx("branch-label")} />
@@ -172,7 +213,7 @@ export function BranchDialog() {
           <button className={cx("btn")} onClick={close}>
             キャンセル
           </button>
-          <button className={cx("btn primary")} disabled={!trimmedName || (isRename && trimmedName === branchName)} onClick={submit}>
+          <button className={cx("btn primary")} disabled={!canSubmit} onClick={submit}>
             {isCreate ? '作成' : isRename ? '変更' : 'チェックアウト'}
           </button>
         </div>

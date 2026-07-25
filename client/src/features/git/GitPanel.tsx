@@ -1297,6 +1297,13 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   <button className={cx("btn")} onClick={openCreateBranchDialog}>
                     ＋ ブランチ作成
                   </button>
+                  <button
+                    className={cx("btn")}
+                    disabled={!currentBranch}
+                    onClick={() => currentBranch && openRenameBranchDialog(currentBranch)}
+                  >
+                    名前変更
+                  </button>
                 </div>
                 <div
                   className={cx("branch-list")}

@@ -397,6 +397,8 @@
 /* 「ブランチ作成」は固定表示 (一覧だけがスクロールする) */
 .branch-toolbar {
   flex: none;
+  display: flex;
+  gap: 8px;
   padding: 8px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-alt);

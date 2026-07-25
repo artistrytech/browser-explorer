@@ -89,6 +89,13 @@
   color: var(--text);
 }
 
+.branch-error {
+  margin-left: 138px;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .branch-value {
   min-width: 0;
   overflow: hidden;
