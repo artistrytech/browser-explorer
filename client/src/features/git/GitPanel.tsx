@@ -85,12 +85,7 @@ function buildBranchTree(branches: GitBranch[], keyPrefix: string): BranchTreeNo
 
   const finalize = (nodes: Iterable<MutableBranchTreeNode>): BranchTreeNode[] =>
     [...nodes]
-      .sort((a, b) => {
-        const aIsFolder = a.branch === null;
-        const bIsFolder = b.branch === null;
-        if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
-        return a.label.localeCompare(b.label);
-      })
+      .sort((a, b) => a.label.localeCompare(b.label))
       .map((node) => ({
         key: node.key,
         label: node.label,
@@ -498,7 +493,10 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           {
             label: 'マージ',
             disabled: b.current,
-            action: () => void runGitCommands(repoRoot, [['merge', b.name]], 'マージ'),
+            action: () =>
+              void confirmDialog('マージ', `${b.name} を ${currentBranch ?? 'HEAD'} にマージしますか?`).then((ok) => {
+                if (ok) void runGitCommands(repoRoot, [['merge', b.name]], 'マージ');
+              }),
           },
           {
             label: 'リベース (現在のブランチをこの上に移動)',
