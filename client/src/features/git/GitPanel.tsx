@@ -499,7 +499,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
               }),
           },
           {
-            label: 'リベース (現在のブランチをこの上に移動)',
+            label: 'リベース',
             disabled: b.current || !currentBranch,
             action: () => currentBranch && openRebaseDialog(b.name, currentBranch),
           },
@@ -583,6 +583,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const remoteBranchTree = buildBranchTree(remoteBranches, 'remote');
   /** 表示順の行 (キーボード移動用)。ローカル → リモートの順で並ぶ */
   const branchRows = visibleBranchRows([localBranchTree, remoteBranchTree], collapsedBranchGroups);
+  const selectedBranch = branchRows.find((r) => r.node.key === selectedBranchKey)?.node.branch ?? null;
 
   const moveBranchSelection = (delta: number) => {
     if (branchRows.length === 0) return;
@@ -1316,7 +1317,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             )}
           </div>
 
-          <div className={cx("git-right")}>
+          <div className={cx(`git-right${tab === 'branches' ? ' branch-log-host' : ''}`)}>
             {tab === 'changes' ? (
               focusFiles.length > 0 ? (
                 <WorkingDiff repo={repoRoot} files={focusFiles} onApplied={() => void refreshStatus()} />
@@ -1324,6 +1325,17 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                 <div className={cx("empty-hint")}>
                   ファイルを選択すると差分を表示します (Ctrl / Shift で複数選択)
                 </div>
+              )
+            ) : tab === 'branches' ? (
+              selectedBranch ? (
+                <GitGraph
+                  repo={repoRoot}
+                  selectedHash={commitDetail?.hash ?? null}
+                  onSelect={selectCommit}
+                  branch={selectedBranch.name}
+                />
+              ) : (
+                <div className={cx("empty-hint")}>ブランチを選択するとログを表示します</div>
               )
             ) : (
               <div className={cx("empty-hint")}>ファイルを選択すると差分を表示します</div>

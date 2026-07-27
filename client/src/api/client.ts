@@ -124,11 +124,12 @@ export const api = {
     ),
   gitGraph: (
     repo: string,
-    opts: { all?: boolean; limit?: number; skip?: number; path?: string; follow?: boolean } = {},
+    opts: { all?: boolean; branch?: string; limit?: number; skip?: number; path?: string; follow?: boolean } = {},
   ) =>
     get<{ commits: GitGraphCommit[] }>(
       `/api/git/graph?repo=${q(repo)}&limit=${opts.limit ?? 200}` +
         `${opts.skip ? `&skip=${opts.skip}` : ''}${opts.all ? '&all=true' : ''}` +
+        `${opts.branch ? `&branch=${q(opts.branch)}` : ''}` +
         `${opts.path ? `&path=${q(opts.path)}` : ''}` +
         `${opts.follow ? '&follow=true' : ''}`,
     ),

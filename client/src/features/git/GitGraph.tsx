@@ -198,12 +198,15 @@ export function GitGraph({
   onSelect,
   selectedHash,
   filter = null,
+  branch = null,
 }: {
   repo: string;
   onSelect: (hash: string) => void;
   selectedHash: string | null;
   /** パス絞り込み (002.md §1): 指定時はそのパスに関わるコミットだけをグラフ表示する */
   filter?: { path: string; follow: boolean } | null;
+  /** ブランチ絞り込み: 指定時はそのブランチに到達可能なコミットだけを表示する */
+  branch?: string | null;
 }) {
   const [commits, setCommits] = useState<GitGraphCommit[]>([]);
   // 「全ブランチ」はデフォルト OFF、sessionStorage に状態を保持
@@ -227,12 +230,13 @@ export function GitGraph({
   useEffect(() => {
     setCommits([]);
     scrollRestoredRef.current = false;
-  }, [repo, filter]);
+  }, [repo, filter, branch]);
 
   // スクロール位置を sessionStorage に保持 (タブ復帰時に復元)。全体グラフと絞り込みグラフで別枠。
   // アンマウント時はデバウンス待ちの値をフラッシュして取りこぼしを防ぐ
   useEffect(() => {
     const el = rowsRef.current;
+    if (branch) return;
     if (!el) return;
     const save = (top: number) =>
       saveGitView(repo, filter ? { logScrollTop: top } : { graphScrollTop: top });
@@ -249,21 +253,29 @@ export function GitGraph({
       el.removeEventListener('scroll', onScroll);
       if (last >= 0) save(last);
     };
-  }, [repo, filter]);
+  }, [repo, filter, branch]);
 
   // 初回描画後に一度だけスクロール位置を復元
   useEffect(() => {
     if (scrollRestoredRef.current || commits.length === 0 || !rowsRef.current) return;
     scrollRestoredRef.current = true;
+    if (branch) return;
     const saved = loadGitView(repo);
     if (saved) rowsRef.current.scrollTop = filter ? saved.logScrollTop : saved.graphScrollTop;
-  }, [commits, repo, filter]);
+  }, [commits, repo, filter, branch]);
 
   const load = (reset: boolean) => {
     setLoading(true);
     const skip = reset ? 0 : commits.length;
     api
-      .gitGraph(repo, { all, limit: PAGE, skip, path: filter?.path, follow: filter?.follow })
+      .gitGraph(repo, {
+        all: branch ? false : all,
+        branch: branch ?? undefined,
+        limit: PAGE,
+        skip,
+        path: filter?.path,
+        follow: filter?.follow,
+      })
       .then((r) => {
         // ページングはレーン連続性のため読み込み済み全体を再計算する (§5.4)
         setCommits((prev) => (reset ? r.commits : [...prev, ...r.commits]));
@@ -276,7 +288,7 @@ export function GitGraph({
   useEffect(() => {
     load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo, all, status, filter]);
+  }, [repo, all, status, filter, branch]);
 
   const { rows, maxLanes } = useMemo(() => {
     // --follow (リネーム追跡) は git の履歴簡略化と併用すると親の書き換えが行われず、
@@ -339,10 +351,14 @@ export function GitGraph({
   return (
     <div className={cx("git-graph")}>
       <div className={cx("graph-toolbar")}>
-        <label>
-          <input type="checkbox" checked={all} onChange={(e) => toggleAll(e.target.checked)} />
-          全ブランチ (--all)
-        </label>
+        {branch ? (
+          <span title={branch}>{branch}</span>
+        ) : (
+          <label>
+            <input type="checkbox" checked={all} onChange={(e) => toggleAll(e.target.checked)} />
+            全ブランチ (--all)
+          </label>
+        )}
       </div>
       <div className={cx("graph-rows")} ref={rowsRef}>
         {rows.map((row) => {

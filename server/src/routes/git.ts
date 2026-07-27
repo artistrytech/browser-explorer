@@ -206,7 +206,9 @@ gitRouter.get('/graph', async (req, res) => {
   const skip = Math.max(Number(req.query.skip) || 0, 0);
   const args = ['log', '--topo-order', `--max-count=${limit}`, `--skip=${skip}`,
     '--pretty=format:%H%x1f%P%x1f%an%x1f%aI%x1f%D%x1f%s%x1e'];
-  if (req.query.all === 'true') args.splice(1, 0, '--all');
+  const branch = typeof req.query.branch === 'string' && req.query.branch.length > 0 ? req.query.branch : '';
+  if (branch) args.splice(1, 0, branch);
+  else if (req.query.all === 'true') args.splice(1, 0, '--all');
   // パス絞り込み (§1): --parents で %P を簡略化後の親に書き換えさせ、レーン描画の整合性を保つ
   if (typeof req.query.path === 'string' && req.query.path.length > 0) {
     const rel = relPath(req.query.path);

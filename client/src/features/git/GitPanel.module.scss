@@ -149,6 +149,14 @@
   padding: 8px;
 }
 
+.git-right.branch-log-host {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
 .git-section-title {
   display: flex;
   align-items: center;
