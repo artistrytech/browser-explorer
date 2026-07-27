@@ -305,8 +305,6 @@ export function GitGraph({
     e.preventDefault();
     const short = c.hash.slice(0, 7);
     const items: MenuItem[] = [
-      { label: '差分を表示', action: () => onSelect(c.hash) },
-      { separator: true },
       {
         label: `このコミットを checkout (${short})`,
         action: () =>
@@ -368,7 +366,7 @@ export function GitGraph({
               key={c.hash}
               className={cx(`graph-row${selectedHash === c.hash ? ' active' : ''}`)}
               style={{ height: ROW_H }}
-              onClick={() => onSelect(c.hash)}
+              onMouseDown={() => onSelect(c.hash)}
               onContextMenu={(e) => commitMenu(e, c)}
               title={`${c.hash}\n${c.subject}`}
             >

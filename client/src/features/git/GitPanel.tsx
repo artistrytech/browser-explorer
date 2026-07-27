@@ -150,6 +150,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   /** Shift 範囲選択の起点 */
   const [anchorKey, setAnchorKey] = useState<string | null>(null);
   const [commitDetail, setCommitDetail] = useState<CommitFilesResult | null>(null);
+  const [branchLogFocus, setBranchLogFocus] = useState<{ branchName: string; hash: string } | null>(null);
   /** 差分ファイル一覧のフィルタ (パス部分一致)。sessionStorage に保持 */
   const [fileFilter, setFileFilter] = useState('');
   /** 差分ファイル一覧のフォーカス行 (マーキングのみ。履歴には積まず sessionStorage に保持) */
@@ -583,24 +584,25 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const remoteBranchTree = buildBranchTree(remoteBranches, 'remote');
   /** 表示順の行 (キーボード移動用)。ローカル → リモートの順で並ぶ */
   const branchRows = visibleBranchRows([localBranchTree, remoteBranchTree], collapsedBranchGroups);
-  const selectedBranch = branchRows.find((r) => r.node.key === selectedBranchKey)?.node.branch ?? null;
+  const allBranchRows = visibleBranchRows([localBranchTree, remoteBranchTree], new Set());
+  const selectableBranchRows = branchRows.filter((r) => r.node.branch);
+  const selectedBranch = allBranchRows.find((r) => r.node.key === selectedBranchKey)?.node.branch ?? null;
 
   const moveBranchSelection = (delta: number) => {
-    if (branchRows.length === 0) return;
-    const idx = branchRows.findIndex((r) => r.node.key === selectedBranchKey);
+    if (selectableBranchRows.length === 0) return;
+    const idx = selectableBranchRows.findIndex((r) => r.node.key === selectedBranchKey);
     const next =
       idx < 0
         ? delta > 0
           ? 0
-          : branchRows.length - 1
-        : Math.min(branchRows.length - 1, Math.max(0, idx + delta));
-    setSelectedBranchKey(branchRows[next].node.key);
+          : selectableBranchRows.length - 1
+        : Math.min(selectableBranchRows.length - 1, Math.max(0, idx + delta));
+    setSelectedBranchKey(selectableBranchRows[next].node.key);
   };
 
-  /** ↑↓ で選択移動、Enter で切替 (フォルダは開閉)、←→ でフォルダの折りたたみ/展開 */
+  /** ↑↓ で葉ブランチの選択移動、Enter で切替。枝行はクリックで開閉するだけで選択対象にしない */
   const branchListKeyDown = (e: React.KeyboardEvent) => {
-    const idx = branchRows.findIndex((r) => r.node.key === selectedBranchKey);
-    const row = idx >= 0 ? branchRows[idx] : null;
+    const row = selectableBranchRows.find((r) => r.node.key === selectedBranchKey) ?? null;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       moveBranchSelection(1);
@@ -611,26 +613,6 @@ export function GitPanel({ tab }: { tab: GitTab }) {
       if (!row) return;
       e.preventDefault();
       if (row.node.branch) branchDoubleClick(row.node.branch);
-      else toggleBranchGroup(row.node.key);
-    } else if (e.key === 'ArrowRight') {
-      if (!row || row.node.branch) return;
-      e.preventDefault();
-      if (collapsedBranchGroups.has(row.node.key)) toggleBranchGroup(row.node.key);
-      else if (row.node.children.length > 0) setSelectedBranchKey(row.node.children[0].key);
-    } else if (e.key === 'ArrowLeft') {
-      if (!row) return;
-      e.preventDefault();
-      if (!row.node.branch && !collapsedBranchGroups.has(row.node.key)) {
-        toggleBranchGroup(row.node.key);
-        return;
-      }
-      // 葉 / 折りたたみ済みフォルダは親フォルダ (直前の浅い行) へ戻る
-      for (let i = idx - 1; i >= 0; i--) {
-        if (branchRows[i].depth < row.depth) {
-          setSelectedBranchKey(branchRows[i].node.key);
-          return;
-        }
-      }
     }
   };
 
@@ -691,9 +673,8 @@ export function GitPanel({ tab }: { tab: GitTab }) {
       <div key={node.key}>
         <div
           data-branch-key={node.key}
-          className={cx(`branch-row branch-folder${selected ? ' selected' : ''}`)}
+          className={cx("branch-row branch-folder")}
           style={{ paddingLeft: `${indent}px` }}
-          onMouseDown={() => setSelectedBranchKey(node.key)}
           onClick={() => toggleBranchGroup(node.key)}
           onContextMenu={(e) => e.preventDefault()}
           title={collapsed ? 'クリックで展開' : 'クリックで折りたたみ'}
@@ -1330,8 +1311,8 @@ export function GitPanel({ tab }: { tab: GitTab }) {
               selectedBranch ? (
                 <GitGraph
                   repo={repoRoot}
-                  selectedHash={commitDetail?.hash ?? null}
-                  onSelect={selectCommit}
+                  selectedHash={branchLogFocus?.branchName === selectedBranch.name ? branchLogFocus.hash : null}
+                  onSelect={(hash) => setBranchLogFocus({ branchName: selectedBranch.name, hash })}
                   branch={selectedBranch.name}
                 />
               ) : (
