@@ -1,0 +1,224 @@
+.empty-hint {
+  padding: 28px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+/* Stash ダイアログの上に重ねる */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog-backdrop.nested {
+  z-index: 1300;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.dialog {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.dialog-title {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* 差分を広く見せたいので画面のほぼ全体を使う */
+.stash-detail-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 96vw;
+  height: 94vh;
+}
+
+/* 左右 2 ペイン。ダイアログの高さいっぱいを使い、はみ出す分は各ペインでスクロールする */
+.sd-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+}
+
+.sd-left {
+  flex: 0 0 clamp(400px, 32%, 620px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sd-right {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+}
+
+/* --- 基本情報 --- */
+
+.sd-info {
+  flex: none;
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 4px 8px;
+  margin: 0;
+  padding: 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+}
+
+.sd-info dt {
+  color: var(--text-dim);
+}
+
+.sd-info dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sd-info-msg {
+  white-space: pre-wrap;
+  font-weight: 600;
+}
+
+.sd-mono {
+  font-family: Consolas, 'Courier New', monospace;
+}
+
+/* --- 差分ファイル一覧 --- */
+
+.sd-list-head {
+  flex: none;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+
+.sd-files {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  outline: none;
+}
+
+.sd-files:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.sd-file-table {
+  width: 100%;
+  border-collapse: collapse;
+  user-select: none;
+  font-size: 12px;
+}
+
+.sd-file-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-dim);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
+  white-space: nowrap; /* 見出しは折り返さない */
+}
+
+.sd-file-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.sd-file-table tbody tr {
+  cursor: pointer;
+}
+
+.sd-file-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.sd-file-table tbody tr.selected {
+  background: var(--bg-selected);
+}
+
+.sd-file-table .num {
+  text-align: right;
+  width: 64px;
+  min-width: 64px;
+  font-family: Consolas, 'Courier New', monospace;
+}
+
+.sd-status {
+  width: 82px;
+  min-width: 82px;
+  font-weight: 600;
+}
+
+.sd-status.st-add { color: var(--add); }
+
+.sd-status.st-mod { color: #e08a00; }
+
+.sd-status.st-del { color: var(--danger); }
+
+.sd-path {
+  max-width: 0;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sd-added { color: var(--add); }
+
+.sd-deleted { color: var(--danger); }

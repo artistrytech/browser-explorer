@@ -13,6 +13,7 @@ import { GitCommandDialog } from './features/git/GitCommandDialog';
 import { PushDialog } from './features/git/PushDialog';
 import { FetchDialog } from './features/git/FetchDialog';
 import { StashDialog } from './features/git/StashDialog';
+import { StashDetailDialog } from './features/git/StashDetailDialog';
 import { AuthDialog } from './features/git/AuthDialog';
 import { CommitMessageDialog } from './features/git/CommitMessageDialog';
 import { BranchDialog } from './features/git/BranchDialog';
@@ -296,6 +297,8 @@ export default function App() {
       <PushDialog />
       <FetchDialog />
       <StashDialog />
+      {/* Stash の詳細は Stash ダイアログの手前に重ねる */}
+      <StashDetailDialog />
       <AuthDialog />
       <CommitMessageDialog />
       <BranchDialog />

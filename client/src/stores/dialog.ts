@@ -1,5 +1,11 @@
 import { create } from 'zustand';
 
+/** チェックボックス付き確認ダイアログの結果 (キャンセルは ok:false) */
+export interface ConfirmResult {
+  ok: boolean;
+  checked: boolean;
+}
+
 export interface DialogRequest {
   kind: 'confirm' | 'prompt';
   title: string;
@@ -7,7 +13,9 @@ export interface DialogRequest {
   defaultValue?: string;
   danger?: boolean;
   selectStem?: boolean; // prompt 時、拡張子を除く部分だけ選択
-  resolve: (value: string | boolean | null) => void;
+  /** confirm 時、OK と一緒に返すオプション (force など) のチェックボックス */
+  checkbox?: { label: string; checked?: boolean };
+  resolve: (value: string | boolean | null | ConfirmResult) => void;
 }
 
 interface DialogStore {
@@ -30,6 +38,31 @@ export function confirmDialog(title: string, message?: string, danger = false): 
       message,
       danger,
       resolve: (v) => resolve(v === true),
+    });
+  });
+}
+
+/**
+ * チェックボックス (force などの追加オプション) 付きの確認ダイアログ。
+ * OK なら { ok: true, checked }、キャンセル / 背景クリックなら { ok: false, checked: false } を返す。
+ */
+export function confirmDialogWithOption(
+  title: string,
+  message: string | undefined,
+  checkboxLabel: string,
+  opts: { danger?: boolean; checked?: boolean } = {},
+): Promise<ConfirmResult> {
+  return new Promise((resolve) => {
+    useDialog.getState().open({
+      kind: 'confirm',
+      title,
+      message,
+      danger: opts.danger,
+      checkbox: { label: checkboxLabel, checked: opts.checked },
+      resolve: (v) =>
+        resolve(
+          typeof v === 'object' && v !== null ? v : { ok: v === true, checked: false },
+        ),
     });
   });
 }

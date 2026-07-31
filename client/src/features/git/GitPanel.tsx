@@ -10,7 +10,7 @@ import { useUi, defaultDiffToolIndex } from '../../stores/ui';
 import { useExplorer } from '../../stores/explorer';
 import { useSettings } from '../../stores/settings';
 import { useToast, toastError } from '../../stores/toast';
-import { confirmDialog } from '../../stores/dialog';
+import { confirmDialog, confirmDialogWithOption } from '../../stores/dialog';
 import { WorkingDiff, type FocusFile } from './WorkingDiff';
 import { GitGraph } from './GitGraph';
 import { openCloneDialog } from './CloneDialog';
@@ -365,7 +365,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
       : [commitArgs(message, amend)];
     void runGitCommands(repoRoot, commands, push ? 'Commit & Push' : 'Commit').then((ok) => {
       if (!ok) return;
-      if (msg) void api.gitAddCommitMessage(msg).catch(() => {}); // 履歴保存 (失敗は無視)
+      if (msg) void api.gitAddCommitMessage(msg, repoRoot).catch(() => {}); // 履歴保存 (失敗は無視)
       setMessage('');
       setAmend(false);
     });
@@ -373,7 +373,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
 
   /** 過去のコミットメッセージから選んで入力欄に設定する */
   const pickCommitMessage = () => {
-    void openCommitMessagePicker().then((m) => {
+    void openCommitMessagePicker(repoRoot).then((m) => {
       if (m !== null) setMessage(m);
     });
   };
@@ -467,6 +467,22 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     }
   };
 
+  /**
+   * ブランチ削除。既定は -d (マージ済みのみ) で、
+   * ダイアログの「強制削除」を選ぶと -D (未マージでも削除) になる。
+   */
+  const deleteBranch = (b: GitBranch) => {
+    void confirmDialogWithOption(
+      'ブランチ削除',
+      `${b.name} を削除しますか?`,
+      '強制削除 (-D): マージされていないコミットがあっても削除する',
+      { danger: true },
+    ).then(({ ok, checked }) => {
+      if (!ok) return;
+      void runGitCommands(repoRoot, [['branch', checked ? '-D' : '-d', b.name]], 'ブランチ削除');
+    });
+  };
+
   const branchDoubleClick = (b: GitBranch) => {
     if (isRemoteBranch(b)) checkoutRemoteBranch(b);
     else checkoutBranch(b);
@@ -512,10 +528,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             label: '削除',
             disabled: b.current,
             danger: true,
-            action: () =>
-              void confirmDialog('ブランチ削除', `${b.name} を削除しますか?`, true).then((ok) => {
-                if (ok) void runGitCommands(repoRoot, [['branch', '-d', b.name]], 'ブランチ削除');
-              }),
+            action: () => deleteBranch(b),
           },
         ];
     openMenu(e.clientX, e.clientY, items);

@@ -76,6 +76,21 @@
   width: min(560px, 92vw);
 }
 
+.msg-history-scope {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.msg-history-scope-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
 .msg-history-list {
   display: flex;
   flex-direction: column;
@@ -86,6 +101,8 @@
 }
 
 .msg-history-row {
+  /* 件数が増えても行の高さを潰さず、はみ出す分はリスト側でスクロールさせる */
+  flex: 0 0 auto;
   text-align: left;
   border: 1px solid var(--border);
   background: var(--bg);
@@ -97,10 +114,11 @@
   word-break: break-word;
   font: inherit;
   line-height: 1.4;
-  /* 長いメッセージは最大 4 行程度で省略 */
+  /* 長いメッセージは最大 3 行で省略 (3 行分の高さは常に確保される) */
   display: -webkit-box;
-  -webkit-line-clamp: 4;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
+  max-height: calc(1.4em * 3 + 16px);
   overflow: hidden;
 }
 

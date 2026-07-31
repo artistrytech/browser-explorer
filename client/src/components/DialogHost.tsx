@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useDialog } from '../stores/dialog';
+import { useDialog, type ConfirmResult } from '../stores/dialog';
 import styles from './DialogHost.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
 
@@ -8,11 +8,13 @@ const cx = createCssModuleClassNames(styles);
 export function DialogHost() {
   const { current, close } = useDialog();
   const [value, setValue] = useState('');
+  const [checked, setChecked] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (current) {
       setValue(current.defaultValue ?? '');
+      setChecked(current.checkbox?.checked === true);
       setTimeout(() => {
         const el = inputRef.current;
         if (!el) return;
@@ -29,10 +31,14 @@ export function DialogHost() {
 
   if (!current) return null;
 
-  const done = (v: string | boolean | null) => {
+  const done = (v: string | boolean | null | ConfirmResult) => {
     current.resolve(v);
     close();
   };
+
+  /** confirm の戻り値。チェックボックス付きなら { ok, checked } を返す */
+  const confirmValue = (ok: boolean): boolean | ConfirmResult =>
+    current.checkbox ? { ok, checked: ok && checked } : ok;
 
   return (
     <div className={cx("dialog-backdrop")} onMouseDown={(e) => e.target === e.currentTarget && done(null)}>
@@ -51,13 +57,26 @@ export function DialogHost() {
             }}
           />
         )}
+        {current.kind === 'confirm' && current.checkbox && (
+          <label className={cx("dialog-checkbox")}>
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(e) => setChecked(e.target.checked)}
+            />
+            <span>{current.checkbox.label}</span>
+          </label>
+        )}
         <div className={cx("dialog-buttons")}>
-          <button className={cx("btn")} onClick={() => done(current.kind === 'confirm' ? false : null)}>
+          <button
+            className={cx("btn")}
+            onClick={() => done(current.kind === 'confirm' ? confirmValue(false) : null)}
+          >
             キャンセル
           </button>
           <button
             className={cx(`btn primary${current.danger ? ' danger' : ''}`)}
-            onClick={() => done(current.kind === 'confirm' ? true : value)}
+            onClick={() => done(current.kind === 'confirm' ? confirmValue(true) : value)}
           >
             OK
           </button>

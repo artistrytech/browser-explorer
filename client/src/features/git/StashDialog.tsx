@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { useGit } from '../../stores/git';
 import { toastError } from '../../stores/toast';
 import { runGitCommands } from './GitCommandDialog';
+import { openStashDetail } from './StashDetailDialog';
 import styles from './StashDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -82,14 +83,23 @@ export function StashDialog() {
     void runGitCommands(repoRoot, [msg ? ['stash', 'push', '-m', msg] : ['stash', 'push']], 'Stash');
   };
 
-  const doRestore = () => {
-    if (!selected) return;
+  /** 復元 (pop/apply)。詳細ダイアログからは対象の ref を明示的に受け取る */
+  const doRestore = (ref: string | null = selected) => {
+    if (!ref) return;
     close();
     void runGitCommands(
       repoRoot,
-      [['stash', dropAfter ? 'pop' : 'apply', selected]],
+      [['stash', dropAfter ? 'pop' : 'apply', ref]],
       dropAfter ? 'Stash 復元 (復元後に削除)' : 'Stash 復元',
     );
+  };
+
+  /** 行のダブルクリック: 詳細ダイアログを開き、そこで復元されたらこのダイアログも閉じる */
+  const showDetail = (s: StashEntry) => {
+    setSelected(s.ref);
+    void openStashDetail(repoRoot, s).then((r) => {
+      if (r === 'restore') doRestore(s.ref);
+    });
   };
 
   return (
@@ -126,7 +136,9 @@ export function StashDialog() {
                   <button
                     key={s.ref}
                     className={cx(`stash-row${selected === s.ref ? ' active' : ''}`)}
+                    title="クリックで選択、ダブルクリックで詳細を表示"
                     onClick={() => setSelected(s.ref)}
+                    onDoubleClick={() => showDetail(s)}
                   >
                     <span className={cx("stash-ref")}>{s.ref}</span>
                     <span className={cx("stash-msg")} title={s.message}>
@@ -151,7 +163,7 @@ export function StashDialog() {
           <button className={cx("btn")} onClick={close}>
             キャンセル
           </button>
-          <button className={cx("btn primary")} disabled={!selected || loading} onClick={doRestore}>
+          <button className={cx("btn primary")} disabled={!selected || loading} onClick={() => doRestore()}>
             復元
           </button>
         </div>

@@ -46,6 +46,15 @@
   border-color: var(--accent);
 }
 
+.dialog-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
 .dialog-buttons {
   display: flex;
   justify-content: flex-end;

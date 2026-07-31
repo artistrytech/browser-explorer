@@ -28,10 +28,11 @@ export function openFetchDialog(): void {
 export function FetchDialog() {
   const { open, close } = useFetchDialog();
   const repoRoot = useGit((s) => s.repoRoot);
-  const [prune, setPrune] = useState(false);
+  // Prune は既定で ON (不要になった追跡ブランチを残さない)
+  const [prune, setPrune] = useState(true);
 
   useEffect(() => {
-    if (open) setPrune(false);
+    if (open) setPrune(true);
   }, [open]);
 
   if (!open || !repoRoot) return null;

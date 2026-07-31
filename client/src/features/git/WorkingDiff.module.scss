@@ -126,9 +126,29 @@
 }
 
 .diff-line {
+  display: flex;
+  align-items: flex-start;
+  padding: 0 6px 0 0;
+}
+
+/* 行番号 (変更前 / 変更後)。行の折り返しに影響しないよう固定幅・選択不可 */
+.wd-lineno {
+  flex: none;
+  width: 42px;
+  padding-right: 8px;
+  text-align: right;
+  color: var(--text-dim);
+  opacity: 0.75;
+  user-select: none;
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.wd-linetext {
+  flex: 1;
+  min-width: 0;
+  padding-left: 6px;
   white-space: pre-wrap;
   word-break: break-all;
-  padding: 0 6px;
 }
 
 .diff-add {

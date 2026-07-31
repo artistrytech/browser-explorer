@@ -137,6 +137,31 @@ export function buildLinesPatch(
   return [...header, newHeader, ...out].join('\n') + '\n';
 }
 
+/** Hunk 本文 1 行に対応する行番号 (対応が無い側は null) */
+export interface HunkLineNo {
+  /** 変更前 (左) の行番号。追加行は null */
+  old: number | null;
+  /** 変更後 (右) の行番号。削除行は null */
+  new: number | null;
+}
+
+/**
+ * Hunk 本文の各行に、@@ ヘッダの開始行から数えた行番号を割り当てる。
+ * 戻り値は hunk.lines と同じ長さ・同じ並び ("\\ No newline" 行は両方 null)。
+ */
+export function hunkLineNumbers(hunk: Hunk): HunkLineNo[] {
+  const { oldStart, newStart } = parseHunkHeader(hunk.header);
+  let oldNo = Number(oldStart);
+  let newNo = Number(newStart);
+  return hunk.lines.map((line) => {
+    const tag = line[0];
+    if (tag === '+') return { old: null, new: newNo++ };
+    if (tag === '-') return { old: oldNo++, new: null };
+    if (tag === '\\') return { old: null, new: null };
+    return { old: oldNo++, new: newNo++ }; // 文脈行 (想定外の行も文脈扱い)
+  });
+}
+
 /** その行が選択対象 (追加/削除) になり得るか */
 export function isChangeLine(line: string): boolean {
   return line[0] === '+' || line[0] === '-';

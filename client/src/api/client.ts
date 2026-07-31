@@ -178,11 +178,15 @@ export const api = {
     post<{ ok: true }>('/api/git/discard', { repo, paths, full }),
   gitCommit: (repo: string, message: string, amend = false) =>
     post<{ ok: true; commit: string }>('/api/git/commit', { repo, message, amend }),
-  /** 直近のコミットメッセージ (再利用候補。新しい順・重複なし・最大 20 件) */
-  gitCommitMessages: () => get<{ messages: string[] }>('/api/git/commit-messages'),
-  /** コミット成功時にメッセージを履歴へ記録 */
-  gitAddCommitMessage: (message: string) =>
-    post<{ ok: true }>('/api/git/commit-messages', { message }),
+  /**
+   * 直近のコミットメッセージ (再利用候補。新しい順・重複なし・最大 20 件)。
+   * repo を渡すとそのリポジトリの履歴のみ、省略すると全リポジトリ分
+   */
+  gitCommitMessages: (repo?: string) =>
+    get<{ messages: string[] }>(`/api/git/commit-messages${repo ? `?repo=${q(repo)}` : ''}`),
+  /** コミット成功時にメッセージを履歴へ記録 (リポジトリ単位) */
+  gitAddCommitMessage: (message: string, repo: string) =>
+    post<{ ok: true }>('/api/git/commit-messages', { message, repo }),
   gitPush: (repo: string) => post<{ ok: true }>('/api/git/push', { repo }),
   gitPull: (repo: string) => post<{ ok: true }>('/api/git/pull', { repo }),
   gitFetch: (repo: string) => post<{ ok: true }>('/api/git/fetch', { repo }),

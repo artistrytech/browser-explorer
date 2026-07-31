@@ -569,16 +569,20 @@ gitRouter.post('/commit', async (req, res) => {
 
 // --- コミットメッセージ履歴 (再利用候補) ---
 
-/** 直近のコミットメッセージ一覧 (新しい順・重複なし・最大 20 件) */
-gitRouter.get('/commit-messages', (_req, res) => {
-  res.json({ messages: listCommitMessages(20) });
+/**
+ * 直近のコミットメッセージ一覧 (新しい順・重複なし・最大 20 件)。
+ * repo を指定するとそのリポジトリの履歴のみ、省略すると全リポジトリ分を返す。
+ */
+gitRouter.get('/commit-messages', (req, res) => {
+  const repo = typeof req.query.repo === 'string' && req.query.repo ? req.query.repo : undefined;
+  res.json({ messages: listCommitMessages(20, repo) });
 });
 
-/** コミット成功時にメッセージを記録する (重複は最新日時へ更新) */
+/** コミット成功時にメッセージを記録する (同一リポジトリ内の重複は最新日時へ更新) */
 gitRouter.post('/commit-messages', (req, res) => {
-  const { message } = (req.body ?? {}) as { message?: unknown };
+  const { message, repo } = (req.body ?? {}) as { message?: unknown; repo?: unknown };
   if (typeof message !== 'string') badRequest('message is required');
-  addCommitMessage(message);
+  addCommitMessage(message, typeof repo === 'string' ? repo : '');
   res.json({ ok: true });
 });
 

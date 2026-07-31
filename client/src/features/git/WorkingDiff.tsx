@@ -3,7 +3,14 @@ import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
 import { confirmDialog } from '../../stores/dialog';
 import { useExplorer } from '../../stores/explorer';
-import { parseFileDiff, buildHunkPatch, buildLinesPatch, isChangeLine, type FileDiff } from '../../lib/diffPatch';
+import {
+  parseFileDiff,
+  buildHunkPatch,
+  buildLinesPatch,
+  hunkLineNumbers,
+  isChangeLine,
+  type FileDiff,
+} from '../../lib/diffPatch';
 import styles from './WorkingDiff.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -102,6 +109,33 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
     }
   };
 
+  /**
+   * 選択行の変更だけを破棄する (作業ツリーへ reverse 適用)。
+   * 「解除方向」の形 (未選択の + は文脈化・未選択の - は破棄) で組み立てると
+   * パッチの変更後 = 現在の作業ツリーとなり、--reverse 適用で選択行だけが元に戻る。
+   */
+  const discardLines = async (hunk: FileDiff['hunks'][number], selected: Set<number>) => {
+    if (!parsed) return;
+    const patch = buildLinesPatch(parsed.header, hunk, selected, true);
+    if (!patch) {
+      toastError(new Error('対象の行が選択されていません'));
+      return;
+    }
+    const ok = await confirmDialog('変更を破棄', `選択した ${selected.size} 行の変更を破棄しますか?`, true);
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.gitApplyPatch(repo, patch, true, false);
+      load();
+      onApplied();
+      void useExplorer.getState().refresh();
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   /** 行クリック: トグル / Shift で同一 Hunk 内の範囲をまとめて選択 */
   const clickLine = (e: React.MouseEvent, hIdx: number, lIdx: number) => {
     const key = `${hIdx}:${lIdx}`;
@@ -150,6 +184,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
             const [h, l] = k.split(':').map(Number);
             if (h === hIdx) hunkSel.add(l);
           });
+          const lineNos = hunkLineNumbers(hunk);
           return (
             <div key={hIdx} className={cx("wd-hunk")}>
               <div className={cx("wd-hunk-head")}>
@@ -169,6 +204,17 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
                         }
                       >
                         選択行を{actionLabel}
+                      </button>
+                    )}
+                    {hunkSel.size > 0 && !reverse && (
+                      // 変更 (作業ツリー) 側のみ破棄可能。ステージ側は「解除」で戻す
+                      <button
+                        className={cx("status-btn danger")}
+                        disabled={busy}
+                        title={`選択した ${hunkSel.size} 行の変更を破棄`}
+                        onClick={() => void discardLines(hunk, hunkSel)}
+                      >
+                        選択行を破棄
                       </button>
                     )}
                     <button
@@ -200,13 +246,16 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
                     tag === '+' ? 'diff-add' : tag === '-' ? 'diff-del' : tag === '\\' ? 'diff-meta' : '';
                   const selectable = partialAvailable && isChangeLine(line);
                   const isSel = selLines.has(`${hIdx}:${lIdx}`);
+                  const no = lineNos[lIdx];
                   return (
                     <div
                       key={lIdx}
                       className={cx(`diff-line ${cls}${selectable ? ' wd-selectable' : ''}${isSel ? ' wd-line-sel' : ''}`)}
                       onClick={selectable ? (e) => clickLine(e, hIdx, lIdx) : undefined}
                     >
-                      {line || ' '}
+                      <span className={cx("wd-lineno")} aria-hidden="true">{no.old ?? ''}</span>
+                      <span className={cx("wd-lineno")} aria-hidden="true">{no.new ?? ''}</span>
+                      <span className={cx("wd-linetext")}>{line || ' '}</span>
                     </div>
                   );
                 })}
