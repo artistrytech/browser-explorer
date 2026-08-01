@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { api } from '../../api/client';
 import { loadGitView, saveGitView } from '../../lib/gitViewMemory';
-import { loadLogLayout, saveLogLayout, type LogLayoutDir } from '../../lib/logLayoutMemory';
+import {
+  loadLogLayout,
+  saveLogLayout,
+  LOG_LAYOUT_KEY,
+  type LogLayoutDir,
+} from '../../lib/logLayoutMemory';
 import { saveEnteredChild } from '../../lib/focusMemory';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import { useGit, GitTab } from '../../stores/git';
@@ -176,8 +181,20 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     if (repoRoot) saveGitView(repoRoot, { selectedBranchKey: key });
   };
 
-  /** ドラッグ確定時にだけ sessionStorage へ書き出す (ドラッグ中は ref の更新のみ) */
+  /** ドラッグ確定時にだけ localStorage へ書き出す (ドラッグ中は ref の更新のみ) */
   const persistLogLayout = () => saveLogLayout({ dir: logDir, sizes: logSizes.current });
+
+  // 別タブでレイアウトを変えたら、こちらのタブにも反映する (localStorage の storage イベント)
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== null && e.key !== LOG_LAYOUT_KEY) return; // key=null は clear()
+      const layout = loadLogLayout();
+      logSizes.current = layout.sizes;
+      setLogDir(layout.dir);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   const changeLogDir = (dir: LogLayoutDir) => {
     setLogDir(dir);
@@ -1081,7 +1098,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           </button>
         )}
         <span className={cx("status-spacer")} />
-        {/* ログタブの分割方向 (sessionStorage に保持) */}
+        {/* ログタブの分割方向 (localStorage に保持。別タブ・再起動後も引き継ぐ) */}
         {tab === 'log' && (
           <>
             <button

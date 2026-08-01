@@ -1,9 +1,13 @@
 /**
- * ログタブの分割レイアウト (方向・各ペインのサイズ) を sessionStorage に保持する。
+ * ログタブの分割レイアウト (方向・各ペインのサイズ) を localStorage に保持する。
  * サイズは % で保持し、リポジトリを跨いで共通 (表示の好みであってリポジトリ固有ではないため)。
+ * 表示の好みはウィンドウ単位ではないので、localStorage にしてブラウザの別タブ・
+ * 再起動後にも同じ分割方向で開くようにしている。
  */
 
-const KEY = 'git:log:layout';
+/** localStorage のキー (別タブの変更を storage イベントで拾うため公開する) */
+export const LOG_LAYOUT_KEY = 'git:log:layout';
+const KEY = LOG_LAYOUT_KEY;
 
 /** 'horizontal' = 左右分割 (左: グラフ)、'vertical' = 上下分割 (上: グラフ) */
 export type LogLayoutDir = 'horizontal' | 'vertical';
@@ -33,7 +37,8 @@ const clampPct = (v: unknown, fallback: number): number =>
 
 export function loadLogLayout(): LogLayoutRecord {
   try {
-    const raw = sessionStorage.getItem(KEY);
+    // 旧版は sessionStorage に保存していたので、残っていれば引き継ぐ
+    const raw = localStorage.getItem(KEY) ?? sessionStorage.getItem(KEY);
     if (!raw) return defaultLogLayout;
     const parsed = JSON.parse(raw) as Partial<LogLayoutRecord>;
     const dir: LogLayoutDir = parsed.dir === 'vertical' ? 'vertical' : 'horizontal';
@@ -49,7 +54,8 @@ export function loadLogLayout(): LogLayoutRecord {
 
 export function saveLogLayout(layout: LogLayoutRecord): void {
   try {
-    sessionStorage.setItem(KEY, JSON.stringify(layout));
+    localStorage.setItem(KEY, JSON.stringify(layout));
+    sessionStorage.removeItem(KEY); // 旧版の残骸を残さない
   } catch {
     /* storage full 等は無視 */
   }

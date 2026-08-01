@@ -52,6 +52,8 @@ export default function App() {
   const activePath = useEditor((s) => s.activePath);
   const diffTarget = useDiffTab((s) => s.current);
   const repoRoot = useGit((s) => s.repoRoot);
+  /** コミットタブに出す変更ファイル数 (ステージ済み + 変更 + 未追跡。リポジトリ外では出さない) */
+  const changedCount = useGit((s) => s.status?.files.length ?? null);
   const { view, setView } = useUi();
   const theme = useSettings((s) => s.settings.theme);
   const loaded = useSettings((s) => s.loaded);
@@ -226,7 +228,7 @@ export default function App() {
         )}
         {/* Git 系は独立した最上位タブ (コミットは旧「変更」と同機能)。履歴もそれぞれ独立 */}
         <button className={cx(`view-tab${view === 'commit' ? ' active' : ''}`)} onClick={() => switchView('commit')}>
-          🌿 コミット
+          🌿 コミット{changedCount === null ? '' : ` (${changedCount})`}
         </button>
         <button className={cx(`view-tab${view === 'log' ? ' active' : ''}`)} onClick={() => switchView('log')}>
           📜 ログ
