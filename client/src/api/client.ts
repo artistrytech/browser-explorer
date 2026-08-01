@@ -187,6 +187,9 @@ export const api = {
   /** コミット成功時にメッセージを履歴へ記録 (リポジトリ単位) */
   gitAddCommitMessage: (message: string, repo: string) =>
     post<{ ok: true }>('/api/git/commit-messages', { message, repo }),
+  /** 除外パターンを .git/info/exclude に追加 (既にあれば added:false) */
+  gitExclude: (repo: string, pattern: string) =>
+    post<{ ok: true; added: boolean }>('/api/git/exclude', { repo, pattern }),
   gitPush: (repo: string) => post<{ ok: true }>('/api/git/push', { repo }),
   gitPull: (repo: string) => post<{ ok: true }>('/api/git/pull', { repo }),
   gitFetch: (repo: string) => post<{ ok: true }>('/api/git/fetch', { repo }),

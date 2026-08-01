@@ -16,7 +16,7 @@ import { useUi, defaultDiffToolIndex } from '../../stores/ui';
 import { useExplorer } from '../../stores/explorer';
 import { useSettings } from '../../stores/settings';
 import { useToast, toastError } from '../../stores/toast';
-import { confirmDialog, confirmDialogWithOption } from '../../stores/dialog';
+import { confirmDialog, confirmDialogWithOption, promptDialog } from '../../stores/dialog';
 import { WorkingDiff, type FocusFile } from './WorkingDiff';
 import { GitGraph } from './GitGraph';
 import { openCloneDialog } from './CloneDialog';
@@ -132,6 +132,19 @@ function commitArgs(message: string, amend: boolean): string[] {
 /** その行のファイルが作業ツリーに存在しないか (削除)。存在しないものは「開く」を出さない */
 function isDeletedFile(f: GitFileStatus, staged: boolean): boolean {
   return (staged ? f.index : f.workingDir) === 'D';
+}
+
+/** 未追跡ファイル (git 管理外) か */
+function isUntrackedFile(f: GitFileStatus): boolean {
+  return f.index === '?' || f.workingDir === '?';
+}
+
+/**
+ * 除外パターンの既定値: リポジトリルートからのパス完全一致。
+ * 先頭 '/' でルート起点に固定し、gitignore のメタ文字と末尾スペースはエスケープする。
+ */
+function defaultExcludePattern(relPath: string): string {
+  return '/' + relPath.replace(/[\\*?[\]]/g, (c) => `\\${c}`).replace(/ +$/, (s) => '\\ '.repeat(s.length));
 }
 
 function statusLabel(f: GitFileStatus, staged: boolean): string {
@@ -394,6 +407,30 @@ export function GitPanel({ tab }: { tab: GitTab }) {
       setMessage('');
       setAmend(false);
     });
+  };
+
+  /**
+   * 未追跡ファイルを .git/info/exclude に追加する (.gitignore と違いコミットされない)。
+   * 追加するパターンはダイアログで編集でき、既定はパス完全一致。
+   */
+  const excludeUntracked = async (relPath: string) => {
+    const input = await promptDialog('未追跡ファイルを除外する', defaultExcludePattern(relPath), {
+      message:
+        `${relPath} を .git/info/exclude に追加します\n` +
+        '(このリポジトリのローカル設定で、コミットも共有もされません)。\n' +
+        'パターンは編集できます (既定はパス完全一致)。',
+    });
+    if (input === null) return;
+    const pattern = input.trim();
+    if (!pattern) return;
+    try {
+      const { added } = await api.gitExclude(repoRoot, pattern);
+      show('success', added ? `除外に追加しました: ${pattern}` : `既に除外されています: ${pattern}`);
+      await refreshStatus();
+      void useExplorer.getState().refresh();
+    } catch (e) {
+      toastError(e);
+    }
   };
 
   /** 過去のコミットメッセージから選んで入力欄に設定する */
@@ -772,7 +809,15 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             );
         }),
     });
-    items.push({ separator: true }, { label: '差分を表示', action: () => selectSingle(key) });
+    // 未追跡ファイルを .git/info/exclude へ (このリポジトリのローカル設定。共有はされない)
+    items.push(
+      { separator: true },
+      {
+        label: '未追跡ファイルを除外する',
+        disabled: !isUntrackedFile(f),
+        action: () => void excludeUntracked(f.path),
+      },
+    );
     const tools = diffToolItems(f.path, stagedSide ? 'staged' : 'worktree');
     if (tools.length > 0) items.push({ separator: true }, ...tools);
     // 「開く」はファイルタブと同じ内容 (エディタ / 別ウィンドウ / OS 連携 / 外部ツール)。

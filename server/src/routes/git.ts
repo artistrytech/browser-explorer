@@ -586,6 +586,31 @@ gitRouter.post('/commit-messages', (req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * 除外パターンを .git/info/exclude に追加する (.gitignore と違いコミットされない)。
+ * 既に同じ行があれば何もせず added:false を返す。
+ * リンクされた作業ツリーでも info/exclude は共通ディレクトリ側にあるので --git-common-dir を使う。
+ */
+gitRouter.post('/exclude', async (req, res) => {
+  const { repo, pattern } = (req.body ?? {}) as { repo?: unknown; pattern?: unknown };
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  if (typeof pattern !== 'string' || pattern.trim().length === 0) badRequest('pattern is required');
+  const line = pattern.trim();
+  const commonDir = (await git(repo).raw(['rev-parse', '--git-common-dir'])).trim();
+  const gitDir = path.isAbsolute(commonDir) ? commonDir : path.resolve(repo, commonDir);
+  const file = path.join(gitDir, 'info', 'exclude');
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const current = await fs.readFile(file, 'utf8').catch(() => '');
+  if (current.split('\n').some((l) => l.replace(/\r$/, '').trim() === line)) {
+    res.json({ ok: true, added: false });
+    return;
+  }
+  const eol = current.includes('\r\n') ? '\r\n' : '\n';
+  const prefix = current.length > 0 && !/\n$/.test(current) ? eol : ''; // 最終行に改行が無ければ足す
+  await fs.appendFile(file, `${prefix}${line}${eol}`, 'utf8');
+  res.json({ ok: true, added: true });
+});
+
 gitRouter.post('/push', async (req, res) => {
   const g = git(req.body.repo);
   const result = await g.push();
