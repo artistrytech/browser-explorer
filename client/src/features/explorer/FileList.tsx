@@ -9,7 +9,7 @@ import {
   type ColumnWidths,
 } from '../../stores/settings';
 import { useGit, OverlayCode } from '../../stores/git';
-import { useUi, osMenuLabels } from '../../stores/ui';
+import { useUi } from '../../stores/ui';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import {
   openEntry,
@@ -24,6 +24,7 @@ import {
   renameEntry,
   showProperties,
 } from '../../lib/fileOps';
+import { toolMatches, osMenuItems, pruneMenuItems, type CfgMenuItem } from '../../lib/openMenu';
 import { formatSize, formatDate, kindLabel, fileIcon, baseName } from '../../lib/paths';
 import { pinFolder, unpinFolder } from '../../lib/quickaccessOps';
 import { saveFocus, loadFocus, saveEnteredChild } from '../../lib/focusMemory';
@@ -53,22 +54,6 @@ const OVERLAY_MARK: Record<OverlayCode, { mark: string; cls: string; title: stri
   conflicted: { mark: '⚠', cls: 'ov-conflicted', title: '競合' },
   ignored: { mark: '－', cls: 'ov-ignored', title: '無視 (.gitignore)' },
 };
-
-/**
- * 外部ツールがメニューに出せるか: 対象 (複数選択可) が全て kind / 拡張子条件に合致するか。
- * kind 'any'/未指定は種別不問。extensions 空/未指定は全拡張子対象 (フォルダは拡張子条件に不一致)。
- */
-function toolMatches(
-  t: { kind?: 'file' | 'dir' | 'any'; extensions?: string[] },
-  targets: { kind: 'file' | 'dir'; ext: string }[],
-): boolean {
-  return targets.every((tg) => {
-    const kindOk = !t.kind || t.kind === 'any' || t.kind === tg.kind;
-    const extOk =
-      !t.extensions || t.extensions.length === 0 || (tg.kind === 'file' && t.extensions.includes(tg.ext));
-    return kindOk && extOk;
-  });
-}
 
 function GitOverlay({ path, dirCode }: { path: string; dirCode?: OverlayCode }) {
   const repoRoot = useGit((s) => s.repoRoot);
@@ -314,28 +299,11 @@ export function FileList() {
   };
 
   // --- コンテキストメニュー (出し分けは 002.md §8) ---
-  const osLabels = osMenuLabels(platform);
   const menuConfig = useUi((s) => s.menuConfig);
   const externalTools = useUi((s) => s.externalTools);
 
-  /** config.jsonc の contextMenu 設定 (false で非表示、未設定は表示)。サブメニューも同様に間引く */
-  type CfgMenuItem = Omit<MenuItem, 'submenu'> & { id?: string; submenu?: CfgMenuItem[] };
-  const pruneMenu = (items: CfgMenuItem[]): MenuItem[] => {
-    const out: MenuItem[] = [];
-    for (const it of items) {
-      if (it.id && menuConfig[it.id] === false) continue;
-      if (it.submenu) {
-        const submenu = pruneMenu(it.submenu);
-        if (submenu.length > 0) out.push({ ...it, submenu }); // 中身が空になったグループは出さない
-        continue;
-      }
-      // 非表示により連続/先頭になった separator は除去
-      if (it.separator && (out.length === 0 || out[out.length - 1].separator)) continue;
-      out.push(it);
-    }
-    while (out.length > 0 && out[out.length - 1].separator) out.pop();
-    return out;
-  };
+  /** contextMenu 設定 (false で非表示、未設定は表示) で間引く */
+  const pruneMenu = (items: CfgMenuItem[]): MenuItem[] => pruneMenuItems(items, menuConfig);
 
   /**
    * カスタム項目 (設定の externalTools) を group ごとに振り分ける。
@@ -381,15 +349,8 @@ export function FileList() {
     window.open(`${location.pathname}?path=${encodeURIComponent(dir)}`, '_blank');
   };
 
-  /** フォルダ/空白共通の OS 連携項目 (002.md §4): 対象がファイルでない場合のみ */
-  const osMenuItems = (dirPath: string): CfgMenuItem[] => [
-    {
-      id: 'osFileManager',
-      label: osLabels.fileManager,
-      action: () => void api.osOpenFileManager(dirPath).catch(toastError),
-    },
-    { id: 'osTerminal', label: osLabels.terminal, action: () => void api.osOpenTerminal(dirPath).catch(toastError) },
-  ];
+  /** OS 連携項目 (002.md §4)。ファイルを渡すと親フォルダを開く (対象は選択状態になる) */
+  const osItems = (targetPath: string): CfgMenuItem[] => osMenuItems(targetPath, platform);
 
   /** Git 系のリポジトリ操作 (選択パスに対するステージ/解除/破棄) */
   const gitRepoItems = (sel: string[]): CfgMenuItem[] => {
@@ -478,12 +439,15 @@ export function FileList() {
             // フォルダ: 対象フォルダ自体を別ウィンドウ (ブラウザの別タブ) で開く
             { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(entry.path) },
             { separator: true },
-            ...osMenuItems(entry.path),
+            ...osItems(entry.path),
           ]
         : [
             { id: 'openEditor', label: 'エディタで開く', action: () => openEntry(entry) },
             // ファイル: 同じフォルダを別ウィンドウで開いて対象にフォーカス
             { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(path, entry.name) },
+            { separator: true },
+            // ファイルも OS 側で開ける (親フォルダを開き、そのファイルを選択した状態にする)
+            ...osItems(entry.path),
           ]),
       ...tools.take('開く'),
     ];
@@ -551,7 +515,7 @@ export function FileList() {
       // フォーカス無し: 表示中のフォルダを別ウィンドウで開く
       { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(path) },
       { separator: true },
-      ...osMenuItems(path),
+      ...osItems(path),
       ...tools.take('開く'),
     ];
     const gitGroup: CfgMenuItem[] = [...gitContextItems(path, false, true), ...tools.take('Git')];

@@ -9,6 +9,7 @@ import {
   type LogLayoutDir,
 } from '../../lib/logLayoutMemory';
 import { saveEnteredChild } from '../../lib/focusMemory';
+import { fileOpenMenuItems, pruneMenuItems } from '../../lib/openMenu';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import { useGit, GitTab } from '../../stores/git';
 import { useUi, defaultDiffToolIndex } from '../../stores/ui';
@@ -128,6 +129,11 @@ function commitArgs(message: string, amend: boolean): string[] {
   return amend ? ['commit', '--amend', '-m', message] : ['commit', '-m', message];
 }
 
+/** その行のファイルが作業ツリーに存在しないか (削除)。存在しないものは「開く」を出さない */
+function isDeletedFile(f: GitFileStatus, staged: boolean): boolean {
+  return (staged ? f.index : f.workingDir) === 'D';
+}
+
 function statusLabel(f: GitFileStatus, staged: boolean): string {
   const c = staged ? f.index : f.workingDir;
   const map: Record<string, string> = {
@@ -171,6 +177,8 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const openMenu = useContextMenu((s) => s.open);
   /** 差分表示に使う外部ツール (config.jsonc の diffTools。index が識別子) */
   const diffTools = useUi((s) => s.diffTools);
+  /** コンテキストメニューの表示設定 (ファイルタブと同じ id で「開く」項目を間引く) */
+  const menuConfig = useUi((s) => s.menuConfig);
   /** 既定の差分ツール (config の default: true)。未設定ならアプリ内の 2 ペイン差分 */
   const defaultTool = defaultDiffToolIndex(diffTools);
 
@@ -767,6 +775,12 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     items.push({ separator: true }, { label: '差分を表示', action: () => selectSingle(key) });
     const tools = diffToolItems(f.path, stagedSide ? 'staged' : 'worktree');
     if (tools.length > 0) items.push({ separator: true }, ...tools);
+    // 「開く」はファイルタブと同じ内容 (エディタ / 別ウィンドウ / OS 連携 / 外部ツール)。
+    // 対象は右クリックした 1 ファイルのみで、削除済みファイルは開けないので出さない
+    if (!isDeletedFile(f, stagedSide)) {
+      const openItems = pruneMenuItems(fileOpenMenuItems(`${repoRoot}/${f.path}`), menuConfig);
+      if (openItems.length > 0) items.push({ separator: true }, { label: '開く', submenu: openItems });
+    }
     openMenu(e.clientX, e.clientY, items);
   };
 
