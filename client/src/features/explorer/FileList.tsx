@@ -521,8 +521,8 @@ export function FileList() {
     const gitGroup: CfgMenuItem[] = [...gitContextItems(path, false, true), ...tools.take('Git')];
 
     const items: CfgMenuItem[] = [
-      { id: 'newFolder', label: '新規フォルダ', action: () => void createFolder() },
-      { id: 'newFile', label: '新規ファイル', action: () => void createFile() },
+      { id: 'newFolder', label: '📁新規フォルダ', action: () => void createFolder() },
+      { id: 'newFile', label: '📄新規ファイル', action: () => void createFile() },
       { separator: true },
       { id: 'groupOpen', label: '開く', submenu: openGroup },
       { separator: true },
