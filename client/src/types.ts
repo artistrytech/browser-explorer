@@ -57,6 +57,8 @@ export interface GitBranch {
   label: string;
   ahead?: number;
   behind?: number;
+  /** 既定ブランチにマージ済みのローカルブランチ (既定ブランチ自身は除く)。一括削除の既定チェックに使う */
+  merged?: boolean;
 }
 
 /** グラフ用ログの 1 コミット (002.md §5.2) */

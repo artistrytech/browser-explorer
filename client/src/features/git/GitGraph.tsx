@@ -199,6 +199,7 @@ export function GitGraph({
   selectedHash,
   filter = null,
   branch = null,
+  readOnly = false,
 }: {
   repo: string;
   onSelect: (hash: string) => void;
@@ -207,6 +208,8 @@ export function GitGraph({
   filter?: { path: string; follow: boolean } | null;
   /** ブランチ絞り込み: 指定時はそのブランチに到達可能なコミットだけを表示する */
   branch?: string | null;
+  /** 閲覧のみ (ブランチの一括削除中など): コミットの右クリックメニューを出さない */
+  readOnly?: boolean;
 }) {
   const [commits, setCommits] = useState<GitGraphCommit[]>([]);
   // 「全ブランチ」はデフォルト OFF、sessionStorage に状態を保持
@@ -367,7 +370,7 @@ export function GitGraph({
               className={cx(`graph-row${selectedHash === c.hash ? ' active' : ''}`)}
               style={{ height: ROW_H }}
               onMouseDown={() => onSelect(c.hash)}
-              onContextMenu={(e) => commitMenu(e, c)}
+              onContextMenu={(e) => (readOnly ? e.preventDefault() : commitMenu(e, c))}
               title={`${c.hash}\n${c.subject}`}
             >
               <span className={cx("graph-cell")} style={{ width: graphWidth }}>

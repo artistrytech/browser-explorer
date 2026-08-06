@@ -412,12 +412,86 @@
   background: var(--bg-alt);
 }
 
+/* 一括削除モードの説明 (ツールバー直下に固定表示) */
+.branch-bulk-hint {
+  flex: none;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
 .branch-list {
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 0 8px 8px;
   outline: none;
+}
+
+/* --- 一括削除モードの行 --- */
+
+.branch-check {
+  flex: 0 0 auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.branch-check:disabled {
+  cursor: default;
+}
+
+/* カレントブランチ / 常に除外 / リモートブランチなど、一括削除の対象外の行 */
+.branch-row.branch-locked {
+  cursor: default;
+}
+
+.branch-row.branch-locked .branch-name {
+  opacity: 0.6;
+}
+
+.branch-merged {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--add);
+  border-radius: 8px;
+  color: var(--add);
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.branch-spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.branch-force,
+.branch-keep {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.branch-force {
+  color: var(--danger);
+}
+
+.branch-keep {
+  color: var(--text-dim);
+}
+
+.branch-force input,
+.branch-keep input {
+  margin: 0;
+}
+
+.branch-force input:disabled {
+  cursor: default;
 }
 
 .branch-section {

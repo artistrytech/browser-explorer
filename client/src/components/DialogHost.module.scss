@@ -29,6 +29,9 @@
   margin-bottom: 12px;
   white-space: pre-wrap;
   word-break: break-all;
+  /* 一括削除の対象一覧など、行数が多いメッセージははみ出さずスクロールさせる */
+  max-height: 50vh;
+  overflow: auto;
 }
 
 .dialog-input {

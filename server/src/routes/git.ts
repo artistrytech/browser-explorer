@@ -629,10 +629,44 @@ gitRouter.post('/fetch', async (req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * 既定ブランチの推定 (origin/HEAD → init.defaultBranch → main/master → 現在のブランチ)。
+ * 一括削除の「マージ済み」判定の基準に使う。
+ */
+async function resolveDefaultBranch(
+  g: SimpleGit,
+  localNames: Set<string>,
+  current: string,
+): Promise<string | null> {
+  const head = await g.raw(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).catch(() => '');
+  const fromRemote = head.trim().replace(/^[^/]+\//, '');
+  if (fromRemote && localNames.has(fromRemote)) return fromRemote;
+  const configured = (await g.raw(['config', '--get', 'init.defaultBranch']).catch(() => '')).trim();
+  if (configured && localNames.has(configured)) return configured;
+  for (const name of ['main', 'master']) if (localNames.has(name)) return name;
+  return localNames.has(current) ? current : null;
+}
+
+/** 既定ブランチにマージ済みのローカルブランチ名 (既定ブランチ自身は含めない) */
+async function mergedBranchNames(g: SimpleGit, defaultBranch: string | null): Promise<Set<string>> {
+  if (!defaultBranch) return new Set();
+  const out = await g
+    .raw(['branch', '--merged', defaultBranch, '--format=%(refname:short)'])
+    .catch(() => '');
+  const names = out
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && l !== defaultBranch);
+  return new Set(names);
+}
+
 gitRouter.get('/branches', async (req, res) => {
   const g = git(req.query.repo);
   const b = await g.branch();
   const branches = Object.values(b.branches);
+  const localNames = new Set(branches.filter((br) => !br.name.startsWith('remotes/')).map((br) => br.name));
+  const defaultBranch = await resolveDefaultBranch(g, localNames, b.current);
+  const merged = await mergedBranchNames(g, defaultBranch);
   const upstreamRaw = await g.raw(['for-each-ref', '--format=%(refname:short)%00%(upstream:short)', 'refs/heads']);
   const upstreamByBranch = new Map<string, string>();
   for (const line of upstreamRaw.split('\n')) {
@@ -653,7 +687,12 @@ gitRouter.get('/branches', async (req, res) => {
   );
   res.json({
     current: b.current,
-    branches: branches.map((branch) => ({ ...branch, ...counts.get(branch.name) })),
+    defaultBranch,
+    branches: branches.map((branch) => ({
+      ...branch,
+      ...counts.get(branch.name),
+      ...(merged.has(branch.name) ? { merged: true } : {}),
+    })),
   });
 });
 

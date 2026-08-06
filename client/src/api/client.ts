@@ -194,7 +194,9 @@ export const api = {
   gitPull: (repo: string) => post<{ ok: true }>('/api/git/pull', { repo }),
   gitFetch: (repo: string) => post<{ ok: true }>('/api/git/fetch', { repo }),
   gitBranches: (repo: string) =>
-    get<{ current: string; branches: GitBranch[] }>(`/api/git/branches?repo=${q(repo)}`),
+    get<{ current: string; defaultBranch: string | null; branches: GitBranch[] }>(
+      `/api/git/branches?repo=${q(repo)}`,
+    ),
   gitBranch: (repo: string, action: 'create' | 'checkout' | 'delete', name: string) =>
     post<{ ok: true }>('/api/git/branch', { repo, action, name }),
   gitMerge: (repo: string, branch: string) => post<{ ok: true }>('/api/git/merge', { repo, branch }),

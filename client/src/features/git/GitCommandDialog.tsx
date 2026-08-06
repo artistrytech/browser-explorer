@@ -26,7 +26,9 @@ interface GitCommandStore {
   title: string;
   steps: CommandStep[];
   running: boolean;
-  start: (title: string) => void;
+  /** 結果に成功/失敗の件数を出すか (一括実行時) */
+  showCounts: boolean;
+  start: (title: string, showCounts?: boolean) => void;
   addStep: (command: string) => void;
   finishStep: (output: string, ok: boolean) => void;
   done: () => void;
@@ -38,7 +40,8 @@ export const useGitCommand = create<GitCommandStore>((set) => ({
   title: '',
   steps: [],
   running: false,
-  start: (title) => set({ open: true, title, steps: [], running: true }),
+  showCounts: false,
+  start: (title, showCounts = false) => set({ open: true, title, steps: [], running: true, showCounts }),
   addStep: (command) =>
     set((s) => ({ steps: [...s.steps, { command, output: '', ok: null }] })),
   finishStep: (output, ok) =>
@@ -51,15 +54,17 @@ export const useGitCommand = create<GitCommandStore>((set) => ({
 
 /**
  * git コマンド列を順に実行し、結果ダイアログに表示する。
- * 途中で失敗したらそこで打ち切る。戻り値は全コマンド成功なら true。
+ * 既定は途中で失敗したらそこで打ち切る (continueOnError で後続も続行し、件数を結果に出す)。
+ * 戻り値は全コマンド成功なら true。
  */
 export async function runGitCommands(
   repo: string,
   commands: string[][],
   title = 'Git コマンド',
+  opts: { continueOnError?: boolean } = {},
 ): Promise<boolean> {
   const store = useGitCommand.getState();
-  store.start(title);
+  store.start(title, opts.continueOnError === true);
   let allOk = true;
   for (const args of commands) {
     useGitCommand.getState().addStep(`git ${args.join(' ')}`);
@@ -68,12 +73,12 @@ export async function runGitCommands(
       useGitCommand.getState().finishStep(r.output || '(出力なし)', r.ok);
       if (!r.ok) {
         allOk = false;
-        break;
+        if (!opts.continueOnError) break;
       }
     } catch (e) {
       useGitCommand.getState().finishStep(e instanceof Error ? e.message : String(e), false);
       allOk = false;
-      break;
+      if (!opts.continueOnError) break;
     }
   }
   useGitCommand.getState().done();
@@ -84,7 +89,7 @@ export async function runGitCommands(
 }
 
 export function GitCommandDialog() {
-  const { open, title, steps, running, close } = useGitCommand();
+  const { open, title, steps, running, showCounts, close } = useGitCommand();
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -95,6 +100,10 @@ export function GitCommandDialog() {
 
   const failed = steps.some((s) => s.ok === false);
   const status = running ? 'running' : failed ? 'error' : 'ok';
+  // 一括実行では最後にまとめて件数を出す (失敗しても後続を続けるため)
+  const counts = showCounts
+    ? ` (成功 ${steps.filter((s) => s.ok === true).length} 件 / 失敗 ${steps.filter((s) => s.ok === false).length} 件)`
+    : '';
 
   return (
     <div className={cx("dialog-backdrop")}>
@@ -119,9 +128,9 @@ export function GitCommandDialog() {
               <span className={cx("spinner-ring small")} /> 実行中…
             </>
           ) : status === 'error' ? (
-            '✖ 失敗しました'
+            `✖ 失敗しました${counts}`
           ) : (
-            '✔ 成功しました'
+            `✔ 成功しました${counts}`
           )}
         </div>
         <div className={cx("dialog-buttons")}>

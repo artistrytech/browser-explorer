@@ -8,6 +8,7 @@ import {
   LOG_LAYOUT_KEY,
   type LogLayoutDir,
 } from '../../lib/logLayoutMemory';
+import { loadBranchKeep, saveBranchKeep } from '../../lib/branchKeepMemory';
 import { saveEnteredChild } from '../../lib/focusMemory';
 import { fileOpenMenuItems, pruneMenuItems } from '../../lib/openMenu';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
@@ -165,6 +166,14 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const [busy, setBusy] = useState(false);
   const [branches, setBranches] = useState<GitBranch[]>([]);
   const [collapsedBranchGroups, setCollapsedBranchGroups] = useState<Set<string>>(new Set());
+  /** ローカルブランチの一括削除モード。ON の間はブランチの他操作を止める */
+  const [bulkMode, setBulkMode] = useState(false);
+  /** 一括削除の対象ブランチ名 (チェック済み) */
+  const [bulkTargets, setBulkTargets] = useState<Set<string>>(new Set());
+  /** 強制削除 (-D) するブランチ名 */
+  const [bulkForce, setBulkForce] = useState<Set<string>>(new Set());
+  /** 一括削除の対象から常に外すブランチ名 (localStorage にリポジトリ単位で保持) */
+  const [keepBranches, setKeepBranches] = useState<Set<string>>(new Set());
   /** ブランチ一覧の選択 (フォーカス) 行。BranchTreeNode.key。sessionStorage に保持 */
   const [selectedBranchKey, setSelectedBranchKeyState] = useState<string | null>(null);
   const branchListRef = useRef<HTMLDivElement>(null);
@@ -276,6 +285,22 @@ export function GitPanel({ tab }: { tab: GitTab }) {
       api.gitBranches(repoRoot).then((r) => setBranches(r.branches)).catch(toastError);
     }
   }, [repoRoot, tab, status]);
+
+  // 一括削除モードは「ブランチ」タブ専用。他タブへ移ったりリポジトリが変わったらキャンセル扱い
+  useEffect(() => {
+    if (tab !== 'branches') {
+      setBulkMode(false);
+      setBulkTargets(new Set());
+      setBulkForce(new Set());
+    }
+  }, [tab]);
+
+  useEffect(() => {
+    setBulkMode(false);
+    setBulkTargets(new Set());
+    setBulkForce(new Set());
+    setKeepBranches(repoRoot ? loadBranchKeep(repoRoot) : new Set());
+  }, [repoRoot]);
 
   // キーボードで選択を動かしたとき、その行が隠れていればスクロールして見せる
   useEffect(() => {
@@ -663,6 +688,102 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const selectableBranchRows = branchRows.filter((r) => r.node.branch);
   const selectedBranch = allBranchRows.find((r) => r.node.key === selectedBranchKey)?.node.branch ?? null;
 
+  // --- ローカルブランチの一括削除 ---
+
+  /** 削除対象にできるローカルブランチ (カレントブランチと「常に除外」は削除不可) */
+  const bulkDeletable = localBranches.filter((b) => !b.current && !keepBranches.has(b.name));
+  const bulkTargetBranches = bulkDeletable.filter((b) => bulkTargets.has(b.name));
+
+  /** モード開始。既定ブランチにマージ済みのものは最初からチェックしておく (常に除外は対象外) */
+  const startBulkMode = () => {
+    setBulkTargets(new Set(bulkDeletable.filter((b) => b.merged).map((b) => b.name)));
+    setBulkForce(new Set());
+    setBulkMode(true);
+  };
+
+  /**
+   * 「常に除外」の切替。ON にしたらその場で削除対象からも外す。
+   * 設定はリポジトリ単位で localStorage に保存し、次回以降も引き継ぐ
+   */
+  const toggleBranchKeep = (name: string) => {
+    const next = new Set(keepBranches);
+    if (next.has(name)) {
+      next.delete(name);
+    } else {
+      next.add(name);
+      if (bulkTargets.has(name)) {
+        const targets = new Set(bulkTargets);
+        targets.delete(name);
+        setBulkTargets(targets);
+      }
+      if (bulkForce.has(name)) {
+        const force = new Set(bulkForce);
+        force.delete(name);
+        setBulkForce(force);
+      }
+    }
+    setKeepBranches(next);
+    saveBranchKeep(repoRoot, next);
+  };
+
+  const exitBulkMode = () => {
+    setBulkMode(false);
+    setBulkTargets(new Set());
+    setBulkForce(new Set());
+  };
+
+  /** 対象チェックの切替。外したら強制チェックも一緒に外す */
+  const toggleBulkTarget = (name: string) => {
+    const next = new Set(bulkTargets);
+    if (next.has(name)) {
+      next.delete(name);
+      if (bulkForce.has(name)) {
+        const force = new Set(bulkForce);
+        force.delete(name);
+        setBulkForce(force);
+      }
+    } else {
+      next.add(name);
+    }
+    setBulkTargets(next);
+  };
+
+  /** 強制チェックの切替。ON にしたときは削除対象にも入れる (強制だけ ON は意味がないため) */
+  const toggleBulkForce = (name: string) => {
+    const next = new Set(bulkForce);
+    if (next.has(name)) next.delete(name);
+    else {
+      next.add(name);
+      if (!bulkTargets.has(name)) setBulkTargets(new Set(bulkTargets).add(name));
+    }
+    setBulkForce(next);
+  };
+
+  /** 確認ダイアログを挟んで一括削除。失敗しても後続を続け、結果ダイアログでまとめて通知する */
+  const runBulkDelete = () => {
+    const targets = bulkTargetBranches;
+    if (targets.length === 0) return;
+    const LIST_MAX = 20;
+    const lines = targets.slice(0, LIST_MAX).map((b) => `・${b.name}${bulkForce.has(b.name) ? ' (強制)' : ''}`);
+    if (targets.length > LIST_MAX) lines.push(`…ほか ${targets.length - LIST_MAX} 件`);
+    void confirmDialog(
+      'ローカルブランチの一括削除',
+      `以下の ${targets.length} 件のローカルブランチを削除します。よろしいですか?\n` +
+        '(途中で失敗しても残りの削除は続行し、結果をまとめて表示します)\n\n' +
+        lines.join('\n'),
+      true,
+    ).then((ok) => {
+      if (!ok) return;
+      exitBulkMode();
+      void runGitCommands(
+        repoRoot,
+        targets.map((b) => ['branch', bulkForce.has(b.name) ? '-D' : '-d', b.name]),
+        'ローカルブランチの一括削除',
+        { continueOnError: true },
+      );
+    });
+  };
+
   const moveBranchSelection = (delta: number) => {
     if (selectableBranchRows.length === 0) return;
     const idx = selectableBranchRows.findIndex((r) => r.node.key === selectedBranchKey);
@@ -684,8 +805,14 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       moveBranchSelection(-1);
+    } else if (e.key === ' ' && bulkMode) {
+      // 一括削除モードではスペースで削除対象のチェックを切り替える
+      const b = row?.node.branch;
+      if (!b || isRemoteBranch(b) || b.current || keepBranches.has(b.name)) return;
+      e.preventDefault();
+      toggleBulkTarget(b.name);
     } else if (e.key === 'Enter') {
-      if (!row) return;
+      if (!row || bulkMode) return; // 一括削除中はブランチ操作を止める
       e.preventDefault();
       if (row.node.branch) branchDoubleClick(row.node.branch);
     }
@@ -709,36 +836,105 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     const selected = selectedBranchKey === node.key;
     if (node.branch) {
       const b = node.branch;
+      const remote = isRemoteBranch(b);
+      // 一括削除モード中はローカルブランチだけが選択対象
+      // (カレントブランチと「常に除外」のブランチは削除不可)
+      const bulkRow = bulkMode && !remote;
+      const kept = keepBranches.has(b.name);
+      const checkable = bulkRow && !b.current && !kept;
       return (
         <div
           key={node.key}
           data-branch-key={node.key}
-          className={cx(`branch-row branch-leaf${selected ? ' selected' : ''}`)}
+          className={cx(
+            `branch-row branch-leaf${selected ? ' selected' : ''}${bulkMode && !checkable ? ' branch-locked' : ''}`,
+          )}
           style={{ paddingLeft: `${indent}px` }}
           // マウスダウンで選択 (右クリックでもここで選択されるのでメニューは選択行が対象)
           onMouseDown={() => setSelectedBranchKey(node.key)}
-          onDoubleClick={() => branchDoubleClick(b)}
-          onContextMenu={(e) => branchMenu(e, b, node.key)}
-          title="クリックで選択、右クリックでメニュー、ダブルクリックで操作"
+          onClick={() => {
+            if (checkable) toggleBulkTarget(b.name);
+          }}
+          onDoubleClick={() => {
+            if (!bulkMode) branchDoubleClick(b);
+          }}
+          onContextMenu={(e) => {
+            if (bulkMode) e.preventDefault(); // 一括削除中はブランチ操作を止める
+            else branchMenu(e, b, node.key);
+          }}
+          title={
+            bulkMode
+              ? checkable
+                ? 'クリックで削除対象の選択を切り替え'
+                : remote
+                  ? '一括削除の対象はローカルブランチのみです'
+                  : b.current
+                    ? 'カレントブランチは削除できません'
+                    : '「常に除外」が設定されています'
+              : 'クリックで選択、右クリックでメニュー、ダブルクリックで操作'
+          }
         >
+          {bulkRow && (
+            <input
+              type="checkbox"
+              className={cx("branch-check")}
+              checked={bulkTargets.has(b.name)}
+              disabled={!checkable}
+              aria-label={`${b.name} を削除対象にする`}
+              onClick={(e) => e.stopPropagation()}
+              onChange={() => toggleBulkTarget(b.name)}
+            />
+          )}
           <span className={cx(`branch-name${b.current ? ' branch-current' : ''}`)} title={b.name}>
             {b.current ? '● ' : '  '}
             {node.label}
             {branchSyncLabel(b)}
           </span>
-          <button
-            className={cx("branch-copy")}
-            title="ブランチ名をコピー"
-            aria-label={`${b.name} をコピー`}
-            onClick={(e) => {
-              e.stopPropagation();
-              void copyBranchName(b.name);
-            }}
-            onDoubleClick={(e) => e.stopPropagation()}
-            onContextMenu={(e) => e.stopPropagation()}
-          >
-            <span className={cx("branch-copy-icon")} aria-hidden="true" />
-          </button>
+          {bulkRow && b.merged && !kept && (
+            <span className={cx("branch-merged")} title="既定ブランチにマージ済み">
+              マージ済
+            </span>
+          )}
+          {bulkRow ? (
+            <>
+              <span className={cx("branch-spacer")} />
+              <label
+                className={cx("branch-keep")}
+                title="常に除外: このブランチを一括削除の対象にしない (この設定はブラウザに保存されます)"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input type="checkbox" checked={kept} onChange={() => toggleBranchKeep(b.name)} />
+                常に除外
+              </label>
+              <label
+                className={cx("branch-force")}
+                title="強制削除 (-D): マージされていないコミットがあっても削除する"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="checkbox"
+                  checked={bulkForce.has(b.name)}
+                  disabled={!checkable}
+                  onChange={() => toggleBulkForce(b.name)}
+                />
+                強制
+              </label>
+            </>
+          ) : (
+            <button
+              className={cx("branch-copy")}
+              title="ブランチ名をコピー"
+              aria-label={`${b.name} をコピー`}
+              onClick={(e) => {
+                e.stopPropagation();
+                void copyBranchName(b.name);
+              }}
+              onDoubleClick={(e) => e.stopPropagation()}
+              onContextMenu={(e) => e.stopPropagation()}
+            >
+              <span className={cx("branch-copy-icon")} aria-hidden="true" />
+            </button>
+          )}
         </div>
       );
     }
@@ -1116,13 +1312,14 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           🌿 {status?.branch ?? '?'}
           {status?.tracking ? ` ↑${status.ahead}↓${status.behind}` : ''}
         </span>
-        {/* Fetch/Pull/Stash は即時実行せず、確認ダイアログを挟む (Push と同じフロー) */}
-        <button className={cx("status-btn")} disabled={busy} onClick={openFetchDialog}>
+        {/* Fetch/Pull/Stash は即時実行せず、確認ダイアログを挟む (Push と同じフロー)。
+            一括削除モード中はブランチに影響する操作をまとめて止める */}
+        <button className={cx("status-btn")} disabled={busy || bulkMode} onClick={openFetchDialog}>
           Fetch
         </button>
         <button
           className={cx("status-btn")}
-          disabled={busy}
+          disabled={busy || bulkMode}
           onClick={() =>
             void confirmDialog('Pull', 'git pull を実行しますか?').then((ok) => {
               if (ok) void runGitCommands(repoRoot, [['pull']], 'Pull');
@@ -1131,10 +1328,10 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         >
           Pull
         </button>
-        <button className={cx("status-btn")} disabled={busy} onClick={openPushDialog}>
+        <button className={cx("status-btn")} disabled={busy || bulkMode} onClick={openPushDialog}>
           Push
         </button>
-        <button className={cx("status-btn")} disabled={busy} onClick={openStashDialog}>
+        <button className={cx("status-btn")} disabled={busy || bulkMode} onClick={openStashDialog}>
           Stash
         </button>
         <button
@@ -1147,6 +1344,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         <button
           className={cx("status-btn")}
           title="リベース用バックアップの管理など"
+          disabled={bulkMode}
           onClick={openToolsMenu}
         >
           🧰 ツール ▾
@@ -1363,17 +1561,48 @@ export function GitPanel({ tab }: { tab: GitTab }) {
               <div className={cx("git-branches")}>
                 {/* 作成ボタンは固定 (一覧だけがスクロールする) */}
                 <div className={cx("branch-toolbar")}>
-                  <button className={cx("btn")} onClick={openCreateBranchDialog}>
+                  <button className={cx("btn")} disabled={bulkMode} onClick={openCreateBranchDialog}>
                     ＋ ブランチ作成
                   </button>
                   <button
                     className={cx("btn")}
-                    disabled={!currentBranch}
+                    disabled={bulkMode || !currentBranch}
                     onClick={() => currentBranch && openRenameBranchDialog(currentBranch)}
                   >
                     名前変更
                   </button>
+                  {bulkMode ? (
+                    <>
+                      <button
+                        className={cx("btn danger")}
+                        disabled={bulkTargetBranches.length === 0}
+                        onClick={runBulkDelete}
+                      >
+                        削除 ({bulkTargetBranches.length})
+                      </button>
+                      <button className={cx("btn")} onClick={exitBulkMode}>
+                        キャンセル
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className={cx("btn")}
+                      disabled={bulkDeletable.length === 0}
+                      title="ローカルブランチをチェックしてまとめて削除する"
+                      onClick={startBulkMode}
+                    >
+                      🗑 一括削除
+                    </button>
+                  )}
                 </div>
+                {bulkMode && (
+                  <div className={cx("branch-bulk-hint")}>
+                    削除するローカルブランチをチェックしてください
+                    (既定ブランチにマージ済みのものは自動でチェック済み)。
+                    「常に除外」にしたブランチは以後チェックされません (この設定はブラウザに保存されます)。
+                    一括削除中は他のブランチ操作はできません。
+                  </div>
+                )}
                 <div
                   className={cx("branch-list")}
                   ref={branchListRef}
@@ -1403,6 +1632,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   selectedHash={branchLogFocus?.branchName === selectedBranch.name ? branchLogFocus.hash : null}
                   onSelect={(hash) => setBranchLogFocus({ branchName: selectedBranch.name, hash })}
                   branch={selectedBranch.name}
+                  readOnly={bulkMode}
                 />
               ) : (
                 <div className={cx("empty-hint")}>ブランチを選択するとログを表示します</div>
