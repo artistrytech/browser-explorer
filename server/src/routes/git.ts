@@ -30,9 +30,50 @@ function badRequest(message: string): never {
   throw err;
 }
 
+/**
+ * パス出力のクォート抑止。
+ * git の既定 (core.quotepath=true) では、パス中の非 ASCII が "\350\250\255" のような
+ * 8 進エスケープに変換されて出力され、マルチバイト名のファイルが文字化けして見える。
+ * false にすると UTF-8 のバイト列がそのまま出力される。
+ */
+const QUOTE_PATH_CONFIG = 'core.quotepath=false';
+/** ネイティブ git を直接起動する箇所用 (サブコマンドの前に置く) */
+const QUOTE_PATH_ARGS = ['-c', QUOTE_PATH_CONFIG];
+
 function git(repo: unknown): SimpleGit {
   if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
-  return simpleGit(repo);
+  return simpleGit(repo, { config: [QUOTE_PATH_CONFIG] });
+}
+
+/**
+ * git が出力するパスのクォート解除。
+ * core.quotepath=false でも、パスに " や \ や制御文字を含む場合は
+ * ダブルクォートで囲まれた C 言語形式でエスケープされるため、その場合だけ復元する。
+ * \350 のような 8 進エスケープはバイト単位で戻してから UTF-8 として解釈する。
+ */
+function unquotePath(p: string): string {
+  if (p.length < 2 || !p.startsWith('"') || !p.endsWith('"')) return p;
+  const body = p.slice(1, -1);
+  const bytes: number[] = [];
+  const push = (s: string) => bytes.push(...Buffer.from(s, 'utf8'));
+  const escapes: Record<string, string> = {
+    a: '\x07', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v',
+  };
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] !== '\\') {
+      push(body[i]);
+      continue;
+    }
+    const next = body[++i];
+    if (next === undefined) break;
+    if (/^[0-7]{3}$/.test(body.slice(i, i + 3))) {
+      bytes.push(parseInt(body.slice(i, i + 3), 8));
+      i += 2;
+      continue;
+    }
+    push(escapes[next] ?? next);
+  }
+  return Buffer.from(bytes).toString('utf8');
 }
 
 /** リポジトリルート相対パスの検証 (ルート外への脱出を拒否, §1.3) */
@@ -87,7 +128,7 @@ gitRouter.get('/is-repo', async (req, res) => {
     return;
   }
   try {
-    const root = await simpleGit(p).revparse(['--show-toplevel']);
+    const root = await simpleGit(p, { config: [QUOTE_PATH_CONFIG] }).revparse(['--show-toplevel']);
     res.json({ isRepo: true, root: norm(root.trim()) });
   } catch {
     res.json({ isRepo: false });
@@ -135,7 +176,9 @@ gitRouter.post('/entries-status', async (req, res) => {
 
   // 無視判定: エントリ数によらず 1 プロセスで済むよう stdin で流し込む
   const ignoredSet = await new Promise<Set<string>>((resolve) => {
-    const child = spawn('git', ['check-ignore', '-z', '--stdin'], { cwd: String(repo) });
+    const child = spawn('git', [...QUOTE_PATH_ARGS, 'check-ignore', '-z', '--stdin'], {
+      cwd: String(repo),
+    });
     const chunks: Buffer[] = [];
     child.stdout.on('data', (c: Buffer) => chunks.push(c));
     child.on('close', () =>
@@ -267,14 +310,14 @@ gitRouter.get('/commit-files', async (req, res) => {
   const status = new Map<string, string>();
   for (const line of nameStatusRaw.split('\n')) {
     const m = line.match(/^([A-Z])\d*\t(.+)$/);
-    if (m) status.set(norm(m[2]), m[1]);
+    if (m) status.set(norm(unquotePath(m[2])), m[1]);
   }
   const files = numstatRaw
     .split('\n')
     .map((line) => line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/))
     .filter((m): m is RegExpMatchArray => m !== null)
     .map((m) => {
-      const p = norm(m[3]);
+      const p = norm(unquotePath(m[3]));
       return {
         path: p,
         status: status.get(p) ?? 'M',
@@ -478,7 +521,8 @@ gitRouter.get('/diff', async (req, res) => {
  */
 async function untrackedDiff(repo: string, rel: string): Promise<string> {
   try {
-    const { stdout } = await execFileAsync('git', ['diff', '--no-index', '--', '/dev/null', rel], {
+    const args = [...QUOTE_PATH_ARGS, 'diff', '--no-index', '--', '/dev/null', rel];
+    const { stdout } = await execFileAsync('git', args, {
       cwd: repo,
       maxBuffer: DIFF_MAX_BUFFER,
     });
@@ -728,7 +772,7 @@ gitRouter.get('/conflicts', async (req, res) => {
   for (const line of out.split('\n')) {
     const m = line.match(/^\d+ [0-9a-f]+ ([123])\t(.+)$/);
     if (!m) continue;
-    const p = norm(m[2]);
+    const p = norm(unquotePath(m[2]));
     if (dir && p !== dir && !p.startsWith(`${dir}/`)) continue;
     if (!stageMap.has(p)) stageMap.set(p, new Set());
     stageMap.get(p)!.add(Number(m[1]));
@@ -835,9 +879,10 @@ export function gitEnv(repo?: string): NodeJS.ProcessEnv {
 /**
  * 認証プロンプトを出さない git 設定 (サブコマンドの前に置く)。
  * repo に資格情報ヘルパーが設定されていれば HTTPS 認証にそれを使う。
+ * 出力にパスが含まれるコマンドもあるため core.quotepath=false も併せて渡す。
  */
 function noninteractiveArgs(repo?: string): string[] {
-  const args = ['-c', 'credential.interactive=false', '-c', 'core.askPass='];
+  const args = [...QUOTE_PATH_ARGS, '-c', 'credential.interactive=false', '-c', 'core.askPass='];
   if (repo) {
     const { credentialHelper } = getGitAuth(repo);
     // ヘルパー名に改行等が混じらないよう検証 (-c の値として渡す)
