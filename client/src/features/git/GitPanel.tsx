@@ -23,7 +23,7 @@ import { GitGraph } from './GitGraph';
 import { openCloneDialog } from './CloneDialog';
 import { openConflictResolver } from './ConflictResolver';
 import { runGitCommands } from './GitCommandDialog';
-import { openPushDialog, defaultPushArgs } from './PushDialog';
+import { openPushDialog } from './PushDialog';
 import { openFetchDialog } from './FetchDialog';
 import { openStashDialog } from './StashDialog';
 import { openAuthDialog } from './AuthDialog';
@@ -418,21 +418,49 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   // コミット実行可否 (メッセージ or amend があり、ステージ済みがある or amend)
   const canCommit = !busy && (!!message.trim() || amend) && (staged.length > 0 || amend);
 
+  // Commit All 実行可否 (未ステージ・未追跡もまとめてステージするので、変更が 1 件でもあればよい)
+  const canCommitAll =
+    !busy && (!!message.trim() || amend) && (staged.length > 0 || unstaged.length > 0 || amend);
+
   /**
-   * コミット (任意で続けて Push)。成功したらメッセージを履歴に保存し入力を初期化する。
+   * コミット結果の後始末。成功したらメッセージを履歴に保存し入力を初期化する。
    * amend でメッセージ空欄のときは --no-edit なので履歴保存はしない。
    */
-  const doCommit = (push: boolean) => {
+  const afterCommit = (ok: boolean, msg: string) => {
+    if (!ok) return;
+    if (msg) void api.gitAddCommitMessage(msg, repoRoot).catch(() => {}); // 履歴保存 (失敗は無視)
+    setMessage('');
+    setAmend(false);
+  };
+
+  /** ステージ済みの変更をコミットする */
+  const doCommit = () => {
     if (!canCommit) return;
     const msg = message.trim();
-    const commands = push
-      ? [commitArgs(message, amend), defaultPushArgs(status ?? { branch: null, tracking: null })]
-      : [commitArgs(message, amend)];
-    void runGitCommands(repoRoot, commands, push ? 'Commit & Push' : 'Commit').then((ok) => {
+    void runGitCommands(repoRoot, [commitArgs(message, amend)], 'Commit').then((ok) =>
+      afterCommit(ok, msg),
+    );
+  };
+
+  /**
+   * 未追跡を含むすべての変更を git add -A でステージしてからコミットする。
+   * 影響範囲が大きいので、実行前に確認ダイアログを出す。
+   */
+  const doCommitAll = () => {
+    if (!canCommitAll) return;
+    const msg = message.trim();
+    const untrackedCount = unstaged.filter(isUntrackedFile).length;
+    void confirmDialog(
+      'Commit All',
+      '未追跡ファイルを含む、すべての変更をステージしてコミットします。\n' +
+        `(ステージ済み ${staged.length} 件 / 未ステージ ${unstaged.length} 件` +
+        `${untrackedCount > 0 ? ` (うち未追跡 ${untrackedCount} 件)` : ''})\n` +
+        'よろしいですか?',
+    ).then((ok) => {
       if (!ok) return;
-      if (msg) void api.gitAddCommitMessage(msg, repoRoot).catch(() => {}); // 履歴保存 (失敗は無視)
-      setMessage('');
-      setAmend(false);
+      void runGitCommands(repoRoot, [['add', '-A'], commitArgs(message, amend)], 'Commit All').then(
+        (done) => afterCommit(done, msg),
+      );
     });
   };
 
@@ -1555,7 +1583,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                       // Ctrl+Enter (mac は ⌘+Enter) でコミット実行
                       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                         e.preventDefault();
-                        doCommit(false);
+                        doCommit();
                       }
                     }}
                   />
@@ -1564,11 +1592,16 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                     amend (直前のコミットを修正)
                   </label>
                   <div>
-                    <button className={cx("btn primary")} disabled={!canCommit} onClick={() => doCommit(false)}>
+                    <button className={cx("btn primary")} disabled={!canCommit} onClick={doCommit}>
                       Commit
                     </button>{' '}
-                    <button className={cx("btn")} disabled={!canCommit} onClick={() => doCommit(true)}>
-                      Commit & Push
+                    <button
+                      className={cx("btn")}
+                      disabled={!canCommitAll}
+                      title="未追跡を含むすべての変更をステージしてコミットする"
+                      onClick={doCommitAll}
+                    >
+                      Commit All
                     </button>
                   </div>
                 </div>

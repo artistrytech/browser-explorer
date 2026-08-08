@@ -30,12 +30,6 @@ export function openPushDialog(): void {
   usePushDialog.getState().show();
 }
 
-/** upstream 未設定時の既定 push 引数 (Commit & Push 等の簡易 push 用) */
-export function defaultPushArgs(status: { branch: string | null; tracking: string | null }): string[] {
-  if (status.tracking) return ['push'];
-  return ['push', '-u', 'origin', status.branch ?? 'HEAD'];
-}
-
 export function PushDialog() {
   const { open, close } = usePushDialog();
   const repoRoot = useGit((s) => s.repoRoot);
