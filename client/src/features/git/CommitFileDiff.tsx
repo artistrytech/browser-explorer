@@ -7,6 +7,11 @@ import { createCssModuleClassNames } from '../../lib/cssModule';
 
 const cx = createCssModuleClassNames(styles);
 
+/** 一覧・見出しに出すパス。名前変更・コピーは「変更前 → 変更後」で表示する */
+export function commitFileLabel(f: { path: string; oldPath?: string | null }): string {
+  return f.oldPath ? `${f.oldPath} → ${f.path}` : f.path;
+}
+
 /**
  * ログタブのプレビュー: コミット内 1 ファイルの差分を表示する。
  * 見た目はコミットタブの WorkingDiff と同じだが、コミット済みのため読み取り専用
@@ -17,11 +22,14 @@ export function CommitFileDiff({
   repo,
   hash,
   path,
+  oldPath,
   label,
 }: {
   repo: string;
   hash: string;
   path: string;
+  /** 名前変更されたファイルの変更前パス (変更前の内容を引き当てるのに必要) */
+  oldPath?: string | null;
   label?: string;
 }) {
   const [parsed, setParsed] = useState<FileDiff | null>(null);
@@ -32,7 +40,7 @@ export function CommitFileDiff({
     setLoading(true);
     setParsed(null);
     api
-      .gitCommitFilePatch(repo, hash, path)
+      .gitCommitFilePatch(repo, hash, path, oldPath)
       .then((r) => {
         if (!stale) setParsed(parseFileDiff(r.diff));
       })
@@ -45,22 +53,28 @@ export function CommitFileDiff({
     return () => {
       stale = true; // 選択が素早く変わった場合、古い応答で上書きしない
     };
-  }, [repo, hash, path]);
+  }, [repo, hash, path, oldPath]);
+
+  const title = oldPath ? `${oldPath} → ${path}` : path;
 
   return (
     <div className={cx("work-diff")}>
       <div className={cx("work-diff-file")}>
         <div className={cx("work-diff-head")}>
           <span className={cx("wd-side wd-side-staged")}>{label ?? hash.slice(0, 7)}</span>
-          <span className={cx("wd-path")} title={path}>
-            {path}
+          <span className={cx("wd-path")} title={title}>
+            {title}
           </span>
         </div>
         {loading ? (
           <div className={cx("empty-hint")}>読み込み中…</div>
         ) : !parsed || parsed.hunks.length === 0 ? (
-          // バイナリ・モード変更のみのファイルは Hunk が無い
-          <div className={cx("empty-hint")}>表示できる差分はありません (バイナリ等)</div>
+          // 内容が変わらない名前変更・バイナリ・モード変更のみのファイルは Hunk が無い
+          <div className={cx("empty-hint")}>
+            {oldPath
+              ? '名前の変更のみで、内容の変更はありません'
+              : '表示できる差分はありません (バイナリ等)'}
+          </div>
         ) : (
           parsed.hunks.map((hunk, hIdx) => {
             const lineNos = hunkLineNumbers(hunk);

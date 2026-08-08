@@ -20,6 +20,8 @@ export interface CommitDiffTarget {
   hash: string;
   path: string;
   subject: string;
+  /** 名前変更されたファイルの変更前パス (それ以外は無し) */
+  oldPath?: string | null;
 }
 
 interface DiffViewStore {
@@ -43,16 +45,18 @@ function diffParams(target: CommitDiffTarget): URLSearchParams {
   params.set('drepo', target.repo);
   params.set('dhash', target.hash);
   params.set('dpath', target.path);
+  if (target.oldPath) params.set('dold', target.oldPath);
+  else params.delete('dold');
   return params;
 }
 
-/** URL の ?drepo=&dhash=&dpath= から差分タブの対象を復元 (subject は後から取得) */
+/** URL の ?drepo=&dhash=&dpath=&dold= から差分タブの対象を復元 (subject は後から取得) */
 export function diffTargetFromUrl(): CommitDiffTarget | null {
   const params = new URLSearchParams(location.search);
   const repo = params.get('drepo');
   const hash = params.get('dhash');
   const path = params.get('dpath');
-  return repo && hash && path ? { repo, hash, path, subject: '' } : null;
+  return repo && hash && path ? { repo, hash, path, subject: '', oldPath: params.get('dold') } : null;
 }
 
 /** 差分タブを開く (ブラウザ履歴に追加)。newTab でブラウザの別タブに開く */
@@ -71,7 +75,7 @@ export function openCommitDiff(target: CommitDiffTarget, newTab = false): void {
 export function closeDiffTab(): void {
   useDiffTab.getState().close();
   const params = new URLSearchParams(location.search);
-  ['drepo', 'dhash', 'dpath'].forEach((k) => params.delete(k));
+  ['drepo', 'dhash', 'dpath', 'dold'].forEach((k) => params.delete(k));
   history.replaceState(history.state, '', `${location.pathname}?${params}`);
   if (useUi.getState().view === 'diff') replaceView('log');
 }
@@ -95,7 +99,7 @@ export function DiffTab() {
     setData(null);
     if (!current) return;
     api
-      .gitCommitFileDiff(current.repo, current.hash, current.path)
+      .gitCommitFileDiff(current.repo, current.hash, current.path, current.oldPath)
       .then(setData)
       .catch(toastError);
   }, [current]);
@@ -147,8 +151,12 @@ export function DiffTab() {
     <div className={cx("diff-tab")}>
       <div className={cx("diff-tab-head")}>
         <span className={cx("graph-hash")}>{short}</span>
-        <b className={cx("diff-tab-path")} title={current.path}>
-          {current.path}
+        {/* 名前変更されたファイルは「変更前 → 変更後」を出す */}
+        <b
+          className={cx("diff-tab-path")}
+          title={current.oldPath ? `${current.oldPath} → ${current.path}` : current.path}
+        >
+          {current.oldPath ? `${current.oldPath} → ${current.path}` : current.path}
         </b>
         <span className={cx("diff-tab-subject")} title={current.subject}>
           {current.subject}
@@ -164,7 +172,9 @@ export function DiffTab() {
             className={cx("status-btn")}
             title={`${t.label} でこの差分を開く`}
             onClick={() =>
-              void api.gitDiffTool(t.id, current.repo, current.path, 'commit', current.hash).catch(toastError)
+              void api
+                .gitDiffTool(t.id, current.repo, current.path, 'commit', current.hash, current.oldPath)
+                .catch(toastError)
             }
           >
             {t.label}

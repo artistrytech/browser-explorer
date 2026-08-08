@@ -135,14 +135,17 @@ export const api = {
     ),
   gitCommitFiles: (repo: string, hash: string) =>
     get<CommitFilesResult>(`/api/git/commit-files?repo=${q(repo)}&hash=${q(hash)}`),
-  gitCommitFileDiff: (repo: string, hash: string, path: string) =>
+  /** oldPath は名前変更されたファイルの変更前パス (親コミット側の取得に使う) */
+  gitCommitFileDiff: (repo: string, hash: string, path: string, oldPath?: string | null) =>
     get<{ path: string; before: string | null; after: string | null; binary: boolean }>(
-      `/api/git/commit-file-diff?repo=${q(repo)}&hash=${q(hash)}&path=${q(path)}`,
+      `/api/git/commit-file-diff?repo=${q(repo)}&hash=${q(hash)}&path=${q(path)}` +
+        (oldPath ? `&oldPath=${q(oldPath)}` : ''),
     ),
   /** コミット内 1 ファイルの unified 差分 (ログタブのプレビュー用) */
-  gitCommitFilePatch: (repo: string, hash: string, path: string) =>
+  gitCommitFilePatch: (repo: string, hash: string, path: string, oldPath?: string | null) =>
     get<{ diff: string }>(
-      `/api/git/commit-file-patch?repo=${q(repo)}&hash=${q(hash)}&path=${q(path)}`,
+      `/api/git/commit-file-patch?repo=${q(repo)}&hash=${q(hash)}&path=${q(path)}` +
+        (oldPath ? `&oldPath=${q(oldPath)}` : ''),
     ),
   gitShow: (repo: string, hash: string) =>
     get<{ hash: string; author: string; date: string; message: string; patch: string }>(
@@ -163,6 +166,7 @@ export const api = {
     path: string,
     mode: 'commit' | 'staged' | 'worktree',
     hash?: string,
+    oldPath?: string | null,
   ) =>
     post<{ ok: true; command: string; left: string; right: string }>('/api/git/difftool', {
       tool,
@@ -170,6 +174,7 @@ export const api = {
       path,
       mode,
       hash,
+      oldPath,
     }),
   gitStage: (repo: string, paths: string[]) => post<{ ok: true }>('/api/git/stage', { repo, paths }),
   gitUnstage: (repo: string, paths: string[]) =>

@@ -32,7 +32,7 @@ import { openCreateBranchDialog, openRemoteCheckoutDialog, openRenameBranchDialo
 import { openRebaseDialog } from './Rebase';
 import { openDiscardAllDialog } from './DiscardAllDialog';
 import { openCommitDiff } from './DiffTab';
-import { CommitFileDiff } from './CommitFileDiff';
+import { CommitFileDiff, commitFileLabel } from './CommitFileDiff';
 import { useRebase } from '../../stores/rebase';
 import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus, RebaseBackup } from '../../types';
 import styles from './GitPanel.module.scss';
@@ -46,6 +46,8 @@ const COMMIT_FILE_STATUS: Record<string, { label: string; cls: string }> = {
   M: { label: '修正', cls: 'st-mod' },
   D: { label: '削除', cls: 'st-del' },
   T: { label: '種別変更', cls: 'st-mod' },
+  R: { label: '名前変更', cls: 'st-mod' },
+  C: { label: 'コピー', cls: 'st-add' },
 };
 
 interface BranchTreeNode {
@@ -469,7 +471,8 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const filterText = fileFilter.trim().toLowerCase();
   const matchedFiles = commitDetail
     ? filterText
-      ? commitDetail.files.filter((f) => f.path.toLowerCase().includes(filterText))
+      ? // 名前変更は変更前のパスでも引っかかるようにする
+        commitDetail.files.filter((f) => commitFileLabel(f).toLowerCase().includes(filterText))
       : commitDetail.files
     : [];
   const filesLimit = commitDetail?.limit ?? 100;
@@ -483,22 +486,26 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     filePath: string,
     mode: 'commit' | 'staged' | 'worktree',
     hash?: string,
+    oldPath?: string | null,
   ): MenuItem[] =>
     diffTools.map((t) => ({
       label: t.label,
-      action: () => void api.gitDiffTool(t.id, repoRoot, filePath, mode, hash).catch(toastError),
+      action: () => void api.gitDiffTool(t.id, repoRoot, filePath, mode, hash, oldPath).catch(toastError),
     }));
 
   /** ダブルクリック時の差分表示: 既定ツールがあればそれ、無ければアプリ内の 2 ペイン差分 */
   const openDefaultCommitDiff = (f: CommitFile, detail: CommitFilesResult) => {
     if (defaultTool >= 0) {
-      void api.gitDiffTool(diffTools[defaultTool].id, repoRoot, f.path, 'commit', detail.hash).catch(toastError);
+      void api
+        .gitDiffTool(diffTools[defaultTool].id, repoRoot, f.path, 'commit', detail.hash, f.oldPath)
+        .catch(toastError);
       return;
     }
     openCommitDiff({
       repo: repoRoot,
       hash: detail.hash,
       path: f.path,
+      oldPath: f.oldPath,
       subject: detail.message.split('\n')[0],
     });
   };
@@ -1044,12 +1051,18 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             // Ctrl+クリック (mac は ⌘) はブラウザの別タブで開く
             action: (ev) =>
               openCommitDiff(
-                { repo: repoRoot, hash, path: f.path, subject: detail.message.split('\n')[0] },
+                {
+                  repo: repoRoot,
+                  hash,
+                  path: f.path,
+                  oldPath: f.oldPath,
+                  subject: detail.message.split('\n')[0],
+                },
                 ev.ctrlKey || ev.metaKey,
               ),
           },
           // 外部差分ツール (WinMerge / Meld など) でコミット前後を比較
-          ...diffToolItems(f.path, 'commit', hash),
+          ...diffToolItems(f.path, 'commit', hash, f.oldPath),
           { separator: true },
           {
             label: 'ログを表示',
@@ -1255,7 +1268,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                 onContextMenu={(e) => commitFileMenu(e, f, commitDetail)}
               >
                 <td className={cx(`cf-status ${st.cls}`)}>{st.label}</td>
-                <td className={cx("cf-path")} title={f.path}>{f.path}</td>
+                <td className={cx("cf-path")} title={commitFileLabel(f)}>{commitFileLabel(f)}</td>
                 <td className={cx("num cf-added")}>{f.binary ? '–' : `+${f.added ?? 0}`}</td>
                 <td className={cx("num cf-deleted")}>{f.binary ? '–' : `−${f.deleted ?? 0}`}</td>
               </tr>
@@ -1284,11 +1297,16 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   );
 
   // フィルタや別コミットの選択で一覧から消えたファイルはプレビューしない
-  const previewPath =
-    commitDetail && focusedFile && commitDetail.files.some((f) => f.path === focusedFile) ? focusedFile : null;
+  const previewFile =
+    (commitDetail && focusedFile && commitDetail.files.find((f) => f.path === focusedFile)) || null;
   const previewPane =
-    commitDetail && previewPath ? (
-      <CommitFileDiff repo={repoRoot} hash={commitDetail.hash} path={previewPath} />
+    commitDetail && previewFile ? (
+      <CommitFileDiff
+        repo={repoRoot}
+        hash={commitDetail.hash}
+        path={previewFile.path}
+        oldPath={previewFile.oldPath}
+      />
     ) : (
       <div className={cx("empty-hint")}>ファイルを選択すると差分を表示します</div>
     );

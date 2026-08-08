@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
 import type { CommitFilesResult } from '../../types';
-import { CommitFileDiff } from './CommitFileDiff';
+import { CommitFileDiff, commitFileLabel } from './CommitFileDiff';
 import styles from './StashDetailDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -26,12 +26,14 @@ export interface StashDetailEntry {
   message: string;
 }
 
-/** 差分ファイルのステータス表示 (A/M/D/T) */
+/** 差分ファイルのステータス表示 (A/M/D/T/R/C) */
 const FILE_STATUS: Record<string, { label: string; cls: string }> = {
   A: { label: '追加', cls: 'st-add' },
   M: { label: '修正', cls: 'st-mod' },
   D: { label: '削除', cls: 'st-del' },
   T: { label: '種別変更', cls: 'st-mod' },
+  R: { label: '名前変更', cls: 'st-mod' },
+  C: { label: 'コピー', cls: 'st-add' },
 };
 
 interface Store {
@@ -120,6 +122,7 @@ export function StashDetailDialog() {
   if (!open || !entry) return null;
 
   const files = detail?.files ?? [];
+  const selectedFile = files.find((f) => f.path === selectedPath) ?? null;
 
   /** ↑↓ で選択行を移動する (移動先が隠れていればスクロールして見せる) */
   const moveSelection = (delta: number) => {
@@ -201,16 +204,17 @@ export function StashDetailDialog() {
                   <tbody>
                     {files.map((f) => {
                       const st = FILE_STATUS[f.status] ?? { label: f.status, cls: 'st-mod' };
+                      const label = commitFileLabel(f);
                       return (
                         <tr
                           key={f.path}
                           data-path={f.path}
                           className={cx(selectedPath === f.path ? 'selected' : '')}
-                          title={f.path}
+                          title={label}
                           onClick={() => setSelectedPath(f.path)}
                         >
                           <td className={cx(`sd-status ${st.cls}`)}>{st.label}</td>
-                          <td className={cx("sd-path")}>{f.path}</td>
+                          <td className={cx("sd-path")}>{label}</td>
                           <td className={cx("num sd-added")}>{f.binary ? '–' : `+${f.added ?? 0}`}</td>
                           <td className={cx("num sd-deleted")}>{f.binary ? '–' : `−${f.deleted ?? 0}`}</td>
                         </tr>
@@ -223,8 +227,14 @@ export function StashDetailDialog() {
           </div>
 
           <div className={cx("sd-right")}>
-            {selectedPath ? (
-              <CommitFileDiff repo={repo} hash={entry.ref} path={selectedPath} label={entry.ref} />
+            {selectedFile ? (
+              <CommitFileDiff
+                repo={repo}
+                hash={entry.ref}
+                path={selectedFile.path}
+                oldPath={selectedFile.oldPath}
+                label={entry.ref}
+              />
             ) : (
               <div className={cx("empty-hint")}>ファイルを選択すると差分を表示します</div>
             )}

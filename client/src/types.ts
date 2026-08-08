@@ -127,7 +127,9 @@ export interface ConflictVersions {
 /** コミットの差分ファイル 1 件 (行数はバイナリ時 null) */
 export interface CommitFile {
   path: string;
-  status: string; // A / M / D / T
+  status: string; // A / M / D / T / R (名前変更) / C (コピー)
+  /** 名前変更・コピー元のパス (それ以外は null) */
+  oldPath: string | null;
   added: number | null;
   deleted: number | null;
   binary: boolean;

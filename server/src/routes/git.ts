@@ -289,8 +289,62 @@ gitRouter.get('/show', async (req, res) => {
 });
 
 /**
- * コミットの差分ファイル一覧: パス・ステータス (追加/修正/削除)・追加行数・削除行数。
- * マージコミットは第 1 親との差分。リネーム検出はしない (--no-renames: D+A として扱う)。
+ * -z 付き --name-status の解析。レコードは NUL 区切りで
+ *   通常   : "<状態>\0<パス>"
+ *   リネーム: "R<類似度>\0<変更前パス>\0<変更後パス>" (コピーは C)
+ * の並びになる。変更後パスをキーに、状態と変更前パスを返す。
+ */
+function parseNameStatusZ(raw: string): Map<string, { status: string; oldPath: string | null }> {
+  const tokens = raw.split('\0').filter((t) => t.length > 0);
+  const map = new Map<string, { status: string; oldPath: string | null }>();
+  for (let i = 0; i < tokens.length; ) {
+    const code = tokens[i++].match(/^([A-Z])\d*$/);
+    if (!code) continue; // 想定外の並びは読み飛ばす
+    const first = tokens[i++];
+    if (first === undefined) break;
+    if (code[1] === 'R' || code[1] === 'C') {
+      const second = tokens[i++];
+      if (second === undefined) break;
+      map.set(norm(second), { status: code[1], oldPath: norm(first) });
+    } else {
+      map.set(norm(first), { status: code[1], oldPath: null });
+    }
+  }
+  return map;
+}
+
+/**
+ * -z 付き --numstat の解析。レコードは
+ *   通常   : "<追加>\t<削除>\t<パス>"
+ *   リネーム: "<追加>\t<削除>\t" + "\0<変更前パス>\0<変更後パス>" (3 番目が空)
+ * の並びになる。
+ */
+function parseNumstatZ(raw: string): { path: string; added: number | null; deleted: number | null }[] {
+  const tokens = raw.split('\0').filter((t) => t.length > 0);
+  const out: { path: string; added: number | null; deleted: number | null }[] = [];
+  for (let i = 0; i < tokens.length; ) {
+    const m = tokens[i++].match(/^(\d+|-)\t(\d+|-)\t(.*)$/);
+    if (!m) continue;
+    let p = m[3];
+    if (p.length === 0) {
+      // リネーム: 変更前・変更後が続く。表示は変更後のパスで行う
+      i++; // 変更前パスは name-status 側から取る
+      const to = tokens[i++];
+      if (to === undefined) break;
+      p = to;
+    }
+    out.push({
+      path: norm(p),
+      added: m[1] === '-' ? null : Number(m[1]),
+      deleted: m[2] === '-' ? null : Number(m[2]),
+    });
+  }
+  return out;
+}
+
+/**
+ * コミットの差分ファイル一覧: パス・ステータス (追加/修正/削除/名前変更)・追加行数・削除行数。
+ * マージコミットは第 1 親との差分。-M でリネームを検出し、変更前パスを oldPath で返す。
  */
 gitRouter.get('/commit-files', async (req, res) => {
   const g = git(req.query.repo);
@@ -299,37 +353,39 @@ gitRouter.get('/commit-files', async (req, res) => {
   const metaRaw = await g.show([hash, '--no-patch', '--format=%H%x1f%P%x1f%an%x1f%ad%x1f%B', '--date=iso']);
   const [h, parentsRaw, author, date, ...msg] = metaRaw.split('\x1f');
   const hasParent = parentsRaw.trim().length > 0;
-  const base = hasParent
-    ? ['diff', '--no-renames']
-    : ['diff-tree', '-r', '--root', '--no-renames', '--format='];
+  const base = hasParent ? ['diff', '-M'] : ['diff-tree', '-r', '--root', '-M', '--format='];
   const revs = hasParent ? [`${hash}^`, hash] : [hash];
+  // -z にするとパスがクォートされず、リネームの変更前後も別フィールドで得られる
   const [numstatRaw, nameStatusRaw] = await Promise.all([
-    g.raw([...base, '--numstat', ...revs]),
-    g.raw([...base, '--name-status', ...revs]),
+    g.raw([...base, '--numstat', '-z', ...revs]),
+    g.raw([...base, '--name-status', '-z', ...revs]),
   ]);
-  const status = new Map<string, string>();
-  for (const line of nameStatusRaw.split('\n')) {
-    const m = line.match(/^([A-Z])\d*\t(.+)$/);
-    if (m) status.set(norm(unquotePath(m[2])), m[1]);
-  }
-  const files = numstatRaw
-    .split('\n')
-    .map((line) => line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/))
-    .filter((m): m is RegExpMatchArray => m !== null)
-    .map((m) => {
-      const p = norm(unquotePath(m[3]));
-      return {
-        path: p,
-        status: status.get(p) ?? 'M',
-        added: m[1] === '-' ? null : Number(m[1]),
-        deleted: m[2] === '-' ? null : Number(m[2]),
-        binary: m[1] === '-', // numstat が '-' を返すのはバイナリ
-      };
-    });
+  const status = parseNameStatusZ(nameStatusRaw);
+  const files = parseNumstatZ(numstatRaw).map((f) => {
+    const st = status.get(f.path);
+    return {
+      path: f.path,
+      oldPath: st?.oldPath ?? null,
+      status: st?.status ?? 'M',
+      added: f.added,
+      deleted: f.deleted,
+      binary: f.added === null, // numstat が '-' を返すのはバイナリ
+    };
+  });
   // 表示上限 (設定の commitFilesLimit)。絞り込みはクライアント側で全件に対して行う
   const limit = Math.max(1, Number(getAppConfig().commitFilesLimit) || 100);
   res.json({ hash: h, author, date, message: msg.join('\x1f').trim(), files, limit });
 });
+
+/**
+ * 変更前パス (リネーム時のみ指定される)。無指定・変更後と同じなら null。
+ * リネームを 1 件の差分として得るには、パス絞り込みに変更前後の両方を渡す必要がある。
+ */
+function oldRelPath(p: unknown, rel: string): string | null {
+  if (typeof p !== 'string' || p.length === 0) return null;
+  const old = relPath(p);
+  return old === rel ? null : old;
+}
 
 /**
  * コミット内 1 ファイルの unified 差分 (ログタブのプレビュー用)。
@@ -340,11 +396,14 @@ gitRouter.get('/commit-file-patch', async (req, res) => {
   const hash = String(req.query.hash ?? '');
   if (!hash) badRequest('hash is required');
   const rel = relPath(req.query.path);
+  const old = oldRelPath(req.query.oldPath, rel);
+  // 変更後だけを渡すと変更前が絞り込みで消え「新規追加」に見えるため、両方渡す
+  const paths = old ? [old, rel] : [rel];
   const parentsRaw = await g.show([hash, '--no-patch', '--format=%P']);
   const hasParent = parentsRaw.trim().length > 0;
   const args = hasParent
-    ? ['diff', '--no-renames', `${hash}^`, hash, '--', rel]
-    : ['diff-tree', '-r', '--root', '--no-renames', '--format=', '-p', hash, '--', rel];
+    ? ['diff', '-M', `${hash}^`, hash, '--', ...paths]
+    : ['diff-tree', '-r', '--root', '-M', '--format=', '-p', hash, '--', ...paths];
   res.json({ diff: await g.raw(args) });
 });
 
@@ -354,8 +413,10 @@ gitRouter.get('/commit-file-diff', async (req, res) => {
   const hash = String(req.query.hash ?? '');
   if (!hash) badRequest('hash is required');
   const rel = relPath(req.query.path);
+  // リネームされたファイルは、親コミット側は変更前のパスで取得する
+  const before0 = oldRelPath(req.query.oldPath, rel) ?? rel;
   const [before, after] = await Promise.all([
-    g.show([`${hash}^:${rel}`]).catch(() => null),
+    g.show([`${hash}^:${before0}`]).catch(() => null),
     g.show([`${hash}:${rel}`]).catch(() => null),
   ]);
   const nul = String.fromCharCode(0);
@@ -419,15 +480,29 @@ interface DiffSides {
   rightTitle: string;
 }
 
-async function diffSides(repo: string, rel: string, mode: DiffToolMode, hash: string): Promise<DiffSides> {
+async function diffSides(
+  repo: string,
+  rel: string,
+  mode: DiffToolMode,
+  hash: string,
+  oldRel: string | null,
+): Promise<DiffSides> {
   if (mode === 'commit') {
     if (!hash) badRequest('hash is required');
     const short = hash.slice(0, 7);
+    // リネームされたファイルは、親コミット側は変更前のパスで取得する
+    const before = oldRel ?? rel;
     const [left, right] = await Promise.all([
-      gitShowBuffer(repo, `${hash}^:${rel}`),
+      gitShowBuffer(repo, `${hash}^:${before}`),
       gitShowBuffer(repo, `${hash}:${rel}`),
     ]);
-    return { left, right, rightPath: null, leftTitle: `${rel} (${short}^)`, rightTitle: `${rel} (${short})` };
+    return {
+      left,
+      right,
+      rightPath: null,
+      leftTitle: `${before} (${short}^)`,
+      rightTitle: `${rel} (${short})`,
+    };
   }
   if (mode === 'staged') {
     const [left, right] = await Promise.all([
@@ -471,14 +546,16 @@ gitRouter.post('/difftool', async (req, res) => {
     badRequest('mode must be commit|staged|worktree');
   }
   const rel = relPath(req.body.path);
+  // リネームされたファイルの比較元 (commit モードのみ意味を持つ)
+  const oldRel = mode === 'commit' ? oldRelPath(req.body.oldPath, rel) : null;
   const command = t.command.trim();
   // 絶対パス指定なら実在チェック (未インストール時に無反応にならないよう 400 で返す)
   if (/[\\/]/.test(command) && !existsSync(command)) badRequest(`ツールが見つかりません: ${command}`);
 
-  const sides = await diffSides(repo, rel, mode, String(hash ?? ''));
+  const sides = await diffSides(repo, rel, mode, String(hash ?? ''), oldRel);
   void cleanupDiffTemp();
   const dir = path.join(DIFF_TMP_ROOT, randomUUID());
-  const leftPath = await writeSide(dir, 'left', rel, sides.left);
+  const leftPath = await writeSide(dir, 'left', oldRel ?? rel, sides.left);
   const rightPath = sides.rightPath ?? (await writeSide(dir, 'right', rel, sides.right));
 
   const vars: Record<string, string> = {
