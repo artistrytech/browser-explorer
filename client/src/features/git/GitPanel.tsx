@@ -18,6 +18,7 @@ import { useExplorer } from '../../stores/explorer';
 import { useSettings } from '../../stores/settings';
 import { useToast, toastError } from '../../stores/toast';
 import { confirmDialog, confirmDialogWithOption, promptDialog } from '../../stores/dialog';
+import { useCommitDraft } from '../../stores/commitDraft';
 import { WorkingDiff, type FocusFile } from './WorkingDiff';
 import { GitGraph } from './GitGraph';
 import { openCloneDialog } from './CloneDialog';
@@ -281,6 +282,14 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
   }, [message, tab]);
+
+  // 外部から積まれた下書き (cherry-pick --no-commit 後の MERGE_MSG など) を入力欄へ載せる
+  const commitDraft = useCommitDraft((s) => s.draft);
+  useEffect(() => {
+    if (commitDraft === null) return;
+    setMessage(commitDraft);
+    useCommitDraft.getState().clear();
+  }, [commitDraft]);
 
   useEffect(() => {
     if (repoRoot && tab === 'branches') {
@@ -1047,6 +1056,14 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         label: '未追跡ファイルを除外する',
         disabled: !isUntrackedFile(f),
         action: () => void excludeUntracked(f.path),
+      },
+    );
+    // パス絞り込みログ (ファイルタブの「Gitログ」と同じ)。Ctrl+クリック (mac は ⌘) は別タブ
+    items.push(
+      { separator: true },
+      {
+        label: 'Gitログ',
+        action: (ev) => useGit.getState().showLogFor(f.path, true, ev.ctrlKey || ev.metaKey),
       },
     );
     const tools = diffToolItems(f.path, stagedSide ? 'staged' : 'worktree');

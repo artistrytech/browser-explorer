@@ -6,6 +6,7 @@ import { confirmDialog, promptDialog } from '../../stores/dialog';
 import { useGit } from '../../stores/git';
 import { toastError } from '../../stores/toast';
 import { runGitCommands } from './GitCommandDialog';
+import { openCherryPickDialog } from './CherryPickDialog';
 import type { GitGraphCommit } from '../../types';
 import styles from './GitGraph.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -335,8 +336,8 @@ export function GitGraph({
           }),
       },
       {
-        label: 'cherry-pick',
-        action: () => void runGitCommands(repo, [['cherry-pick', c.hash]], 'Cherry-pick'),
+        label: 'cherry-pick…',
+        action: () => openCherryPickDialog(repo, c.hash, c.subject),
       },
       {
         label: 'タグを付ける…',

@@ -839,6 +839,17 @@ gitRouter.get('/merge-state', async (req, res) => {
   res.json(await getMergeState(g));
 });
 
+/**
+ * git が用意した次回コミットのメッセージ ($GIT_DIR/MERGE_MSG) を返す。
+ * cherry-pick --no-commit の後などに、コミット入力欄へ流し込むために使う。
+ */
+gitRouter.get('/merge-msg', async (req, res) => {
+  const g = git(req.query.repo);
+  const gitDir = (await g.revparse(['--absolute-git-dir'])).trim();
+  const message = await fs.readFile(path.join(gitDir, 'MERGE_MSG'), 'utf8').catch(() => '');
+  res.json({ message: message.replace(/\s+$/, '') });
+});
+
 gitRouter.get('/conflicts', async (req, res) => {
   const repo = req.query.repo as string;
   const g = git(repo);

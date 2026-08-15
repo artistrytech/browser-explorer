@@ -235,6 +235,8 @@ export const api = {
 
   // --- git: 競合解消 (002.md §2) ---
   gitMergeState: (repo: string) => get<MergeState>(`/api/git/merge-state?repo=${q(repo)}`),
+  /** git が用意した次回コミットのメッセージ (MERGE_MSG)。無ければ空文字 */
+  gitMergeMsg: (repo: string) => get<{ message: string }>(`/api/git/merge-msg?repo=${q(repo)}`),
   gitConflicts: (repo: string, dir?: string) =>
     get<{ files: ConflictFile[] }>(`/api/git/conflicts?repo=${q(repo)}${dir ? `&dir=${q(dir)}` : ''}`),
   gitConflictVersions: (repo: string, path: string) =>
