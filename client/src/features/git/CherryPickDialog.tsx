@@ -36,6 +36,19 @@ export function openCherryPickDialog(repo: string, hash: string, subject = ''): 
   useCherryPickDialog.getState().show(repo, hash, subject);
 }
 
+/**
+ * git のコメント行 (# 始まり) を落とす。
+ * 競合で中断した場合の MERGE_MSG には "# Conflicts:" の一覧が付くが、
+ * アプリのコミットは git commit -m (コメントを除去しない) なのでここで落としておく。
+ */
+function stripComments(message: string): string {
+  return message
+    .split('\n')
+    .filter((line) => !line.startsWith('#'))
+    .join('\n')
+    .replace(/\s+$/, '');
+}
+
 export function CherryPickDialog() {
   const { open, repo, hash, subject, close } = useCherryPickDialog();
   // 既定は SourceTree と同じく「即コミットする / コミット ID は含めない」
@@ -62,14 +75,17 @@ export function CherryPickDialog() {
 
   const doCherryPick = () => {
     close();
-    void runGitCommands(repo, [args], 'Cherry-pick').then((ok) => {
+    void runGitCommands(repo, [args], 'Cherry-pick').then(() => {
       // --no-commit の場合、git が用意した元コミットのメッセージ (MERGE_MSG) は
-      // アプリのコミット入力欄には載らないので、下書きとして流し込む
-      if (ok && !commit) {
+      // アプリのコミット入力欄には載らないので、下書きとして流し込む。
+      // 競合で失敗したときも MERGE_MSG は用意されるため、成否では分岐しない
+      // (競合を解消したあと、そのままコミットできる)
+      if (!commit) {
         void api
           .gitMergeMsg(repo)
           .then((r) => {
-            if (r.message) setCommitDraft(r.message);
+            const message = stripComments(r.message);
+            if (message) setCommitDraft(message);
           })
           .catch(() => undefined);
       }

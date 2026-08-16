@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { useGit } from '../../stores/git';
 import { useRebase } from '../../stores/rebase';
 import { confirmDialog } from '../../stores/dialog';
-import { openConflictResolver } from './ConflictResolver';
+import { openConflictResolver } from '../../stores/conflict';
 import styles from './Rebase.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 

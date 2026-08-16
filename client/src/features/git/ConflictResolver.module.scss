@@ -166,6 +166,12 @@
   font-weight: 600;
 }
 
+/* 進行中の操作がない競合 ('pending') を解決し終えたときの案内 */
+.conflict-note {
+  color: var(--add, #107c10);
+  font-size: 12px;
+}
+
 .conflict-binary {
   padding: 24px;
 }

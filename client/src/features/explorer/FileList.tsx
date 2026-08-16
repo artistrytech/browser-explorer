@@ -29,7 +29,7 @@ import { formatSize, formatDate, kindLabel, fileIcon, baseName } from '../../lib
 import { pinFolder, unpinFolder } from '../../lib/quickaccessOps';
 import { saveFocus, loadFocus, saveEnteredChild } from '../../lib/focusMemory';
 import { openCloneDialog } from '../git/CloneDialog';
-import { openConflictResolver } from '../git/ConflictResolver';
+import { openConflictResolver } from '../../stores/conflict';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
 import type { FsEntry, SortKey } from '../../types';
@@ -399,8 +399,9 @@ export function FileList() {
         label: 'Gitログ',
         action: (e) => useGit.getState().showLogFor(rel, isFile, e.ctrlKey || e.metaKey),
       });
-      // 進行中 かつ 配下に競合あり → 競合を解消 (002.md §2)
-      if (isDir && mergeState.inProgress && conflictsUnder(rel)) {
+      // 配下に競合あり → 競合を解消 (002.md §2)。
+      // stash の復元や cherry-pick --no-commit では進行中フラグが残らないので、競合の有無で判定する
+      if (isDir && mergeState.conflicted.length > 0 && conflictsUnder(rel)) {
         items.push({ id: 'resolveConflict', label: '競合を解消…', action: () => openConflictResolver(rel) });
       }
     } else if (isDir) {

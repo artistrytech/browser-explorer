@@ -22,7 +22,7 @@ import { useCommitDraft } from '../../stores/commitDraft';
 import { WorkingDiff, type FocusFile } from './WorkingDiff';
 import { GitGraph } from './GitGraph';
 import { openCloneDialog } from './CloneDialog';
-import { openConflictResolver } from './ConflictResolver';
+import { openConflictResolver, operationLabel } from '../../stores/conflict';
 import { runGitCommands } from './GitCommandDialog';
 import { openPushDialog } from './PushDialog';
 import { openFetchDialog } from './FetchDialog';
@@ -1439,11 +1439,20 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         )}
       </div>
 
-      {mergeState.inProgress && (
+      {/* 進行中の操作がなくても、未解決の競合 (stash 復元 / cherry-pick --no-commit) は知らせる */}
+      {(mergeState.inProgress || mergeState.conflicted.length > 0) && (
         <div className={cx("merge-banner")}>
-          ⚠ {mergeState.inProgress === 'merge' ? 'マージ' : mergeState.inProgress === 'rebase' ? 'リベース' : 'cherry-pick'}
-          が進行中です
-          {mergeState.conflicted.length > 0 && ` (競合 ${mergeState.conflicted.length} 件)`}
+          {mergeState.inProgress ? (
+            <>
+              ⚠ {operationLabel(mergeState.inProgress)}が進行中です
+              {mergeState.conflicted.length > 0 && ` (競合 ${mergeState.conflicted.length} 件)`}
+            </>
+          ) : (
+            <>
+              ⚠ 未解決の競合が {mergeState.conflicted.length} 件あります (stash の復元 / cherry-pick
+              --no-commit など)
+            </>
+          )}
           {mergeState.conflicted.length > 0 ? (
             <button className={cx("btn")} onClick={() => openConflictResolver('')}>
               競合を解消…
@@ -1471,25 +1480,32 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           <button
             className={cx("btn danger")}
             onClick={() =>
-              void confirmDialog('中止', '進行中の操作を中止して開始前の状態へ戻します。よろしいですか?', true).then(
-                (ok) => {
-                  if (ok)
-                    void runGitCommands(
-                      repoRoot,
-                      [
-                        mergeState.inProgress === 'merge'
-                          ? ['merge', '--abort']
-                          : mergeState.inProgress === 'rebase'
-                            ? ['rebase', '--abort']
-                            : ['cherry-pick', '--abort'],
-                      ],
-                      '中止',
-                    );
-                },
-              )
+              void confirmDialog(
+                '中止',
+                mergeState.inProgress
+                  ? '進行中の操作を中止して開始前の状態へ戻します。よろしいですか?'
+                  : '適用された変更と競合の解決結果を取り消し、HEAD の状態へ戻します (git reset --merge)。\n' +
+                      'stash から復元した場合、退避は残るのでやり直せます。よろしいですか?',
+                true,
+              ).then((ok) => {
+                if (ok)
+                  void runGitCommands(
+                    repoRoot,
+                    [
+                      mergeState.inProgress === 'merge'
+                        ? ['merge', '--abort']
+                        : mergeState.inProgress === 'rebase'
+                          ? ['rebase', '--abort']
+                          : mergeState.inProgress === 'cherry-pick'
+                            ? ['cherry-pick', '--abort']
+                            : ['reset', '--merge'],
+                    ],
+                    '中止',
+                  );
+              })
             }
           >
-            中止
+            {mergeState.inProgress ? '中止' : '取り消す'}
           </button>
         </div>
       )}

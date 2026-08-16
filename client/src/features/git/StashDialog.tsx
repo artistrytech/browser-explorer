@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { api } from '../../api/client';
 import { useGit } from '../../stores/git';
 import { toastError } from '../../stores/toast';
+import { usePendingStash } from '../../stores/conflict';
 import { runGitCommands } from './GitCommandDialog';
 import { openStashDetail } from './StashDetailDialog';
 import styles from './StashDialog.module.scss';
@@ -20,6 +21,8 @@ interface StashEntry {
   ref: string; // stash@{n}
   date: string;
   message: string;
+  /** ref は他の stash 操作でずれるため、対象の取り違え防止に使う */
+  hash: string;
 }
 
 interface StashDialogStore {
@@ -57,15 +60,20 @@ export function StashDialog() {
     setDropAfter(true);
     setLoading(true);
     api
-      .gitExec(repoRoot, ['stash', 'list', '--format=%gd%x1f%ci%x1f%gs'])
+      .gitExec(repoRoot, ['stash', 'list', '--format=%gd%x1f%ci%x1f%H%x1f%gs'])
       .then((r) => {
         const rows = r.output
           .split('\n')
           .map((l) => l.trim())
           .filter(Boolean)
           .map((l) => {
-            const [ref, date, msg] = l.split('\x1f');
-            return { ref: ref ?? '', date: (date ?? '').slice(0, 16), message: msg ?? '' };
+            const [ref, date, hash, msg] = l.split('\x1f');
+            return {
+              ref: ref ?? '',
+              date: (date ?? '').slice(0, 16),
+              hash: hash ?? '',
+              message: msg ?? '',
+            };
           })
           .filter((e) => e.ref.startsWith('stash@'));
         setList(rows);
@@ -86,12 +94,27 @@ export function StashDialog() {
   /** 復元 (pop/apply)。詳細ダイアログからは対象の ref を明示的に受け取る */
   const doRestore = (ref: string | null = selected) => {
     if (!ref) return;
+    const entry = list.find((s) => s.ref === ref);
+    const drop = dropAfter;
     close();
+    // 新しい復元を始めるので、前回の「解決後に削除する退避」の控えは破棄する
+    usePendingStash.getState().setPendingStash(null);
     void runGitCommands(
       repoRoot,
-      [['stash', dropAfter ? 'pop' : 'apply', ref]],
-      dropAfter ? 'Stash 復元 (復元後に削除)' : 'Stash 復元',
-    );
+      [['stash', drop ? 'pop' : 'apply', ref]],
+      drop ? 'Stash 復元 (復元後に削除)' : 'Stash 復元',
+    ).then((ok) => {
+      // pop が競合で中断した場合、退避は削除されずに残る。
+      // 競合を解消し終えたあとに削除できるよう、対象を控えておく (§2)
+      if (!ok && drop && entry && useGit.getState().mergeState.conflicted.length > 0) {
+        usePendingStash.getState().setPendingStash({
+          repo: repoRoot,
+          ref,
+          hash: entry.hash,
+          message: entry.message,
+        });
+      }
+    });
   };
 
   /** 行のダブルクリック: 詳細ダイアログを開き、そこで復元されたらこのダイアログも閉じる */

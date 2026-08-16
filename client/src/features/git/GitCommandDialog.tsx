@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { api } from '../../api/client';
 import { useGit } from '../../stores/git';
 import { useExplorer } from '../../stores/explorer';
+import { openConflictResolver } from '../../stores/conflict';
 import styles from './GitCommandDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -28,10 +29,12 @@ interface GitCommandStore {
   running: boolean;
   /** 結果に成功/失敗の件数を出すか (一括実行時) */
   showCounts: boolean;
+  /** 実行後に残っている未解決の競合数 (>0 なら競合解消ツールへの導線を出す) */
+  conflicts: number;
   start: (title: string, showCounts?: boolean) => void;
   addStep: (command: string) => void;
   finishStep: (output: string, ok: boolean) => void;
-  done: () => void;
+  done: (conflicts: number) => void;
   close: () => void;
 }
 
@@ -41,14 +44,16 @@ export const useGitCommand = create<GitCommandStore>((set) => ({
   steps: [],
   running: false,
   showCounts: false,
-  start: (title, showCounts = false) => set({ open: true, title, steps: [], running: true, showCounts }),
+  conflicts: 0,
+  start: (title, showCounts = false) =>
+    set({ open: true, title, steps: [], running: true, showCounts, conflicts: 0 }),
   addStep: (command) =>
     set((s) => ({ steps: [...s.steps, { command, output: '', ok: null }] })),
   finishStep: (output, ok) =>
     set((s) => ({
       steps: s.steps.map((st, i) => (i === s.steps.length - 1 ? { ...st, output, ok } : st)),
     })),
-  done: () => set({ running: false }),
+  done: (conflicts) => set({ running: false, conflicts }),
   close: () => set({ open: false }),
 }));
 
@@ -81,15 +86,17 @@ export async function runGitCommands(
       if (!opts.continueOnError) break;
     }
   }
-  useGitCommand.getState().done();
-  // 結果はダイアログで見せつつ、裏で状態を最新化しておく
-  void useGit.getState().refreshStatus();
+  // 状態を最新化してから完了させる。
+  // stash の復元や cherry-pick はここで競合により失敗し得るので、
+  // 残った競合の件数を拾ってダイアログに解消ツールへの導線を出す
+  await useGit.getState().refreshStatus();
+  useGitCommand.getState().done(useGit.getState().mergeState.conflicted.length);
   void useExplorer.getState().refresh();
   return allOk;
 }
 
 export function GitCommandDialog() {
-  const { open, title, steps, running, showCounts, close } = useGitCommand();
+  const { open, title, steps, running, showCounts, conflicts, close } = useGitCommand();
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -128,15 +135,28 @@ export function GitCommandDialog() {
               <span className={cx("spinner-ring small")} /> 実行中…
             </>
           ) : status === 'error' ? (
-            `✖ 失敗しました${counts}`
+            `✖ 失敗しました${counts}${conflicts > 0 ? ` — 未解決の競合が ${conflicts} 件あります` : ''}`
           ) : (
             `✔ 成功しました${counts}`
           )}
         </div>
         <div className={cx("dialog-buttons")}>
-          <button className={cx("btn primary")} disabled={running} onClick={close}>
+          <button className={cx(`btn${conflicts > 0 ? '' : ' primary'}`)} disabled={running} onClick={close}>
             閉じる
           </button>
+          {/* stash 復元や cherry-pick が競合で失敗したときの導線 (002.md §2) */}
+          {conflicts > 0 && (
+            <button
+              className={cx("btn primary")}
+              disabled={running}
+              onClick={() => {
+                close();
+                openConflictResolver('');
+              }}
+            >
+              競合を解消… ({conflicts} 件)
+            </button>
+          )}
         </div>
       </div>
     </div>
