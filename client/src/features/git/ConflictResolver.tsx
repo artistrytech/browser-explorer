@@ -402,6 +402,26 @@ function MergeTool({ file }: { file: string }) {
   };
 
   const unresolved = res.filter((r) => r === null).length;
+  /** 未解決ブロックの通し番号 → 競合番号 (結果ペインには未解決の分だけマーカーが出る) */
+  const unresolvedIdx = res.map((r, i) => (r === null ? i : -1)).filter((i) => i >= 0);
+
+  /**
+   * 上段の対比ペインを idx 番目の競合ブロックまでスクロールする。
+   * 自分/相手はブロックの行数が違うので scrollTop のコピーでは合わない。
+   * それぞれ自前で位置を出し、その間はスクロール同期を止めておく。
+   */
+  const revealInPanes = (idx: number) => {
+    syncingScroll.current = true;
+    for (const pane of [minePaneRef.current, theirsPaneRef.current]) {
+      const el = pane?.querySelector<HTMLElement>(`[data-conflict="${idx}"]`);
+      if (!pane || !el) continue;
+      const offset = el.getBoundingClientRect().top - pane.getBoundingClientRect().top;
+      // sticky なペインタイトルの下に出す (タイトルは先頭の子要素)
+      const titleHeight = (pane.firstElementChild as HTMLElement | null)?.offsetHeight ?? 0;
+      pane.scrollTop += offset - titleHeight - 6;
+    }
+    requestAnimationFrame(() => (syncingScroll.current = false));
+  };
 
   const jumpToConflict = (dir: 1 | -1) => {
     const editor = editorRef.current;
@@ -412,11 +432,18 @@ function MergeTool({ file }: { file: string }) {
     if (matches.length === 0) return;
     const cur = editor.getPosition()?.lineNumber ?? 0;
     const lines = matches.map((m) => m.range.startLineNumber);
-    const next =
-      dir === 1 ? (lines.find((l) => l > cur) ?? lines[0]) : ([...lines].reverse().find((l) => l < cur) ?? lines[lines.length - 1]);
-    editor.revealLineInCenter(next);
-    editor.setPosition({ lineNumber: next, column: 1 });
+    // 現在位置の次 (前) のマーカー。見つからなければ端で折り返す
+    const found =
+      dir === 1
+        ? lines.findIndex((l) => l > cur)
+        : lines.reduce((last, l, i) => (l < cur ? i : last), -1);
+    const at = found >= 0 ? found : dir === 1 ? 0 : lines.length - 1;
+    editor.revealLineInCenter(lines[at]);
+    editor.setPosition({ lineNumber: lines[at], column: 1 });
     editor.focus();
+    // 上段の対比ペインも同じ競合へ移動する。
+    // 結果ペインを手編集してマーカー数がずれている場合は対応付けできないので動かさない
+    if (unresolvedIdx.length === lines.length) revealInPanes(unresolvedIdx[at]);
   };
 
   const markResolved = async () => {
@@ -477,7 +504,11 @@ function MergeTool({ file }: { file: string }) {
       const r = res[idx];
       const adopted = r === side || r === 'both' || r === 'both-rev';
       return (
-        <div key={i} className={cx(`merge-conflict${r !== null ? (adopted ? ' adopted' : ' rejected') : ''}`)}>
+        <div
+          key={i}
+          data-conflict={idx}
+          className={cx(`merge-conflict${r !== null ? (adopted ? ' adopted' : ' rejected') : ''}`)}
+        >
           <div className={cx("merge-conflict-bar")}>
             <span className={cx("merge-conflict-no")}>#{idx + 1}</span>
             {side === 'ours' ? (
