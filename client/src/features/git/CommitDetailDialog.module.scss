@@ -4,7 +4,7 @@
   color: var(--text-dim);
 }
 
-/* Stash ダイアログの上に重ねる */
+/* 呼び出し元のダイアログ (Stash 一覧など) の上に重ねる */
 .dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -65,7 +65,7 @@
 }
 
 /* 差分を広く見せたいので画面のほぼ全体を使う */
-.stash-detail-dialog {
+.commit-detail-dialog {
   display: flex;
   flex-direction: column;
   width: 96vw;
@@ -126,6 +126,9 @@
 .sd-info-msg {
   white-space: pre-wrap;
   font-weight: 600;
+  /* 長い本文で情報欄が伸びてファイル一覧を潰さないよう、一定以上はスクロールさせる */
+  max-height: 8.4em;
+  overflow: auto;
 }
 
 .sd-mono {
@@ -136,11 +139,32 @@
 
 .sd-list-head {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 6px 10px;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-dim);
   border-bottom: 1px solid var(--border);
+}
+
+.sd-filter {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.sd-count {
+  font-weight: 400;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .sd-files {

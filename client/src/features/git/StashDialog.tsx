@@ -5,7 +5,7 @@ import { useGit } from '../../stores/git';
 import { toastError } from '../../stores/toast';
 import { usePendingStash } from '../../stores/conflict';
 import { runGitCommands } from './GitCommandDialog';
-import { openStashDetail } from './StashDetailDialog';
+import { openCommitDetail } from './CommitDetailDialog';
 import styles from './StashDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -23,6 +23,11 @@ interface StashEntry {
   message: string;
   /** ref は他の stash 操作でずれるため、対象の取り違え防止に使う */
   hash: string;
+}
+
+/** "WIP on main: 1234abc 件名" / "On main: メモ" から元ブランチ名を取り出す */
+function stashBranch(message: string): string | null {
+  return message.match(/^(?:WIP on|On) ([^:]+):/)?.[1] ?? null;
 }
 
 interface StashDialogStore {
@@ -120,8 +125,16 @@ export function StashDialog() {
   /** 行のダブルクリック: 詳細ダイアログを開き、そこで復元されたらこのダイアログも閉じる */
   const showDetail = (s: StashEntry) => {
     setSelected(s.ref);
-    void openStashDetail(repoRoot, s).then((r) => {
-      if (r === 'restore') doRestore(s.ref);
+    void openCommitDetail(repoRoot, s.ref, {
+      title: `Stash の詳細 — ${s.ref}`,
+      // 一覧の "WIP on main: ..." をそのまま見出しに使う (コミットメッセージと同じ内容)
+      message: s.message,
+      dateLabel: '退避日時',
+      date: s.date,
+      rows: [{ label: '元ブランチ', value: stashBranch(s.message) ?? '' }],
+      actionLabel: '復元',
+    }).then((r) => {
+      if (r === 'action') doRestore(s.ref);
     });
   };
 

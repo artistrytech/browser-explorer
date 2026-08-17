@@ -7,6 +7,7 @@ import { useGit } from '../../stores/git';
 import { toastError } from '../../stores/toast';
 import { runGitCommands } from './GitCommandDialog';
 import { openCherryPickDialog } from './CherryPickDialog';
+import { openCommitDetail } from './CommitDetailDialog';
 import type { GitGraphCommit } from '../../types';
 import styles from './GitGraph.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -305,6 +306,16 @@ export function GitGraph({
   }, [commits, filter]);
   const graphWidth = Math.min(maxLanes, 12) * LANE_W + 8;
 
+  /** 行のダブルクリック: コミットの詳細ダイアログ (ログ/ブランチ両タブ共通) */
+  const showDetail = (c: GitGraphCommit) =>
+    void openCommitDetail(repo, c.hash, {
+      title: `コミットの詳細 — ${c.hash.slice(0, 12)}`,
+      rows: [
+        { label: '参照', value: c.refs.join(', ') },
+        { label: '親', value: c.parents.map((p) => p.slice(0, 12)).join(', ') },
+      ],
+    });
+
   const commitMenu = (e: React.MouseEvent, c: GitGraphCommit) => {
     e.preventDefault();
     const short = c.hash.slice(0, 7);
@@ -371,8 +382,9 @@ export function GitGraph({
               className={cx(`graph-row${selectedHash === c.hash ? ' active' : ''}`)}
               style={{ height: ROW_H }}
               onMouseDown={() => onSelect(c.hash)}
+              onDoubleClick={() => showDetail(c)}
               onContextMenu={(e) => (readOnly ? e.preventDefault() : commitMenu(e, c))}
-              title={`${c.hash}\n${c.subject}`}
+              title={`${c.hash}\n${c.subject}\n\n(ダブルクリックで詳細)`}
             >
               <span className={cx("graph-cell")} style={{ width: graphWidth }}>
                 <RowGraph row={row} width={graphWidth} />
