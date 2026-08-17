@@ -21,6 +21,7 @@ import { confirmDialog, confirmDialogWithOption, promptDialog } from '../../stor
 import { useCommitDraft } from '../../stores/commitDraft';
 import { WorkingDiff, type FocusFile } from './WorkingDiff';
 import { GitGraph } from './GitGraph';
+import { LogPathFilter } from './LogPathFilter';
 import { openCloneDialog } from './CloneDialog';
 import { openConflictResolver, operationLabel } from '../../stores/conflict';
 import { runGitCommands } from './GitCommandDialog';
@@ -1063,7 +1064,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
       { separator: true },
       {
         label: 'Gitログ',
-        action: (ev) => useGit.getState().showLogFor(f.path, true, ev.ctrlKey || ev.metaKey),
+        action: (ev) => useGit.getState().showLogFor(f.path, true, { newTab: ev.ctrlKey || ev.metaKey }),
       },
     );
     const tools = diffToolItems(f.path, stagedSide ? 'staged' : 'worktree');
@@ -1112,7 +1113,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           {
             label: 'ログを表示',
             // Ctrl+クリック (mac は ⌘) はブラウザの別タブで開く
-            action: (ev) => useGit.getState().showLogFor(f.path, true, ev.ctrlKey || ev.metaKey),
+            action: (ev) => useGit.getState().showLogFor(f.path, true, { newTab: ev.ctrlKey || ev.metaKey }),
           },
           {
             label: 'ファイル場所に移動',
@@ -1239,16 +1240,8 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const logGraphPane = (
     // コミット DAG をグラフ描画 (002.md §5)。パス絞り込み時も同じグラフ表示
     <>
-      {logFilter && (
-        <div className={cx("log-filter-bar")}>
-          <span className={cx("log-filter-path")} title={logFilter.path}>
-            {logFilter.path} の履歴{logFilter.follow ? ' (リネーム追跡)' : ''}
-          </span>
-          <button className={cx("status-btn")} onClick={() => useGit.getState().showLogFor('', false)}>
-            絞り込み解除
-          </button>
-        </div>
-      )}
+      {/* 直接入力 + 補完でパスを絞り込む (ファイルタブからの「Gitログ」もここに反映される) */}
+      <LogPathFilter repoRoot={repoRoot} filter={logFilter} />
       <GitGraph
         repo={repoRoot}
         selectedHash={commitDetail?.hash ?? null}

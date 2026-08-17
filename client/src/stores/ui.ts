@@ -122,8 +122,15 @@ export function logFilterFromUrl(): { path: string; follow: boolean } | null {
 /**
  * ログタブをパス絞り込み付きで開く: URL に対象の相対パスを含めて履歴に積む。
  * (ブラウザバックで絞り込み前のログ/前のビューへ戻れる)
+ *
+ * replace=true では履歴に積まず現在のエントリを差し替える。
+ * ログタブの入力欄による自動絞り込みのように、打鍵の途中経過が履歴に溜まると
+ * ブラウザバックが使い物にならなくなるケースで使う。
  */
-export function pushLogView(filter: { path: string; follow: boolean } | null): void {
+export function pushLogView(
+  filter: { path: string; follow: boolean } | null,
+  replace = false,
+): void {
   const params = new URLSearchParams(location.search);
   params.set('view', 'log');
   params.delete('logpath');
@@ -134,7 +141,10 @@ export function pushLogView(filter: { path: string; follow: boolean } | null): v
   }
   const search = `?${params}`;
   if (location.search !== search) {
-    history.pushState({ path: params.get('path'), view: 'log' }, '', `${location.pathname}${search}`);
+    const state = { path: params.get('path'), view: 'log' };
+    const url = `${location.pathname}${search}`;
+    if (replace) history.replaceState(state, '', url);
+    else history.pushState(state, '', url);
   }
   useUi.getState().setView('log');
 }

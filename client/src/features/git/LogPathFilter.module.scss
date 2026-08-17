@@ -1,0 +1,88 @@
+.log-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+  /* 候補一覧をグラフの行より手前に出すため、重ね順を持てるようにしておく */
+  position: relative;
+  z-index: 5;
+}
+
+.log-filter-label {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* 候補一覧の位置決め用 */
+.log-filter-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.log-filter-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.log-filter-input:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.log-filter-suggest {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  /* 入力欄いっぱいには広げず、候補の文字数に合わせる */
+  width: max-content;
+  min-width: 140px;
+  max-width: min(100%, 560px);
+  max-height: 260px;
+  overflow: auto;
+  /* スクロールバーの分を先に空けて、最長の候補が隠れないようにする */
+  scrollbar-gutter: stable;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+.log-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.log-filter-item:hover {
+  background: var(--bg-hover);
+}
+
+.log-filter-item.active {
+  background: var(--bg-selected);
+}
+
+.log-filter-icon {
+  flex: none;
+}
+
+.log-filter-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+

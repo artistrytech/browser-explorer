@@ -30,8 +30,16 @@ interface GitStore {
   checkRepo: (dirPath: string) => Promise<void>;
   refreshStatus: () => Promise<void>;
   setLogFilter: (f: LogFilter | null) => void;
-  /** 「ログを表示」: 絞り込みを設定して「ログ」タブを開く (002.md §1.2)。newTab でブラウザ別タブに開く */
-  showLogFor: (relPath: string, isFile: boolean, newTab?: boolean) => void;
+  /**
+   * 「ログを表示」: 絞り込みを設定して「ログ」タブを開く (002.md §1.2)。
+   * newTab でブラウザ別タブに開く。replace はブラウザ履歴に積まず差し替える
+   * (ログタブの入力欄による自動絞り込みで、打鍵の途中経過を履歴に残さないため)。
+   */
+  showLogFor: (
+    relPath: string,
+    isFile: boolean,
+    opts?: { newTab?: boolean; replace?: boolean },
+  ) => void;
 }
 
 function buildOverlay(root: string, status: GitStatus): Record<string, OverlayCode> {
@@ -109,7 +117,7 @@ export const useGit = create<GitStore>((set, get) => ({
 
   setLogFilter: (logFilter) => set({ logFilter }),
 
-  showLogFor: (relPath, isFile, newTab = false) => {
+  showLogFor: (relPath, isFile, { newTab = false, replace = false } = {}) => {
     const repo = get().repoRoot;
     // リポジトリルート自体 ('') は全体表示 = 絞り込みなし
     const filter = relPath ? { path: relPath, follow: isFile } : null;
@@ -126,6 +134,6 @@ export const useGit = create<GitStore>((set, get) => ({
     if (repo) saveGitView(repo, { filesFilter: relPath });
     set({ logFilter: filter });
     // ブラウザ履歴に追加 (URL に対象の相対パスを含める)
-    pushLogView(filter);
+    pushLogView(filter, replace);
   },
 }));

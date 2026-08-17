@@ -527,24 +527,6 @@
   margin-bottom: 8px;
 }
 
-.log-filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-alt);
-  position: sticky;
-  top: 0;
-}
-
-.log-filter-path {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .merge-banner {
   display: flex;
   align-items: center;

@@ -397,7 +397,7 @@ export function FileList() {
       items.push({
         id: 'gitLog',
         label: 'Gitログ',
-        action: (e) => useGit.getState().showLogFor(rel, isFile, e.ctrlKey || e.metaKey),
+        action: (e) => useGit.getState().showLogFor(rel, isFile, { newTab: e.ctrlKey || e.metaKey }),
       });
       // 配下に競合あり → 競合を解消 (002.md §2)。
       // stash の復元や cherry-pick --no-commit では進行中フラグが残らないので、競合の有無で判定する
