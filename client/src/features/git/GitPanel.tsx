@@ -632,12 +632,22 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             disabled: isRemoteHead(b),
             action: () => checkoutRemoteBranch(b),
           },
+          {
+            label: 'ブランチを作成…',
+            disabled: isRemoteHead(b),
+            action: () => openCreateBranchDialog(b.name),
+          },
         ]
       : [
           {
             label: '切替',
             disabled: b.current,
             action: () => checkoutBranch(b),
+          },
+          {
+            // 現在のブランチを切り替えずに、この行のブランチを起点に作れる
+            label: 'ブランチを作成…',
+            action: () => openCreateBranchDialog(b.name),
           },
           {
             label: 'マージ',
@@ -1638,7 +1648,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
               <div className={cx("git-branches")}>
                 {/* 作成ボタンは固定 (一覧だけがスクロールする) */}
                 <div className={cx("branch-toolbar")}>
-                  <button className={cx("btn")} disabled={bulkMode} onClick={openCreateBranchDialog}>
+                  <button className={cx("btn")} disabled={bulkMode} onClick={() => openCreateBranchDialog()}>
                     ＋ ブランチ作成
                   </button>
                   <button

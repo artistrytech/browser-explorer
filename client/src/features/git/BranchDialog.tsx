@@ -16,7 +16,9 @@ interface BranchDialogStore {
   mode: BranchDialogMode;
   remoteBranch: string;
   branchName: string;
-  showCreate: () => void;
+  /** 作成時のベースブランチ (空なら現在の HEAD) */
+  baseBranch: string;
+  showCreate: (baseBranch?: string) => void;
   showRemoteCheckout: (remoteBranch: string) => void;
   showRename: (branchName: string) => void;
   close: () => void;
@@ -27,14 +29,16 @@ export const useBranchDialog = create<BranchDialogStore>((set) => ({
   mode: 'create',
   remoteBranch: '',
   branchName: '',
-  showCreate: () => set({ open: true, mode: 'create', remoteBranch: '', branchName: '' }),
-  showRemoteCheckout: (remoteBranch) => set({ open: true, mode: 'remoteCheckout', remoteBranch, branchName: '' }),
-  showRename: (branchName) => set({ open: true, mode: 'rename', remoteBranch: '', branchName }),
+  baseBranch: '',
+  showCreate: (baseBranch = '') => set({ open: true, mode: 'create', remoteBranch: '', branchName: '', baseBranch }),
+  showRemoteCheckout: (remoteBranch) => set({ open: true, mode: 'remoteCheckout', remoteBranch, branchName: '', baseBranch: '' }),
+  showRename: (branchName) => set({ open: true, mode: 'rename', remoteBranch: '', branchName, baseBranch: '' }),
   close: () => set({ open: false }),
 }));
 
-export function openCreateBranchDialog(): void {
-  useBranchDialog.getState().showCreate();
+/** ベースブランチを渡すと、現在のブランチを切り替えずにそこから作成できる */
+export function openCreateBranchDialog(baseBranch?: string): void {
+  useBranchDialog.getState().showCreate(baseBranch);
 }
 
 export function openRemoteCheckoutDialog(remoteBranch: string): void {
@@ -56,9 +60,9 @@ function defaultLocalName(remoteBranch: string): string {
 }
 
 export function BranchDialog() {
-  const { open, mode, remoteBranch, branchName, close } = useBranchDialog();
+  const { open, mode, remoteBranch, branchName, baseBranch, close } = useBranchDialog();
   const repoRoot = useGit((s) => s.repoRoot);
-  const baseBranch = useGit((s) => s.status?.branch ?? null);
+  const currentBranch = useGit((s) => s.status?.branch ?? null);
   const [name, setName] = useState('');
   const [branchNames, setBranchNames] = useState<string[]>([]);
   const [branchNamesLoaded, setBranchNamesLoaded] = useState(false);
@@ -74,9 +78,10 @@ export function BranchDialog() {
       setName(branchName);
     } else {
       setName('');
-      setSwitchAfterCreate(true);
+      // 別ブランチを指定して開いたときは「切り替えずに作る」のが狙いなので既定を OFF にする
+      setSwitchAfterCreate(!baseBranch);
     }
-  }, [open, mode, remoteBranch, branchName]);
+  }, [open, mode, remoteBranch, branchName, baseBranch]);
 
   useEffect(() => {
     if (!open || !repoRoot) return;
@@ -113,12 +118,17 @@ export function BranchDialog() {
     ? `ブランチ "${conflictingBranchName}" は既に存在します。別の名前を入力してください。`
     : '';
   const branchNamesReady = branchNamesLoaded || (!isCreate && !isRename);
+  /** 作成の起点。ブランチ一覧から指定されていればそれ、無ければ現在の HEAD */
+  const createBaseRef = baseBranch ? remoteRef(baseBranch) : '';
+  const createBaseLabel = createBaseRef || currentBranch || 'HEAD';
   const canSubmit = branchNamesReady && !!trimmedName && !validationError && (!isRename || trimmedName !== branchName);
 
   const doCreate = () => {
     if (!canSubmit) return;
     close();
     const args = switchAfterCreate ? ['checkout', '-b', trimmedName] : ['branch', trimmedName];
+    // ベースの指定があれば起点として渡す (無指定なら現在の HEAD から作られる)
+    if (createBaseRef) args.push(createBaseRef);
     void runGitCommands(repoRoot, [args], 'ブランチ作成');
   };
 
@@ -150,8 +160,8 @@ export function BranchDialog() {
           {isCreate ? (
             <div className={cx("branch-row")}>
               <span className={cx("branch-label")}>ベースブランチ:</span>
-              <b className={cx("branch-value")} title={baseBranch ?? 'HEAD'}>
-                {baseBranch ?? 'HEAD'}
+              <b className={cx("branch-value")} title={createBaseLabel}>
+                {createBaseLabel}
               </b>
             </div>
           ) : isRename ? (
