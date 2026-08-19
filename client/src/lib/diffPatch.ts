@@ -166,3 +166,82 @@ export function hunkLineNumbers(hunk: Hunk): HunkLineNo[] {
 export function isChangeLine(line: string): boolean {
   return line[0] === '+' || line[0] === '-';
 }
+
+/* ---------- 行内の変更箇所 (word diff) ---------- */
+
+/** 行内の変更範囲 [開始, 終了) (行頭のタグ文字を除いた本文の文字位置) */
+export type WordRange = [number, number];
+
+/**
+ * 変更が行のこの割合を超えたら「行ごと書き換わった」とみなし、行内強調はしない。
+ * (ほぼ別物の行で断片的に一致した部分を残すと、かえって読みにくいため)
+ */
+const WORD_DIFF_MAX_RATIO = 0.6;
+
+/** サロゲートペアの途中で切らないように境界を 1 文字戻す */
+function safeBoundary(text: string, at: number): number {
+  const code = text.charCodeAt(at - 1);
+  return at > 0 && code >= 0xd800 && code <= 0xdbff ? at - 1 : at;
+}
+
+/**
+ * 対応する削除行 / 追加行の、変更された範囲を求める。
+ * 前方一致と後方一致を取り除いた「真ん中」を変更箇所とみなす単純な方式で、
+ * 識別子の書き換えや引数の追加のような小さな変更をそのまま拾える。
+ * 変更が大きい場合 (行の 6 割超) は null を返し、行全体の色分けに任せる。
+ */
+export function intraLineRanges(
+  oldText: string,
+  newText: string,
+): { old: WordRange; new: WordRange } | null {
+  if (oldText === newText) return null;
+  const minLen = Math.min(oldText.length, newText.length);
+  const maxLen = Math.max(oldText.length, newText.length);
+  if (maxLen === 0) return null;
+
+  let prefix = 0;
+  while (prefix < minLen && oldText[prefix] === newText[prefix]) prefix++;
+  prefix = safeBoundary(oldText, prefix);
+
+  let suffix = 0;
+  while (
+    suffix < minLen - prefix &&
+    oldText[oldText.length - 1 - suffix] === newText[newText.length - 1 - suffix]
+  ) {
+    suffix++;
+  }
+  suffix = oldText.length - safeBoundary(oldText, oldText.length - suffix);
+
+  const oldChanged = oldText.length - prefix - suffix;
+  const newChanged = newText.length - prefix - suffix;
+  // サロゲートペアの調整で前後が重なった場合は範囲を決められない
+  if (oldChanged < 0 || newChanged < 0) return null;
+  if (Math.max(oldChanged, newChanged) > maxLen * WORD_DIFF_MAX_RATIO) return null;
+  return { old: [prefix, prefix + oldChanged], new: [prefix, prefix + newChanged] };
+}
+
+/**
+ * Hunk 内で対応する削除行と追加行の組 (削除行の位置, 追加行の位置) を返す。
+ * 連続した削除の並びの直後に、同じ本数の追加が続く場合のみ 1 対 1 で対応させる
+ * (本数が違う場合は対応が一意に決まらないので、行内強調はあきらめる)。
+ */
+export function pairedLines(hunk: Hunk): [number, number][] {
+  const pairs: [number, number][] = [];
+  let i = 0;
+  while (i < hunk.lines.length) {
+    if (hunk.lines[i][0] !== '-') {
+      i++;
+      continue;
+    }
+    let del = i;
+    while (del < hunk.lines.length && hunk.lines[del][0] === '-') del++;
+    let add = del;
+    while (add < hunk.lines.length && hunk.lines[add][0] === '+') add++;
+    const dels = del - i;
+    if (dels === add - del) {
+      for (let k = 0; k < dels; k++) pairs.push([i + k, del + k]);
+    }
+    i = Math.max(add, del);
+  }
+  return pairs;
+}

@@ -97,7 +97,7 @@ export function CommitFileDiff({
                         <span className={cx("wd-lineno")} aria-hidden="true">{no.new ?? ''}</span>
                         <DiffLineText
                           line={line}
-                          html={highlight(hIdx, lIdx)}
+                          render={highlight(hIdx, lIdx)}
                           className={cx("wd-linetext")}
                         />
                       </div>

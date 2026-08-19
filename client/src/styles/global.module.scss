@@ -22,6 +22,9 @@
        追加・削除の行背景の上に重ねるため半透明にする */
     --line-sel-bg: rgba(255, 196, 0, 0.35);
     --line-sel-border: #c98a00;
+    /* 行内の変更箇所。行背景 (--add-bg / --del-bg) の上に重ねて濃くする */
+    --word-add-bg: rgba(16, 124, 16, 0.26);
+    --word-del-bg: rgba(196, 43, 28, 0.24);
   }
 
   body[data-theme='dark'] {
@@ -40,6 +43,8 @@
     --del-bg: #3b1a1d;
     --line-sel-bg: rgba(255, 196, 0, 0.22);
     --line-sel-border: #d8a800;
+    --word-add-bg: rgba(78, 201, 78, 0.28);
+    --word-del-bg: rgba(244, 135, 113, 0.26);
   }
 
   html,
@@ -61,6 +66,21 @@
     font-family: inherit;
     font-size: inherit;
     color: inherit;
+  }
+
+  /*
+   * 行内の変更箇所の強調 (lib/diffHighlight.tsx)。
+   * 色付き HTML の一部を span で包む都合上、CSS Module のハッシュ付きクラスは使えないので
+   * ここでグローバルに定義する。差分の行背景の上に重ねる半透明の色。
+   */
+  .diff-word-add {
+    background: var(--word-add-bg);
+    border-radius: 2px;
+  }
+
+  .diff-word-del {
+    background: var(--word-del-bg);
+    border-radius: 2px;
   }
 }
 

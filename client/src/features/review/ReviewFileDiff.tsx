@@ -299,7 +299,7 @@ export function ReviewFileDiff({
                   </span>
                   <DiffLineText
                     line={row.text}
-                    html={highlight(row.hunkIndex, row.lineIndex)}
+                    render={highlight(row.hunkIndex, row.lineIndex)}
                     className={cx('rv-linetext')}
                   />
                 </div>
