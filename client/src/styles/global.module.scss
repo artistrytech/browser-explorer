@@ -18,6 +18,10 @@
     --add-bg: #e6f4e6;
     --del: #c42b1c;
     --del-bg: #fde7e9;
+    /* 差分の行選択 (コミットタブの行ステージ / レビューの範囲選択)。
+       追加・削除の行背景の上に重ねるため半透明にする */
+    --line-sel-bg: rgba(255, 196, 0, 0.35);
+    --line-sel-border: #c98a00;
   }
 
   body[data-theme='dark'] {
@@ -34,6 +38,8 @@
     --add-bg: #173117;
     --del: #f48771;
     --del-bg: #3b1a1d;
+    --line-sel-bg: rgba(255, 196, 0, 0.22);
+    --line-sel-border: #d8a800;
   }
 
   html,

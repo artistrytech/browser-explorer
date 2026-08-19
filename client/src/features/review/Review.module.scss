@@ -401,10 +401,16 @@
   padding-right: 6px;
 }
 
+/* 範囲選択中の行。追加/削除の行背景を潰さないよう、半透明の黄色を内側の影で重ねる */
 .rv-line.rv-selected {
-  outline: 1px solid var(--accent);
+  outline: 1px solid var(--line-sel-border);
   outline-offset: -1px;
-  filter: brightness(1.12);
+  box-shadow: inset 0 0 0 9999px var(--line-sel-bg);
+}
+
+/* 行番号の溝は自前の背景を持つので、選択中は同じ黄色を敷き直す */
+.rv-line.rv-selected .rv-gutter {
+  background: var(--line-sel-bg);
 }
 
 .rv-gutter {
