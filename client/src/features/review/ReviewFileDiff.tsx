@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
+import { useContextMenu } from '../../components/ContextMenu';
 import { confirmDialog } from '../../stores/dialog';
+import { useGit } from '../../stores/git';
 import { useReview } from '../../stores/review';
 import { toastError } from '../../stores/toast';
+import { useUi } from '../../stores/ui';
+import { fileOpenMenuItems, pruneMenuItems } from '../../lib/openMenu';
 import { hunkLineNumbers, parseFileDiff, type FileDiff } from '../../lib/diffPatch';
 import { DiffLineText, useDiffHighlight } from '../../lib/diffHighlight';
 import type { CommitFile, ReviewComment } from '../../types';
@@ -97,6 +101,8 @@ export function ReviewFileDiff({
   /** クローズ済みレビューは閲覧のみ */
   readOnly: boolean;
 }) {
+  const repoRoot = useGit((s) => s.repoRoot);
+  const menuConfig = useUi((s) => s.menuConfig);
   const [parsed, setParsed] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(true);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -237,8 +243,38 @@ export function ReviewFileDiff({
 
   const title = file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
 
+  /**
+   * 「開く」ボタン: ファイルタブのコンテキストメニューと同じ「開く」の項目を、
+   * ボタンの直下にプルダウンとして出す。対象は作業ツリーの現在の内容
+   * (レビューはコミットのスナップショットを見ているので、中身は一致しないことがある)。
+   */
+  const openFileMenu = (e: React.MouseEvent) => {
+    if (!repoRoot) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const items = pruneMenuItems(fileOpenMenuItems(`${repoRoot}/${file.path}`), menuConfig);
+    useContextMenu
+      .getState()
+      .open(
+        rect.left,
+        rect.bottom,
+        items.length > 0 ? items : [{ label: '(表示できる項目がありません)', disabled: true }],
+      );
+  };
+
   return (
     <div className={cx('rv-diff')}>
+      {/* 見出しより先に置いて、スクロール中も右上に残す (高さ 0 なので行は占有しない) */}
+      <div className={cx('rv-diff-open')}>
+        <button
+          className={cx('status-btn')}
+          // 削除されたファイルは作業ツリーに無いので開けない
+          disabled={!repoRoot || file.status === 'D'}
+          title={file.status === 'D' ? 'このファイルは削除されています' : 'このファイルを開く'}
+          onClick={openFileMenu}
+        >
+          開く ▾
+        </button>
+      </div>
       <div className={cx('rv-diff-head')}>
         <span className={cx('rv-path')} title={title}>
           {title}

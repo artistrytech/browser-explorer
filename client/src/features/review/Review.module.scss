@@ -351,22 +351,44 @@
   padding: 8px;
 }
 
+/* 「開く」を sticky にするため overflow は持たせない (スクロールコンテナ扱いになり sticky が効かなくなる) */
 .rv-diff {
   border: 1px solid var(--border);
   border-radius: 4px;
-  overflow: hidden;
 }
 
 .rv-diff-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 8px;
+  /* 右端は「開く」ボタンが重なるので、その分を空けておく */
+  padding: 6px 84px 6px 8px;
   background: var(--bg-alt);
   border-bottom: 1px solid var(--border);
+  border-radius: 4px 4px 0 0;
+}
+
+/*
+ * 「開く」ボタンだけをスクロールしても右上に残す。
+ * 高さ 0 の入れ物を sticky にしてボタンをはみ出させることで、
+ * 見出しの行を占有せず (先頭では見出しの右端に収まって見える)、
+ * スクロール後はコードの上に浮いた状態で追従する。
+ */
+.rv-diff-open {
   position: sticky;
-  top: -8px;
-  z-index: 1;
+  top: 4px;
+  z-index: 2;
+  height: 0;
+  display: flex;
+  /* 高さ 0 の箱なので、伸ばされないよう上端合わせにしてボタンをはみ出させる */
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding-right: 8px;
+}
+
+.rv-diff-open button {
+  margin-top: 4px; /* 先頭では見出しの中に収まって見える位置 */
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
 
 .rv-path {
@@ -380,10 +402,13 @@
 .rv-add { color: var(--add); font-size: 12px; }
 .rv-del { color: var(--del); font-size: 12px; }
 
+/* 角の丸みは自分で持つ (親の overflow: hidden を外したため) */
 .rv-diff-body {
   font-family: Consolas, 'Courier New', monospace;
   font-size: 12px;
   line-height: 1.5;
+  border-radius: 0 0 4px 4px;
+  overflow: hidden;
 }
 
 .rv-hunk-head {
