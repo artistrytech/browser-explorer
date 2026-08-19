@@ -4,6 +4,7 @@ import { config } from './config.js';
 import { fsRouter } from './routes/fs.js';
 import { gitRouter } from './routes/git.js';
 import { stateRouter } from './routes/state.js';
+import { reviewRouter } from './routes/review.js';
 import { osRouter } from './routes/os.js';
 import { quickaccessRouter } from './routes/quickaccess.js';
 import { attachWatcher } from './ws/watcher.js';
@@ -48,6 +49,7 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
 app.use('/api/fs', fsRouter);
 app.use('/api/git', gitRouter);
 app.use('/api/state', stateRouter);
+app.use('/api/review', reviewRouter);
 app.use('/api/os', osRouter);
 app.use('/api/quickaccess', quickaccessRouter);
 

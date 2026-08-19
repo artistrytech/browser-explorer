@@ -1,5 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import {
+  Panel,
+  PanelGroup,
+  PanelResizeHandle,
+  type ImperativePanelHandle,
+} from 'react-resizable-panels';
 import { Toolbar } from './app/Toolbar';
 import { Sidebar } from './app/Sidebar';
 import { StatusBar } from './app/StatusBar';
@@ -21,15 +26,20 @@ import { RebaseDialog, RebaseOverlay } from './features/git/Rebase';
 import { DiscardAllDialog } from './features/git/DiscardAllDialog';
 import { CherryPickDialog } from './features/git/CherryPickDialog';
 import { DiffTab, useDiffTab, closeDiffTab, diffTargetFromUrl } from './features/git/DiffTab';
+import { ReviewTab } from './features/review/ReviewTab';
+import { ReviewCreateDialog } from './features/review/ReviewCreateDialog';
+import { ReviewExportDialog } from './features/review/ReviewExportDialog';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
 import { ToastHost } from './components/ToastHost';
 import { useExplorer, pathFromUrl, searchFromUrl } from './stores/explorer';
 import { useEditor } from './stores/editor';
 import { useGit } from './stores/git';
+import { useReview } from './stores/review';
 import { useSettings } from './stores/settings';
 import {
   useUi,
+  reviewIdFromUrl,
   viewFromUrl,
   switchView,
   replaceView,
@@ -56,9 +66,12 @@ export default function App() {
   /** コミットタブに出す変更ファイル数 (ステージ済み + 変更 + 未追跡。リポジトリ外では出さない) */
   const changedCount = useGit((s) => s.status?.files.length ?? null);
   const { view, setView } = useUi();
+  /** レビュー詳細を開いているか (開いている間はサイドバーを畳んで差分を広く取る) */
+  const reviewDetailOpen = useReview((s) => s.currentId !== null);
   const theme = useSettings((s) => s.settings.theme);
   const loaded = useSettings((s) => s.loaded);
   const refreshTimer = useRef<ReturnType<typeof setTimeout>>();
+  const sidebarPanel = useRef<ImperativePanelHandle>(null);
 
   // 初期化: 設定ロード → URL のパスを表示 (plan §6.5)
   useEffect(() => {
@@ -72,6 +85,7 @@ export default function App() {
     const initialLogFilter = logFilterFromUrl();
     const initialSearch = searchFromUrl();
     const initialDiff = diffTargetFromUrl();
+    const initialReview = reviewIdFromUrl();
     const params = new URLSearchParams();
     params.set('path', initial);
     if (initialView !== 'files') params.set('view', initialView);
@@ -85,6 +99,7 @@ export default function App() {
       params.set('dhash', initialDiff.hash);
       params.set('dpath', initialDiff.path);
     }
+    if (initialReview) params.set('review', String(initialReview));
     history.replaceState({ path: initial, view: initialView }, '', `${location.pathname}?${params}`);
     useUi.getState().setView(initialView);
     useGit.getState().setLogFilter(initialLogFilter);
@@ -112,6 +127,8 @@ export default function App() {
       if (nextDiff && (curDiff?.hash !== nextDiff.hash || curDiff?.path !== nextDiff.path)) {
         useDiffTab.getState().open(nextDiff);
       }
+      // レビュータブ: 一覧 ⇄ 詳細も URL から復元する
+      useReview.getState().syncFromUrl();
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -192,6 +209,14 @@ export default function App() {
     document.body.dataset.theme = theme;
   }, [theme]);
 
+  // レビュー詳細は差分をできるだけ広く見せたいので、その間だけサイドバーを畳む
+  useEffect(() => {
+    const panel = sidebarPanel.current;
+    if (!panel) return;
+    if (view === 'review' && reviewDetailOpen) panel.collapse();
+    else if (panel.isCollapsed()) panel.expand();
+  }, [view, reviewDetailOpen]);
+
   // エディタタブが無くなったら files へ (履歴は積まず URL のみ整合させる)
   useEffect(() => {
     if (view === 'editor' && tabs.length === 0) replaceView('files');
@@ -209,7 +234,7 @@ export default function App() {
         ? baseName(path) || path
         : view === 'editor'
           ? activeTab?.name || 'Explorer'
-          : isGitView(view) && repoRoot
+          : (isGitView(view) || view === 'review') && repoRoot
             ? baseName(repoRoot) || repoRoot
             : 'Explorer';
     document.title = title;
@@ -236,6 +261,9 @@ export default function App() {
         </button>
         <button className={cx(`view-tab${view === 'branches' ? ' active' : ''}`)} onClick={() => switchView('branches')}>
           🔀 ブランチ
+        </button>
+        <button className={cx(`view-tab${view === 'review' ? ' active' : ''}`)} onClick={() => switchView('review')}>
+          🔍 レビュー
         </button>
         {diffTarget && (
           <button
@@ -264,7 +292,7 @@ export default function App() {
         )}
       </div>
       <PanelGroup direction="horizontal" className={cx("main-split")}>
-        <Panel defaultSize={18} minSize={12} maxSize={40}>
+        <Panel ref={sidebarPanel} collapsible defaultSize={18} minSize={12} maxSize={40}>
           <Sidebar />
         </Panel>
         <PanelResizeHandle className={cx("resize-handle")} />
@@ -281,6 +309,9 @@ export default function App() {
               {isGitView(view) && (
                 <GitPanel tab={view === 'commit' ? 'changes' : view === 'log' ? 'log' : 'branches'} />
               )}
+            </div>
+            <div className={cx(`main-view${view === 'review' ? '' : ' hidden'}`)}>
+              {view === 'review' && <ReviewTab />}
             </div>
             <div className={cx(`main-view${view === 'diff' ? '' : ' hidden'}`)}>
               {view === 'diff' && <DiffTab />}
@@ -308,6 +339,8 @@ export default function App() {
       <RebaseDialog />
       <DiscardAllDialog />
       <CherryPickDialog />
+      <ReviewCreateDialog />
+      <ReviewExportDialog />
       {/* 実行結果ダイアログは他ダイアログより手前に出すため最後にマウント */}
       <GitCommandDialog />
     </div>

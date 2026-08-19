@@ -5,7 +5,7 @@ import { api } from '../api/client';
  * メイン領域の表示: ファイル一覧 / コミット(変更) / ログ / ブランチ / エディタ / コミット差分。
  * Git 系 (commit/log/branches) はそれぞれ独立した最上位タブ (ブラウザ履歴も独立)。
  */
-export type MainView = 'files' | 'commit' | 'log' | 'branches' | 'editor' | 'diff';
+export type MainView = 'files' | 'commit' | 'log' | 'branches' | 'review' | 'editor' | 'diff';
 
 /** Git パネルを表示するビューか */
 export function isGitView(v: MainView): boolean {
@@ -93,9 +93,36 @@ export async function refreshUiConfig(): Promise<void> {
 export function viewFromUrl(): MainView {
   const v = new URLSearchParams(location.search).get('view');
   if (v === 'git') return 'commit';
-  return v === 'commit' || v === 'log' || v === 'branches' || v === 'editor' || v === 'diff'
+  return v === 'commit' || v === 'log' || v === 'branches' || v === 'review' || v === 'editor' || v === 'diff'
     ? v
     : 'files';
+}
+
+/** URL の ?review= から表示中のレビュー ID を復元 (無ければ一覧表示) */
+export function reviewIdFromUrl(): number | null {
+  const v = new URLSearchParams(location.search).get('review');
+  const id = Number(v);
+  return v && Number.isInteger(id) && id > 0 ? id : null;
+}
+
+/**
+ * レビュータブの表示を URL に反映して履歴に積む。
+ * id を渡すと詳細、null で一覧 (ブラウザバックで詳細 → 一覧 → 前のタブと戻れる)。
+ */
+export function pushReviewView(id: number | null): void {
+  const params = new URLSearchParams(location.search);
+  params.set('view', 'review');
+  if (id === null) params.delete('review');
+  else params.set('review', String(id));
+  const search = `?${params}`;
+  if (location.search !== search) {
+    history.pushState(
+      { path: params.get('path'), view: 'review' },
+      '',
+      `${location.pathname}${search}`,
+    );
+  }
+  useUi.getState().setView('review');
 }
 
 /**

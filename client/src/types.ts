@@ -197,3 +197,61 @@ export interface AppSettings {
   diffTools: DiffToolDef[];
   extDefaults: Record<string, string>;
 }
+
+// --- コードレビュー (レビュータブ) ---
+
+/**
+ * レビュー 1 件。base...head (merge-base 基準) の差分を、作成時に確定した
+ * 2 つのコミット (baseCommit = merge-base / headCommit) のスナップショットとして持つ。
+ */
+export interface Review {
+  id: number;
+  repo: string;
+  title: string;
+  /** レビュー全体のメモ (Markdown 出力の冒頭に入る) */
+  summary: string;
+  baseBranch: string;
+  headBranch: string;
+  baseCommit: string;
+  headCommit: string;
+  status: 'open' | 'closed';
+  /** manual (手動) / branch-deleted (対象ブランチが消えた) */
+  closedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** コメント総数 */
+  comments: number;
+  /** 未解決かつ outdated でないコメント数 */
+  unresolved: number;
+}
+
+/** 行コメント。side 側の lineStart〜lineEnd に紐づく (単一行なら同値) */
+export interface ReviewComment {
+  id: number;
+  reviewId: number;
+  path: string;
+  oldPath: string | null;
+  side: 'old' | 'new';
+  lineStart: number;
+  lineEnd: number;
+  body: string;
+  resolved: boolean;
+  /** 「最新に更新」で差分が変わり、行位置を保証できなくなったコメント */
+  outdated: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** GET /api/review/detail */
+export interface ReviewDetail {
+  review: Review;
+  files: CommitFile[];
+  comments: ReviewComment[];
+  /** 確認済みにしたファイル (変更後パス) */
+  viewed: string[];
+  /** 差分を表示できるか (リポジトリ喪失・コミットが失われた場合に false) */
+  available: boolean;
+  headExists: boolean;
+  /** 固定したコミット以降、対象ブランチに積まれた新しいコミット数 */
+  newCommits: number;
+}

@@ -16,6 +16,9 @@ import type {
   RebaseBackup,
   RebaseSession,
   ReadResult,
+  Review,
+  ReviewComment,
+  ReviewDetail,
   VolumeInfo,
 } from '../types';
 
@@ -286,6 +289,42 @@ export const api = {
     del<{ ok: true; removed: boolean; favorites: Favorite[] }>('/api/quickaccess', { path }),
   quickaccessReorder: (paths: string[]) =>
     post<{ ok: true; favorites: Favorite[] }>('/api/quickaccess/reorder', { paths }),
+
+  // --- コードレビュー (レビュータブ) ---
+  reviewList: (repo: string) => get<{ reviews: Review[] }>(`/api/review/list?repo=${q(repo)}`),
+  reviewCreate: (body: { repo: string; title: string; baseBranch: string; headBranch: string }) =>
+    post<{ review: Review }>('/api/review', body),
+  reviewUpdate: (id: number, patch: { title?: string; summary?: string }) =>
+    put<{ review: Review }>('/api/review', { id, ...patch }),
+  /** 手動のクローズ / 再オープン */
+  reviewSetStatus: (id: number, status: 'open' | 'closed') =>
+    post<{ review: Review }>('/api/review/status', { id, status }),
+  reviewDelete: (id: number) => del<{ ok: true }>('/api/review', { id }),
+  reviewDetail: (id: number) => get<ReviewDetail>(`/api/review/detail?id=${id}`),
+  /** レビュー内 1 ファイルの unified 差分 (文脈行はサーバ側で広めに取る) */
+  reviewFilePatch: (id: number, path: string, oldPath?: string | null) =>
+    get<{ diff: string }>(
+      `/api/review/file-patch?id=${id}&path=${q(path)}${oldPath ? `&oldPath=${q(oldPath)}` : ''}`,
+    ),
+  /** 対象ブランチの先端を取り直して固定し直す (差分が変わったファイルのコメントは outdated に) */
+  reviewRefresh: (id: number) =>
+    post<{ review: Review; outdated: number; changed: string[] }>('/api/review/refresh', { id }),
+  reviewAddComment: (body: {
+    id: number;
+    path: string;
+    oldPath: string | null;
+    side: 'old' | 'new';
+    lineStart: number;
+    lineEnd: number;
+    body: string;
+  }) => post<{ comment: ReviewComment }>('/api/review/comment', body),
+  reviewUpdateComment: (id: number, patch: { body?: string; resolved?: boolean }) =>
+    put<{ comment: ReviewComment }>('/api/review/comment', { id, ...patch }),
+  reviewDeleteComment: (id: number) => del<{ ok: true }>('/api/review/comment', { id }),
+  reviewSetViewed: (id: number, path: string, viewed: boolean) =>
+    post<{ ok: true }>('/api/review/viewed', { id, path, viewed }),
+  /** 未解決コメントの Markdown */
+  reviewExport: (id: number) => get<{ markdown: string; count: number }>(`/api/review/export?id=${id}`),
 
   // --- state ---
   getState: () => get<AppState>('/api/state'),

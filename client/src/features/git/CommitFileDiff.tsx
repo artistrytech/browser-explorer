@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
 import { parseFileDiff, hunkLineNumbers, type FileDiff } from '../../lib/diffPatch';
+import { DiffLineText, useDiffHighlight } from '../../lib/diffHighlight';
 import styles from './WorkingDiff.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -34,6 +35,7 @@ export function CommitFileDiff({
 }) {
   const [parsed, setParsed] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(true);
+  const highlight = useDiffHighlight(parsed, path);
 
   useEffect(() => {
     let stale = false;
@@ -93,7 +95,11 @@ export function CommitFileDiff({
                       <div key={lIdx} className={cx(`diff-line ${cls}`)}>
                         <span className={cx("wd-lineno")} aria-hidden="true">{no.old ?? ''}</span>
                         <span className={cx("wd-lineno")} aria-hidden="true">{no.new ?? ''}</span>
-                        <span className={cx("wd-linetext")}>{line || ' '}</span>
+                        <DiffLineText
+                          line={line}
+                          html={highlight(hIdx, lIdx)}
+                          className={cx("wd-linetext")}
+                        />
                       </div>
                     );
                   })}

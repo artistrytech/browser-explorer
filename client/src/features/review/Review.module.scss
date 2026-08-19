@@ -1,0 +1,708 @@
+/* レビュータブ (一覧 / 詳細 / 差分 / ダイアログ) の共通スタイル */
+
+.empty-hint {
+  padding: 28px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.status-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 3px;
+  padding: 2px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.status-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.status-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.status-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.status-btn.danger {
+  color: var(--danger);
+}
+
+/* --- 一覧 --- */
+
+.rv-list-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.rv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+}
+
+.rv-toolbar-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.rv-head-spacer {
+  flex: 1;
+}
+
+.rv-count {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.rv-table {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.rv-tr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.rv-tr:hover:not(.rv-th) {
+  background: var(--bg-hover);
+}
+
+.rv-tr.rv-th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-alt);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: default;
+}
+
+.rv-tr.closed {
+  opacity: 0.6;
+}
+
+.rv-c-status {
+  flex: none;
+  width: 92px;
+}
+
+.rv-c-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.rv-c-branch {
+  flex: none;
+  width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.rv-c-num {
+  flex: none;
+  width: 64px;
+  text-align: right;
+}
+
+.rv-c-date {
+  flex: none;
+  width: 130px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.rv-status {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.rv-status.open {
+  color: var(--add);
+  border-color: var(--add);
+}
+
+.rv-status.closed {
+  color: var(--text-dim);
+}
+
+/* --- 詳細 --- */
+
+.rv-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.rv-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+}
+
+.rv-title {
+  font-weight: 600;
+  max-width: 30vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-branches {
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.rv-branches code,
+.rv-c-branch code {
+  font-family: Consolas, 'Courier New', monospace;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+.rv-hashes {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.rv-summary {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rv-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-hover);
+  font-size: 12px;
+}
+
+.rv-banner.warn {
+  color: var(--danger);
+}
+
+.rv-banner code {
+  font-family: Consolas, 'Courier New', monospace;
+}
+
+.rv-split {
+  flex: 1;
+  min-height: 0;
+}
+
+.rv-resize {
+  width: 4px;
+  background: var(--bg-alt);
+  cursor: col-resize;
+}
+
+.rv-resize:hover {
+  background: var(--accent);
+}
+
+/* --- ファイル一覧 --- */
+
+.rv-files {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+}
+
+.rv-files-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rv-filter {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+.rv-file-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.rv-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rv-file:hover {
+  background: var(--bg-hover);
+}
+
+.rv-file.selected {
+  background: var(--bg-selected);
+}
+
+.rv-file.viewed .rv-file-name {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.rv-viewed {
+  flex: none;
+  margin: 0;
+}
+
+.rv-st {
+  flex: none;
+  width: 16px;
+  text-align: center;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.rv-st.st-A { color: var(--add); }
+.rv-st.st-D { color: var(--del); }
+.rv-st.st-R, .rv-st.st-C { color: var(--accent); }
+
+.rv-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rv-file-dir {
+  margin-left: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.rv-file-comments {
+  flex: none;
+  min-width: 18px;
+  text-align: center;
+  border-radius: 9px;
+  padding: 0 5px;
+  font-size: 11px;
+  background: var(--accent);
+  color: #fff;
+}
+
+/* --- 差分 --- */
+
+.rv-diff-host {
+  height: 100%;
+  overflow: auto;
+  padding: 8px;
+}
+
+.rv-diff {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.rv-diff-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: -8px;
+  z-index: 1;
+}
+
+.rv-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.rv-add { color: var(--add); font-size: 12px; }
+.rv-del { color: var(--del); font-size: 12px; }
+
+.rv-diff-body {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.rv-hunk-head {
+  padding: 2px 8px;
+  background: var(--bg-alt);
+  color: var(--accent);
+  font-size: 11px;
+  border-top: 1px solid var(--border);
+  white-space: pre-wrap;
+}
+
+.rv-line {
+  display: flex;
+  align-items: flex-start;
+  padding-right: 6px;
+}
+
+.rv-line.rv-selected {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  filter: brightness(1.12);
+}
+
+.rv-gutter {
+  flex: none;
+  display: flex;
+  user-select: none;
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.rv-gutter-active {
+  cursor: pointer;
+}
+
+.rv-gutter-active:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.rv-lineno {
+  display: inline-block;
+  width: 42px;
+  padding-right: 8px;
+  text-align: right;
+  color: inherit;
+  opacity: 0.75;
+}
+
+.rv-linetext {
+  flex: 1;
+  min-width: 0;
+  padding-left: 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.diff-add {
+  background: var(--add-bg);
+  color: var(--add);
+}
+
+.diff-del {
+  background: var(--del-bg);
+  color: var(--del);
+}
+
+.diff-meta {
+  color: var(--text-dim);
+}
+
+/* --- コメント --- */
+
+.rv-comment {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  margin: 6px 8px 6px 92px;
+  padding: 6px 8px;
+  background: var(--bg);
+  font-family: 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', Meiryo, sans-serif;
+  font-size: 13px;
+}
+
+.rv-comment.rv-resolved {
+  border-left-color: var(--add);
+  opacity: 0.7;
+}
+
+.rv-comment.rv-outdated {
+  border-left-color: var(--text-dim);
+}
+
+.rv-comment-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.rv-comment-loc {
+  font-family: Consolas, 'Courier New', monospace;
+  color: var(--accent);
+}
+
+.rv-comment-date {
+  flex: none;
+}
+
+.rv-comment-actions {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.rv-badge {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0 6px;
+}
+
+.rv-badge.rv-badge-done {
+  color: var(--add);
+  border-color: var(--add);
+}
+
+.rv-link {
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font-size: 11px;
+}
+
+.rv-link:hover {
+  text-decoration: underline;
+}
+
+.rv-link.danger {
+  color: var(--danger);
+}
+
+.rv-comment-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.rv-orphans {
+  margin: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 6px;
+}
+
+.rv-orphans-title {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.rv-orphans .rv-comment {
+  margin-left: 0;
+}
+
+/* --- 入力 --- */
+
+.rv-form {
+  margin: 6px 8px 6px 92px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: var(--bg);
+  font-family: 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', Meiryo, sans-serif;
+  font-size: 13px;
+}
+
+.rv-form-head {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.rv-textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 6px;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.rv-form-buttons {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.rv-hint {
+  flex: 1;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* --- ダイアログ --- */
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px;
+  min-width: 380px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.dialog-title {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.rv-create {
+  width: 560px;
+  max-width: 92vw;
+}
+
+.rv-form-grid {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.rv-select,
+.rv-input {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 6px;
+  width: 100%;
+}
+
+.rv-note {
+  margin-top: 10px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.rv-warn {
+  color: var(--danger);
+}
+
+.rv-export {
+  width: 820px;
+  max-width: 94vw;
+}
+
+.rv-export-text {
+  width: 100%;
+  height: 52vh;
+  margin-top: 8px;
+  resize: vertical;
+  background: var(--bg-alt);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 8px;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  white-space: pre;
+}

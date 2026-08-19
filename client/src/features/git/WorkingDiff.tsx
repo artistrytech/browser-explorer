@@ -11,6 +11,7 @@ import {
   isChangeLine,
   type FileDiff,
 } from '../../lib/diffPatch';
+import { DiffLineText, useDiffHighlight } from '../../lib/diffHighlight';
 import styles from './WorkingDiff.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -52,6 +53,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
   const [selLines, setSelLines] = useState<Set<string>>(new Set());
   /** Shift 範囲選択の起点 `${hunkIndex}:${lineIndex}` */
   const [anchorLine, setAnchorLine] = useState<string | null>(null);
+  const highlight = useDiffHighlight(parsed, file.path);
 
   const reverse = file.side === 'staged'; // ステージ済み → 解除 (--reverse)
   const actionLabel = reverse ? '解除' : 'ステージ';
@@ -255,7 +257,11 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
                     >
                       <span className={cx("wd-lineno")} aria-hidden="true">{no.old ?? ''}</span>
                       <span className={cx("wd-lineno")} aria-hidden="true">{no.new ?? ''}</span>
-                      <span className={cx("wd-linetext")}>{line || ' '}</span>
+                      <DiffLineText
+                        line={line}
+                        html={highlight(hIdx, lIdx)}
+                        className={cx("wd-linetext")}
+                      />
                     </div>
                   );
                 })}
