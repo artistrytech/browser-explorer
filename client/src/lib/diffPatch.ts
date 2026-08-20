@@ -245,3 +245,50 @@ export function pairedLines(hunk: Hunk): [number, number][] {
   }
   return pairs;
 }
+
+/* ---------- 色付けに使うファイル全体との突き合わせ ---------- */
+
+/** ファイル全体をトークナイズに使う上限。これを超えたら Hunk の行だけで色付けする */
+const SOURCE_MAX_LENGTH = 2_000_000;
+
+/** Monaco の行分割に合わせる (CR / CRLF / LF)。行末の改行文字は含まれない */
+export function splitLines(content: string): string[] {
+  return content.split(/\r\n|\r|\n/);
+}
+
+/** 差分の行と、ファイルから取り出した行が同じ内容か (CR の有無は無視する) */
+function sameLine(diffLine: string, fileLine: string | undefined): boolean {
+  return fileLine !== undefined && diffLine.replace(/\r$/, '') === fileLine.replace(/\r$/, '');
+}
+
+/**
+ * ファイル全体を色付けに使えるなら、その行の配列を返す (使えなければ null)。
+ *
+ * Hunk の行だけをトークナイズすると、ファイルの途中から始まる Hunk では言語の状態が
+ * 初期状態からになる (Python の """ で囲んだ複数行文字列の「閉じ」だけが差分に含まれる場合、
+ * そこを「開始」と解釈して以降が文字列として色付けされてしまう)。ファイル全体を渡せば
+ * 正しい状態から数えられる。
+ *
+ * ただし使う前に、行番号で引いた内容が差分の行と全て一致することを確認する。
+ * (作業ツリーが書き換わった・改行コードの扱いが違うなどで食い違うと、別の行の内容を
+ * 表示してしまうため。1 行でもずれていたら null を返し、Hunk だけの色付けに落とす)
+ */
+export function usableFileLines(
+  parsed: FileDiff,
+  side: 'old' | 'new',
+  content: string | null | undefined,
+): string[] | null {
+  if (typeof content !== 'string' || content.length > SOURCE_MAX_LENGTH) return null;
+  const lines = splitLines(content);
+  for (const hunk of parsed.hunks) {
+    const nos = hunkLineNumbers(hunk);
+    for (let l = 0; l < hunk.lines.length; l++) {
+      const line = hunk.lines[l];
+      const tag = line[0];
+      if (tag === '\\' || (tag === '-' ? 'old' : 'new') !== side) continue;
+      const no = (side === 'old' ? nos[l].old : nos[l].new) ?? 0;
+      if (!sameLine(line.slice(1), lines[no - 1])) return null;
+    }
+  }
+  return lines;
+}

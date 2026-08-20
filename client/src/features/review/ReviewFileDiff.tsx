@@ -8,7 +8,7 @@ import { toastError } from '../../stores/toast';
 import { useUi } from '../../stores/ui';
 import { fileOpenMenuItems, pruneMenuItems } from '../../lib/openMenu';
 import { hunkLineNumbers, parseFileDiff, type FileDiff } from '../../lib/diffPatch';
-import { DiffLineText, useDiffHighlight } from '../../lib/diffHighlight';
+import { DiffLineText, useDiffHighlight, type DiffSources } from '../../lib/diffHighlight';
 import type { CommitFile, ReviewComment } from '../../types';
 import styles from './Review.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -93,6 +93,8 @@ export function ReviewFileDiff({
   file,
   comments,
   readOnly,
+  baseCommit,
+  headCommit,
 }: {
   reviewId: number;
   file: CommitFile;
@@ -100,10 +102,14 @@ export function ReviewFileDiff({
   comments: ReviewComment[];
   /** クローズ済みレビューは閲覧のみ */
   readOnly: boolean;
+  /** 色付けをファイル全体から行うための、固定したコミット */
+  baseCommit: string;
+  headCommit: string;
 }) {
   const repoRoot = useGit((s) => s.repoRoot);
   const menuConfig = useUi((s) => s.menuConfig);
   const [parsed, setParsed] = useState<FileDiff | null>(null);
+  const [sources, setSources] = useState<DiffSources | null>(null);
   const [loading, setLoading] = useState(true);
   const [selection, setSelection] = useState<Selection | null>(null);
   /** コメント入力を開いている選択範囲 (mouseup で確定した範囲) */
@@ -139,6 +145,33 @@ export function ReviewFileDiff({
       stale = true; // 選択が素早く変わった場合、古い応答で上書きしない
     };
   }, [reviewId, file.path, file.oldPath]);
+
+  /**
+   * 色付けの状態を正しく取るためのファイル全体 (変更前 / 変更後)。
+   * 取得できなくても Hunk の行だけで色付けされるので、失敗は無視してよい。
+   */
+  useEffect(() => {
+    let stale = false;
+    setSources(null);
+    const oldPath = file.oldPath ?? file.path;
+    const load = (rev: string, p: string, exists: boolean) =>
+      exists
+        ? api
+            .gitFileContent(repoRoot!, rev, p)
+            .then((r) => r.content)
+            .catch(() => null)
+        : Promise.resolve(null);
+    if (!repoRoot) return;
+    void Promise.all([
+      load(baseCommit, oldPath, file.status !== 'A'),
+      load(headCommit, file.path, file.status !== 'D'),
+    ]).then(([before, after]) => {
+      if (!stale) setSources({ old: before, new: after });
+    });
+    return () => {
+      stale = true;
+    };
+  }, [repoRoot, baseCommit, headCommit, file.path, file.oldPath, file.status]);
 
   // ドラッグ終了はペイン外で離しても拾う
   useEffect(() => {
@@ -214,7 +247,7 @@ export function ReviewFileDiff({
   };
 
   const rows = useMemo(() => (parsed ? buildRows(parsed) : null), [parsed]);
-  const highlight = useDiffHighlight(parsed, file.path);
+  const highlight = useDiffHighlight(parsed, file.path, sources);
 
   // 行末 (side + 行番号) ごとのコメント。位置が特定できないものは先頭にまとめて出す
   const { byLine, orphans } = useMemo(() => {

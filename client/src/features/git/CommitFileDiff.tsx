@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
 import { parseFileDiff, hunkLineNumbers, type FileDiff } from '../../lib/diffPatch';
-import { DiffLineText, useDiffHighlight } from '../../lib/diffHighlight';
+import { DiffLineText, useDiffHighlight, type DiffSources } from '../../lib/diffHighlight';
 import styles from './WorkingDiff.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -34,13 +34,15 @@ export function CommitFileDiff({
   label?: string;
 }) {
   const [parsed, setParsed] = useState<FileDiff | null>(null);
+  const [sources, setSources] = useState<DiffSources | null>(null);
   const [loading, setLoading] = useState(true);
-  const highlight = useDiffHighlight(parsed, path);
+  const highlight = useDiffHighlight(parsed, path, sources);
 
   useEffect(() => {
     let stale = false;
     setLoading(true);
     setParsed(null);
+    setSources(null);
     api
       .gitCommitFilePatch(repo, hash, path, oldPath)
       .then((r) => {
@@ -52,6 +54,13 @@ export function CommitFileDiff({
       .finally(() => {
         if (!stale) setLoading(false);
       });
+    // 色付けの状態を正しく取るためのコミット前後のファイル全体 (失敗しても差分表示には影響しない)
+    api
+      .gitCommitFileDiff(repo, hash, path, oldPath)
+      .then((r) => {
+        if (!stale) setSources({ old: r.before, new: r.after });
+      })
+      .catch(() => undefined);
     return () => {
       stale = true; // 選択が素早く変わった場合、古い応答で上書きしない
     };

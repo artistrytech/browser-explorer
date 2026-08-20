@@ -371,6 +371,30 @@ gitRouter.get('/commit-file-diff', async (req, res) => {
   res.json({ path: rel, before, after, binary });
 });
 
+/**
+ * 任意のリビジョンのファイル内容。
+ *
+ * 差分表示のシンタックスハイライトで使う。Hunk の行だけをトークナイズすると、
+ * ファイルの途中から始まる Hunk (Python の """ やブロックコメントの内側など) で
+ * 言語の状態が初期状態からになり、文字列でない箇所が文字列として色付けされてしまうため、
+ * ファイル全体を渡して正しい状態から数えられるようにする。
+ *
+ * rev: コミット (ハッシュ / HEAD / HEAD^ など) / '' でインデックス / 'worktree' で作業ツリー。
+ * 取得できない場合 (そのリビジョンに存在しない・バイナリ) は content: null を返す。
+ */
+gitRouter.get('/file-content', async (req, res) => {
+  const g = git(req.query.repo);
+  const repo = String(req.query.repo);
+  const rel = relPath(req.query.path);
+  const rev = typeof req.query.rev === 'string' ? req.query.rev : '';
+  const content =
+    rev === 'worktree'
+      ? await fs.readFile(path.join(repo, rel), 'utf-8').catch(() => null)
+      : await g.show([`${rev}:${rel}`]).catch(() => null);
+  const binary = content !== null && content.includes('\0');
+  res.json({ content: binary ? null : content, binary });
+});
+
 /* ---------- 外部差分ツール (config.jsonc の diffTools) ---------- */
 
 const DIFF_TMP_ROOT = path.join(os.tmpdir(), 'expolorer-difftool');

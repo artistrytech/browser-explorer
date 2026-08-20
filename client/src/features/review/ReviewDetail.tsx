@@ -325,6 +325,8 @@ export function ReviewDetail({ id }: { id: number }) {
                 file={current}
                 comments={comments.filter((c) => c.path === current.path)}
                 readOnly={readOnly}
+                baseCommit={review.baseCommit}
+                headCommit={review.headCommit}
               />
             ) : (
               <div className={cx('empty-hint')}>ファイルを選択してください</div>

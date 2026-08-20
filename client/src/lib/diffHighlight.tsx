@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { monaco, languageForPath } from '../features/editor/monacoSetup';
 import { useSettings } from '../stores/settings';
-import { intraLineRanges, pairedLines, type FileDiff, type WordRange } from './diffPatch';
+import {
+  hunkLineNumbers,
+  intraLineRanges,
+  pairedLines,
+  usableFileLines,
+  type FileDiff,
+  type WordRange,
+} from './diffPatch';
 
 /**
  * 差分表示のシンタックスハイライトと、行内の変更箇所の強調。
@@ -21,6 +28,20 @@ export interface DiffLineRender {
 }
 
 const NO_RENDER: DiffLineRender = { html: null, range: null };
+
+/**
+ * 変更前後のファイル全体。
+ *
+ * Hunk の行だけをトークナイズすると、ファイルの途中から始まる Hunk では言語の状態が
+ * 初期状態からになる。たとえば Python の """ で囲んだ複数行文字列の「閉じ」だけが
+ * 差分に含まれる場合、そこを「開始」と解釈して以降が文字列として色付けされてしまう。
+ * ファイル全体を渡せば正しい状態から数えられるので、その行だけを取り出して使う。
+ * 渡せない場合 (取得失敗・巨大なファイル) は Hunk の行だけで色付けする。
+ */
+export interface DiffSources {
+  old: string | null;
+  new: string | null;
+}
 
 /**
  * 複数行をまとめて色付けし、行ごとの HTML を返す。
@@ -90,6 +111,7 @@ function wordClass(tag: string): string {
 export function useDiffHighlight(
   parsed: FileDiff | null,
   path: string,
+  sources?: DiffSources | null,
 ): (hunkIndex: number, lineIndex: number) => DiffLineRender {
   const dark = useSettings((s) => s.settings.theme) === 'dark';
   const [map, setMap] = useState<Map<string, string>>(new Map());
@@ -114,20 +136,27 @@ export function useDiffHighlight(
       return;
     }
     let stale = false;
-    const oldLines: string[] = [];
-    const newLines: string[] = [];
+    // ファイル全体が使えるならその行を、使えないなら Hunk の行だけを並べた仮想ドキュメントを渡す
+    const oldFile = usableFileLines(parsed, 'old', sources?.old);
+    const newFile = usableFileLines(parsed, 'new', sources?.new);
+    const fromFile = { old: oldFile !== null, new: newFile !== null };
+    const oldLines: string[] = oldFile ?? [];
+    const newLines: string[] = newFile ?? [];
     const slots: { key: string; tag: string; side: 'old' | 'new'; index: number }[] = [];
     parsed.hunks.forEach((hunk, h) => {
+      const nos = hunkLineNumbers(hunk);
       hunk.lines.forEach((line, l) => {
         const tag = line[0];
         if (tag === '\\') return; // "\ No newline at end of file" は色付け対象外
         const key = `${h}:${l}`;
-        if (tag === '-') {
-          slots.push({ key, tag, side: 'old', index: oldLines.length });
-          oldLines.push(line.slice(1));
+        const side = tag === '-' ? 'old' : 'new';
+        const lines = side === 'old' ? oldLines : newLines;
+        if (fromFile[side]) {
+          // ファイル全体の何行目か (1 始まり) で引く
+          slots.push({ key, tag, side, index: ((side === 'old' ? nos[l].old : nos[l].new) ?? 0) - 1 });
         } else {
-          slots.push({ key, tag, side: 'new', index: newLines.length });
-          newLines.push(line.slice(1));
+          slots.push({ key, tag, side, index: lines.length });
+          lines.push(line.slice(1));
         }
       });
     });
@@ -148,7 +177,9 @@ export function useDiffHighlight(
     return () => {
       stale = true; // 表示対象が変わったら古い結果は捨てる
     };
-  }, [parsed, path, dark, ranges]);
+    // sources はオブジェクトの同一性が呼び出しごとに変わるので、中身 (内容そのもの) を見る
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsed, path, dark, ranges, sources?.old, sources?.new]);
 
   return (hunkIndex, lineIndex) => {
     const key = `${hunkIndex}:${lineIndex}`;

@@ -150,6 +150,14 @@ export const api = {
       `/api/git/commit-file-patch?repo=${q(repo)}&hash=${q(hash)}&path=${q(path)}` +
         (oldPath ? `&oldPath=${q(oldPath)}` : ''),
     ),
+  /**
+   * 任意のリビジョンのファイル内容 (差分のシンタックスハイライト用)。
+   * rev はコミット / '' でインデックス / 'worktree' で作業ツリー。
+   */
+  gitFileContent: (repo: string, rev: string, path: string) =>
+    get<{ content: string | null; binary: boolean }>(
+      `/api/git/file-content?repo=${q(repo)}&rev=${q(rev)}&path=${q(path)}`,
+    ),
   gitShow: (repo: string, hash: string) =>
     get<{ hash: string; author: string; date: string; message: string; patch: string }>(
       `/api/git/show?repo=${q(repo)}&hash=${q(hash)}`,

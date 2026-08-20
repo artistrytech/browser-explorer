@@ -11,7 +11,7 @@ import {
   isChangeLine,
   type FileDiff,
 } from '../../lib/diffPatch';
-import { DiffLineText, useDiffHighlight } from '../../lib/diffHighlight';
+import { DiffLineText, useDiffHighlight, type DiffSources } from '../../lib/diffHighlight';
 import styles from './WorkingDiff.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -53,7 +53,8 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
   const [selLines, setSelLines] = useState<Set<string>>(new Set());
   /** Shift 範囲選択の起点 `${hunkIndex}:${lineIndex}` */
   const [anchorLine, setAnchorLine] = useState<string | null>(null);
-  const highlight = useDiffHighlight(parsed, file.path);
+  const [sources, setSources] = useState<DiffSources | null>(null);
+  const highlight = useDiffHighlight(parsed, file.path, sources);
 
   const reverse = file.side === 'staged'; // ステージ済み → 解除 (--reverse)
   const actionLabel = reverse ? '解除' : 'ステージ';
@@ -75,6 +76,32 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
 
   // ファイルが変わったら読み込み。onApplied による status 変化とは独立に自前で再取得する
   useEffect(load, [repo, file.path, file.side, file.untracked]);
+
+  /**
+   * 色付けの状態を正しく取るためのファイル全体。
+   * ステージ側は HEAD ↔ インデックス、変更側はインデックス ↔ 作業ツリーを見る。
+   * 取得できなくても Hunk の行だけで色付けされるので、失敗は無視してよい。
+   */
+  useEffect(() => {
+    let stale = false;
+    setSources(null);
+    const content = (rev: string, enabled = true) =>
+      enabled
+        ? api
+            .gitFileContent(repo, rev, file.path)
+            .then((r) => r.content)
+            .catch(() => null)
+        : Promise.resolve(null);
+    // 未追跡ファイルは「変更前」が無く、全体が追加行になる
+    const before = file.untracked ? Promise.resolve(null) : content(reverse ? 'HEAD' : '');
+    const after = content(reverse ? '' : 'worktree');
+    void Promise.all([before, after]).then(([old, next]) => {
+      if (!stale) setSources({ old, new: next });
+    });
+    return () => {
+      stale = true;
+    };
+  }, [repo, file.path, file.side, file.untracked, reverse]);
 
   const apply = async (patch: string | null, empty: string) => {
     if (!patch) {
