@@ -25,6 +25,7 @@ import { BranchDialog } from './features/git/BranchDialog';
 import { RebaseDialog, RebaseOverlay } from './features/git/Rebase';
 import { DiscardAllDialog } from './features/git/DiscardAllDialog';
 import { CherryPickDialog } from './features/git/CherryPickDialog';
+import { RevertDialog } from './features/git/RevertDialog';
 import { DiffTab, useDiffTab, closeDiffTab, diffTargetFromUrl } from './features/git/DiffTab';
 import { ReviewTab } from './features/review/ReviewTab';
 import { ReviewCreateDialog } from './features/review/ReviewCreateDialog';
@@ -339,6 +340,7 @@ export default function App() {
       <RebaseDialog />
       <DiscardAllDialog />
       <CherryPickDialog />
+      <RevertDialog />
       <ReviewCreateDialog />
       <ReviewExportDialog />
       {/* 実行結果ダイアログは他ダイアログより手前に出すため最後にマウント */}

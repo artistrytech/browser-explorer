@@ -7,6 +7,7 @@ import { useGit } from '../../stores/git';
 import { toastError } from '../../stores/toast';
 import { runGitCommands } from './GitCommandDialog';
 import { openCherryPickDialog } from './CherryPickDialog';
+import { openRevertDialog } from './RevertDialog';
 import { openCommitDetail } from './CommitDetailDialog';
 import type { GitGraphCommit } from '../../types';
 import styles from './GitGraph.module.scss';
@@ -349,6 +350,10 @@ export function GitGraph({
       {
         label: 'cherry-pick…',
         action: () => openCherryPickDialog(repo, c.hash, c.subject),
+      },
+      {
+        label: 'このコミットを打ち消し…',
+        action: () => openRevertDialog(repo, c.hash, c.subject, c.parents),
       },
       {
         label: 'タグを付ける…',
