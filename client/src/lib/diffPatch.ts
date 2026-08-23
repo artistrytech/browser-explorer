@@ -48,6 +48,15 @@ export function parseFileDiff(diff: string): FileDiff {
   return { header, hunks };
 }
 
+/**
+ * バイナリファイルの差分か。
+ * git はバイナリの中身を Hunk にせず、ファイルヘッダに
+ * "Binary files a/x and b/x differ" (--binary 指定時は "GIT binary patch") を置く。
+ */
+export function isBinaryDiff(parsed: FileDiff): boolean {
+  return parsed.header.some((l) => l.startsWith('Binary files ') || l === 'GIT binary patch');
+}
+
 /** @@ -a,b +c,d @@ の開始行番号と末尾の見出し (関数名など) を取り出す */
 function parseHunkHeader(header: string): { oldStart: string; newStart: string; tail: string } {
   const m = header.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/);

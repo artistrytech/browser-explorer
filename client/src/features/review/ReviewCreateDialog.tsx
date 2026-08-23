@@ -6,6 +6,7 @@ import { toastError } from '../../stores/toast';
 import type { GitBranch } from '../../types';
 import styles from './Review.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
+import { useDialogKeys } from '../../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -61,8 +62,6 @@ export function ReviewCreateDialog() {
       .catch(toastError);
   }, [open, repo]);
 
-  if (!open) return null;
-
   const locals = branches.filter((b) => !b.name.startsWith('remotes/')).map(shortName);
   const remotes = branches
     .filter((b) => b.name.startsWith('remotes/') && !/^remotes\/[^/]+\/HEAD$/.test(b.name))
@@ -82,6 +81,14 @@ export function ReviewCreateDialog() {
       setBusy(false);
     }
   };
+
+  const dialogRef = useDialogKeys({
+    enabled: open,
+    onEnter: canCreate ? () => void create() : null,
+    onEscape: close,
+  });
+
+  if (!open) return null;
 
   const branchSelect = (value: string, onChange: (v: string) => void) => (
     <select className={cx('rv-select')} value={value} onChange={(e) => onChange(e.target.value)}>
@@ -106,7 +113,11 @@ export function ReviewCreateDialog() {
   );
 
   return (
-    <div className={cx('dialog-backdrop')} onMouseDown={(e) => e.target === e.currentTarget && close()}>
+    <div
+      ref={dialogRef}
+      className={cx('dialog-backdrop')}
+      onMouseDown={(e) => e.target === e.currentTarget && close()}
+    >
       <div className={cx('dialog rv-create')}>
         <div className={cx('dialog-title')}>レビューを作成</div>
         <div className={cx('rv-form-grid')}>

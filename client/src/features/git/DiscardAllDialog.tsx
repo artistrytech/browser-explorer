@@ -4,6 +4,7 @@ import { useGit } from '../../stores/git';
 import { runGitCommands } from './GitCommandDialog';
 import styles from './DiscardAllDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
+import { useDialogKeys } from '../../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -33,9 +34,8 @@ export function DiscardAllDialog() {
     if (open) setAlsoUntracked(false);
   }, [open]);
 
-  if (!open || !repoRoot) return null;
-
   const doDiscard = () => {
+    if (!repoRoot) return;
     close();
     // 追跡ファイルをステージ・作業ツリーとも HEAD へ戻す (git restore . のイメージ)。
     // 未追跡は任意で clean -fd (.gitignore 対象は残す)
@@ -44,8 +44,12 @@ export function DiscardAllDialog() {
     void runGitCommands(repoRoot, commands, '変更をすべて破棄');
   };
 
+  const dialogRef = useDialogKeys({ enabled: open, onEnter: doDiscard, onEscape: close });
+
+  if (!open || !repoRoot) return null;
+
   return (
-    <div className={cx('dialog-backdrop')}>
+    <div ref={dialogRef} className={cx('dialog-backdrop')}>
       <div className={cx('dialog')}>
         <div className={cx('dialog-title')}>変更をすべて破棄</div>
         <div className={cx('discard-body')}>

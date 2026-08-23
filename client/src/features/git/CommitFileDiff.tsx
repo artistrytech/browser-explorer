@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
-import { parseFileDiff, hunkLineNumbers, type FileDiff } from '../../lib/diffPatch';
+import { parseFileDiff, hunkLineNumbers, isBinaryDiff, type FileDiff } from '../../lib/diffPatch';
 import { DiffLineText, useDiffHighlight, type DiffSources } from '../../lib/diffHighlight';
 import styles from './WorkingDiff.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -82,9 +82,11 @@ export function CommitFileDiff({
         ) : !parsed || parsed.hunks.length === 0 ? (
           // 内容が変わらない名前変更・バイナリ・モード変更のみのファイルは Hunk が無い
           <div className={cx("empty-hint")}>
-            {oldPath
-              ? '名前の変更のみで、内容の変更はありません'
-              : '表示できる差分はありません (バイナリ等)'}
+            {parsed && isBinaryDiff(parsed)
+              ? 'バイナリファイルです'
+              : oldPath
+                ? '名前の変更のみで、内容の変更はありません'
+                : '表示できる差分はありません'}
           </div>
         ) : (
           parsed.hunks.map((hunk, hIdx) => {

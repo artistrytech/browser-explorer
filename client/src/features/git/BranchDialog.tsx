@@ -6,6 +6,7 @@ import { toastError } from '../../stores/toast';
 import { runGitCommands } from './GitCommandDialog';
 import styles from './BranchDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
+import { useDialogKeys } from '../../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -105,8 +106,6 @@ export function BranchDialog() {
     };
   }, [open, repoRoot]);
 
-  if (!open || !repoRoot) return null;
-
   const trimmedName = name.trim();
   const isCreate = mode === 'create';
   const isRename = mode === 'rename';
@@ -124,7 +123,7 @@ export function BranchDialog() {
   const canSubmit = branchNamesReady && !!trimmedName && !validationError && (!isRename || trimmedName !== branchName);
 
   const doCreate = () => {
-    if (!canSubmit) return;
+    if (!canSubmit || !repoRoot) return;
     close();
     const args = switchAfterCreate ? ['checkout', '-b', trimmedName] : ['branch', trimmedName];
     // ベースの指定があれば起点として渡す (無指定なら現在の HEAD から作られる)
@@ -133,7 +132,7 @@ export function BranchDialog() {
   };
 
   const doRemoteCheckout = () => {
-    if (!trimmedName) return;
+    if (!trimmedName || !repoRoot) return;
     close();
     const ref = remoteRef(remoteBranch);
     const args = trackRemote
@@ -143,15 +142,19 @@ export function BranchDialog() {
   };
 
   const doRename = () => {
-    if (!canSubmit) return;
+    if (!canSubmit || !repoRoot) return;
     close();
     void runGitCommands(repoRoot, [['branch', '-m', branchName, trimmedName]], 'ブランチ名変更');
   };
 
   const submit = isCreate ? doCreate : isRename ? doRename : doRemoteCheckout;
 
+  const dialogRef = useDialogKeys({ enabled: open, onEnter: canSubmit ? submit : null, onEscape: close });
+
+  if (!open || !repoRoot) return null;
+
   return (
-    <div className={cx("dialog-backdrop")}>
+    <div ref={dialogRef} className={cx("dialog-backdrop")}>
       <div className={cx("dialog branch-dialog")}>
         <div className={cx("dialog-title")}>
           {isCreate ? '新しいブランチ' : isRename ? 'ブランチ名変更' : 'リモートブランチをチェックアウト'}
@@ -186,10 +189,6 @@ export function BranchDialog() {
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && canSubmit) submit();
-                if (e.key === 'Escape') close();
-              }}
             />
           </label>
           {validationError && (

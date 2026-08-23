@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
 import styles from './CommitMessageDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
+import { useDialogKeys } from '../../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -66,15 +67,18 @@ export function CommitMessageDialog() {
     };
   }, [open, repo, scope]);
 
-  if (!open) return null;
-
   const finish = (value: string | null) => {
     resolve?.(value);
     close();
   };
 
+  // 選ぶのは一覧の行なので、Enter に割り当てる既定の動作は無い
+  const dialogRef = useDialogKeys({ enabled: open, onEscape: () => finish(null) });
+
+  if (!open) return null;
+
   return (
-    <div className={cx("dialog-backdrop")} onMouseDown={() => finish(null)}>
+    <div ref={dialogRef} className={cx("dialog-backdrop")} onMouseDown={() => finish(null)}>
       <div className={cx("dialog msg-history-dialog")} onMouseDown={(e) => e.stopPropagation()}>
         <div className={cx("dialog-title")}>コミットメッセージの履歴</div>
         <div className={cx("msg-history-scope")}>

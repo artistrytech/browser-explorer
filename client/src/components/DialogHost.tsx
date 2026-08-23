@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useDialog, type ConfirmResult } from '../stores/dialog';
 import styles from './DialogHost.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
+import { useDialogKeys } from '../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -29,19 +30,26 @@ export function DialogHost() {
     }
   }, [current]);
 
-  if (!current) return null;
-
   const done = (v: string | boolean | null | ConfirmResult) => {
-    current.resolve(v);
+    current?.resolve(v);
     close();
   };
 
   /** confirm の戻り値。チェックボックス付きなら { ok, checked } を返す */
   const confirmValue = (ok: boolean): boolean | ConfirmResult =>
-    current.checkbox ? { ok, checked: ok && checked } : ok;
+    current?.checkbox ? { ok, checked: ok && checked } : ok;
+
+  // Enter = OK / Escape = キャンセル (prompt の入力欄からもそのまま決定できる)
+  const dialogRef = useDialogKeys({
+    enabled: current !== null,
+    onEnter: () => done(current?.kind === 'confirm' ? confirmValue(true) : value),
+    onEscape: () => done(current?.kind === 'confirm' ? confirmValue(false) : null),
+  });
+
+  if (!current) return null;
 
   return (
-    <div className={cx("dialog-backdrop")} onMouseDown={(e) => e.target === e.currentTarget && done(null)}>
+    <div ref={dialogRef} className={cx("dialog-backdrop")} onMouseDown={(e) => e.target === e.currentTarget && done(null)}>
       <div className={cx("dialog")} role="dialog">
         <div className={cx("dialog-title")}>{current.title}</div>
         {current.message && <div className={cx("dialog-message")}>{current.message}</div>}
@@ -51,10 +59,6 @@ export function DialogHost() {
             className={cx("dialog-input")}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') done(value);
-              if (e.key === 'Escape') done(null);
-            }}
           />
         )}
         {current.kind === 'confirm' && current.checkbox && (

@@ -7,6 +7,7 @@ import { externalToolPresets, diffToolPresets } from '../lib/toolPresets';
 import type { AppSettings, DiffToolDef, ExternalToolDef } from '../types';
 import styles from './SettingsDialog.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
+import { useDialogKeys } from '../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -88,8 +89,14 @@ function ExternalToolEditor({
     });
   };
 
+  const dialogRef = useDialogKeys({ onEnter: save, onEscape: onCancel });
+
   return (
-    <div className={cx("dialog-backdrop nested")} onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
+    <div
+      ref={dialogRef}
+      className={cx("dialog-backdrop nested")}
+      onMouseDown={(e) => e.target === e.currentTarget && onCancel()}
+    >
       <div className={cx("dialog tool-edit-dialog")} role="dialog">
         <div className={cx("dialog-title")}>外部ツールの編集</div>
         <Field label="ラベル">
@@ -177,8 +184,14 @@ function DiffToolEditor({
     });
   };
 
+  const dialogRef = useDialogKeys({ onEnter: save, onEscape: onCancel });
+
   return (
-    <div className={cx("dialog-backdrop nested")} onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
+    <div
+      ref={dialogRef}
+      className={cx("dialog-backdrop nested")}
+      onMouseDown={(e) => e.target === e.currentTarget && onCancel()}
+    >
       <div className={cx("dialog tool-edit-dialog")} role="dialog">
         <div className={cx("dialog-title")}>差分ツールの編集</div>
         <Field label="ラベル">
@@ -250,8 +263,6 @@ export function SettingsDialog() {
       });
   }, [settingsOpen]);
 
-  if (!settingsOpen) return null;
-
   const patch = (p: Partial<AppSettings>) => {
     setDraft((d) => (d ? { ...d, ...p } : d));
     setDirty(true);
@@ -278,6 +289,15 @@ export function SettingsDialog() {
       setSaving(false);
     }
   };
+
+  // Enter = 保存 (既定ボタン) / Escape = 閉じる。重ねた編集ダイアログが開いている間はそちらが受け取る
+  const dialogRef = useDialogKeys({
+    enabled: settingsOpen,
+    onEnter: dirty && !saving ? () => void doSave() : null,
+    onEscape: () => setSettingsOpen(false),
+  });
+
+  if (!settingsOpen) return null;
 
   const doExport = async () => {
     try {
@@ -382,7 +402,11 @@ export function SettingsDialog() {
   );
 
   return (
-    <div className={cx("dialog-backdrop")} onMouseDown={(e) => e.target === e.currentTarget && setSettingsOpen(false)}>
+    <div
+      ref={dialogRef}
+      className={cx("dialog-backdrop")}
+      onMouseDown={(e) => e.target === e.currentTarget && setSettingsOpen(false)}
+    >
       <div className={cx("dialog settings-dialog")} role="dialog">
         <div className={cx("dialog-title")}>設定</div>
 

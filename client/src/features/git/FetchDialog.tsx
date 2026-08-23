@@ -4,6 +4,7 @@ import { useGit } from '../../stores/git';
 import { runGitCommands } from './GitCommandDialog';
 import styles from './FetchDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
+import { useDialogKeys } from '../../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -35,15 +36,18 @@ export function FetchDialog() {
     if (open) setPrune(true);
   }, [open]);
 
-  if (!open || !repoRoot) return null;
-
   const doFetch = () => {
+    if (!repoRoot) return;
     close();
     void runGitCommands(repoRoot, [['fetch', ...(prune ? ['--prune'] : [])]], 'Fetch');
   };
 
+  const dialogRef = useDialogKeys({ enabled: open, onEnter: doFetch, onEscape: close });
+
+  if (!open || !repoRoot) return null;
+
   return (
-    <div className={cx("dialog-backdrop")}>
+    <div ref={dialogRef} className={cx("dialog-backdrop")}>
       <div className={cx("dialog push-dialog")}>
         <div className={cx("dialog-title")}>Fetch</div>
         <div className={cx("clone-form")}>

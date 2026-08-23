@@ -5,6 +5,7 @@ import { useGit } from '../../stores/git';
 import { toastError, useToast } from '../../stores/toast';
 import styles from './AuthDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
+import { useDialogKeys } from '../../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -61,16 +62,24 @@ export function AuthDialog() {
       .finally(() => setLoading(false));
   }, [open, repoRoot]);
 
-  if (!open || !repoRoot) return null;
-
-  const save = () =>
-    api
+  const save = () => {
+    if (!repoRoot) return Promise.resolve();
+    return api
       .gitAuthSet(repoRoot, sshKey.trim(), helper.trim())
       .then(() => {
         show('success', '認証設定を保存しました');
         close();
       })
       .catch(toastError);
+  };
+
+  const dialogRef = useDialogKeys({
+    enabled: open,
+    onEnter: loading ? null : () => void save(),
+    onEscape: close,
+  });
+
+  if (!open || !repoRoot) return null;
 
   // 未保存の設定でテストできるよう、テスト前に保存してから ls-remote する
   const test = () => {
@@ -87,7 +96,7 @@ export function AuthDialog() {
   const usesSsh = remotes.some((r) => /^(git@|ssh:\/\/)/.test(r.url));
 
   return (
-    <div className={cx("dialog-backdrop")}>
+    <div ref={dialogRef} className={cx("dialog-backdrop")}>
       <div className={cx("dialog auth-dialog")}>
         <div className={cx("dialog-title")}>認証設定 (このリポジトリ)</div>
         {loading ? (

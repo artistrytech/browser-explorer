@@ -8,6 +8,7 @@ import { runGitCommands } from './GitCommandDialog';
 import { openCommitDetail } from './CommitDetailDialog';
 import styles from './StashDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
+import { useDialogKeys } from '../../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -88,9 +89,8 @@ export function StashDialog() {
       .finally(() => setLoading(false));
   }, [open, repoRoot]);
 
-  if (!open || !repoRoot) return null;
-
   const doStash = () => {
+    if (!repoRoot) return;
     const msg = message.trim();
     close();
     void runGitCommands(repoRoot, [msg ? ['stash', 'push', '-m', msg] : ['stash', 'push']], 'Stash');
@@ -98,7 +98,7 @@ export function StashDialog() {
 
   /** 復元 (pop/apply)。詳細ダイアログからは対象の ref を明示的に受け取る */
   const doRestore = (ref: string | null = selected) => {
-    if (!ref) return;
+    if (!ref || !repoRoot) return;
     const entry = list.find((s) => s.ref === ref);
     const drop = dropAfter;
     close();
@@ -122,6 +122,14 @@ export function StashDialog() {
     });
   };
 
+  const dialogRef = useDialogKeys({
+    enabled: open,
+    onEnter: selected && !loading ? () => doRestore() : null,
+    onEscape: close,
+  });
+
+  if (!open || !repoRoot) return null;
+
   /** 行のダブルクリック: 詳細ダイアログを開き、そこで復元されたらこのダイアログも閉じる */
   const showDetail = (s: StashEntry) => {
     setSelected(s.ref);
@@ -139,7 +147,7 @@ export function StashDialog() {
   };
 
   return (
-    <div className={cx("dialog-backdrop")}>
+    <div ref={dialogRef} className={cx("dialog-backdrop")}>
       <div className={cx("dialog push-dialog")}>
         <div className={cx("dialog-title")}>Stash</div>
         <div className={cx("clone-form")}>
@@ -175,6 +183,9 @@ export function StashDialog() {
                     title="クリックで選択、ダブルクリックで詳細を表示"
                     onClick={() => setSelected(s.ref)}
                     onDoubleClick={() => showDetail(s)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') doRestore(s.ref);
+                    }}
                   >
                     <span className={cx("stash-ref")}>{s.ref}</span>
                     <span className={cx("stash-msg")} title={s.message}>

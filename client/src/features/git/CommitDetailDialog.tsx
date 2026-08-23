@@ -6,6 +6,7 @@ import type { CommitFilesResult } from '../../types';
 import { CommitFileDiff, commitFileLabel } from './CommitFileDiff';
 import styles from './CommitDetailDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
+import { useDialogKeys } from '../../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -123,18 +124,12 @@ export function CommitDetailDialog() {
     if (open && detail) listRef.current?.focus();
   }, [open, detail]);
 
-  // 開いている間は Escape で閉じられるようにする
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        finish(null);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, resolve]);
+  // Enter = 主ボタン (無ければ閉じる) / Escape = 閉じる
+  const dialogRef = useDialogKeys({
+    enabled: open,
+    onEnter: () => finish(options.actionLabel ? 'action' : null),
+    onEscape: () => finish(null),
+  });
 
   if (!open) return null;
 
@@ -184,7 +179,7 @@ export function CommitDetailDialog() {
   };
 
   return (
-    <div className={cx("dialog-backdrop nested")} onMouseDown={() => finish(null)}>
+    <div ref={dialogRef} className={cx("dialog-backdrop nested")} onMouseDown={() => finish(null)}>
       <div className={cx("dialog commit-detail-dialog")} onMouseDown={(e) => e.stopPropagation()}>
         <div className={cx("dialog-title")}>{options.title ?? `コミットの詳細 — ${target}`}</div>
 

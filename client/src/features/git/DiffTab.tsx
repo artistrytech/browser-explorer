@@ -187,7 +187,7 @@ export function DiffTab() {
       {!data ? (
         <div className={cx("empty-hint")}>読み込み中…</div>
       ) : data.binary ? (
-        <div className={cx("empty-hint")}>バイナリファイルのため差分を表示できません</div>
+        <div className={cx("empty-hint")}>バイナリファイルです</div>
       ) : !isText ? (
         <div className={cx("empty-hint")}>内容を取得できませんでした</div>
       ) : (

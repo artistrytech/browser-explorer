@@ -8,6 +8,7 @@ import { useToast, toastError } from '../../stores/toast';
 import { joinPath } from '../../lib/paths';
 import styles from './CloneDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
+import { useDialogKeys } from '../../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -111,9 +112,8 @@ export function CloneDialog() {
     });
   }, [cloneId]);
 
-  if (!open) return null;
-
   const busy = cloneId !== null;
+  const canClone = !busy && url.trim().length > 0 && dir.trim().length > 0;
 
   const startClone = async () => {
     if (!url.trim() || !dir.trim()) return;
@@ -134,8 +134,17 @@ export function CloneDialog() {
     }
   };
 
+  // clone 実行中は中断できないので、キーでは閉じない
+  const dialogRef = useDialogKeys({
+    enabled: open,
+    onEnter: canClone ? () => void startClone() : null,
+    onEscape: busy ? null : close,
+  });
+
+  if (!open) return null;
+
   return (
-    <div className={cx("dialog-backdrop")}>
+    <div ref={dialogRef} className={cx("dialog-backdrop")}>
       <div className={cx("dialog clone-dialog")}>
         <div className={cx("dialog-title")}>Git Clone</div>
         <div className={cx("clone-form")}>
@@ -205,7 +214,7 @@ export function CloneDialog() {
           <button className={cx("btn")} disabled={busy} onClick={close}>
             キャンセル
           </button>
-          <button className={cx("btn primary")} disabled={busy || !url.trim() || !dir.trim()} onClick={() => void startClone()}>
+          <button className={cx("btn primary")} disabled={!canClone} onClick={() => void startClone()}>
             {busy ? 'Clone 中…' : 'Clone'}
           </button>
         </div>

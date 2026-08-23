@@ -5,6 +5,7 @@ import { setCommitDraft } from '../../stores/commitDraft';
 import { runGitCommands } from './GitCommandDialog';
 import styles from './CherryPickDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
+import { useDialogKeys } from '../../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -62,8 +63,6 @@ export function CherryPickDialog() {
     }
   }, [open]);
 
-  if (!open) return null;
-
   // -x はコミットメッセージへの追記なので、即コミットしない場合は指定できない
   const canRecordOrigin = commit;
   const args = [
@@ -92,8 +91,12 @@ export function CherryPickDialog() {
     });
   };
 
+  const dialogRef = useDialogKeys({ enabled: open, onEnter: doCherryPick, onEscape: close });
+
+  if (!open) return null;
+
   return (
-    <div className={cx('dialog-backdrop')}>
+    <div ref={dialogRef} className={cx('dialog-backdrop')}>
       <div className={cx('dialog push-dialog')}>
         <div className={cx('dialog-title')}>Cherry-pick</div>
         <div className={cx('clone-form')}>

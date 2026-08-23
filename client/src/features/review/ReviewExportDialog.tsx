@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { toastError, useToast } from '../../stores/toast';
 import styles from './Review.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
+import { useDialogKeys } from '../../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -49,8 +50,6 @@ export function ReviewExportDialog() {
       .finally(() => setLoading(false));
   }, [open, id]);
 
-  if (!open) return null;
-
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(markdown);
@@ -60,8 +59,20 @@ export function ReviewExportDialog() {
     }
   };
 
+  const dialogRef = useDialogKeys({
+    enabled: open,
+    onEnter: loading || !markdown ? null : () => void copy(),
+    onEscape: close,
+  });
+
+  if (!open) return null;
+
   return (
-    <div className={cx('dialog-backdrop')} onMouseDown={(e) => e.target === e.currentTarget && close()}>
+    <div
+      ref={dialogRef}
+      className={cx('dialog-backdrop')}
+      onMouseDown={(e) => e.target === e.currentTarget && close()}
+    >
       <div className={cx('dialog rv-export')}>
         <div className={cx('dialog-title')}>レビュー結果 (Markdown)</div>
         <div className={cx('rv-note')}>

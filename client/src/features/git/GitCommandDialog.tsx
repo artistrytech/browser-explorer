@@ -6,6 +6,7 @@ import { useExplorer } from '../../stores/explorer';
 import { openConflictResolver } from '../../stores/conflict';
 import styles from './GitCommandDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
+import { useDialogKeys } from '../../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -103,6 +104,19 @@ export function GitCommandDialog() {
     bodyRef.current?.scrollTo(0, bodyRef.current.scrollHeight);
   }, [steps]);
 
+  /** 見た目上の既定ボタンと同じ動作: 競合が残っていれば閉じて解消ツールへ、それ以外は閉じるだけ */
+  const accept = () => {
+    close();
+    if (conflicts > 0) openConflictResolver('');
+  };
+
+  // 実行中は結果が確定していないので、キーでは閉じない
+  const dialogRef = useDialogKeys({
+    enabled: open,
+    onEnter: running ? null : accept,
+    onEscape: running ? null : close,
+  });
+
   if (!open) return null;
 
   const failed = steps.some((s) => s.ok === false);
@@ -113,7 +127,7 @@ export function GitCommandDialog() {
     : '';
 
   return (
-    <div className={cx("dialog-backdrop")}>
+    <div ref={dialogRef} className={cx("dialog-backdrop")}>
       <div className={cx("dialog gitcmd-dialog")}>
         <div className={cx("dialog-title")}>{title}</div>
         <div className={cx("gitcmd-body")} ref={bodyRef}>
@@ -149,10 +163,7 @@ export function GitCommandDialog() {
             <button
               className={cx("btn primary")}
               disabled={running}
-              onClick={() => {
-                close();
-                openConflictResolver('');
-              }}
+              onClick={accept}
             >
               競合を解消… ({conflicts} 件)
             </button>

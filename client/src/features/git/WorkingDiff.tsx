@@ -9,6 +9,7 @@ import {
   buildLinesPatch,
   hunkLineNumbers,
   isChangeLine,
+  isBinaryDiff,
   type FileDiff,
 } from '../../lib/diffPatch';
 import { DiffLineText, useDiffHighlight, type DiffSources } from '../../lib/diffHighlight';
@@ -205,7 +206,9 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
       {loading ? (
         <div className={cx("empty-hint")}>読み込み中…</div>
       ) : !parsed || parsed.hunks.length === 0 ? (
-        <div className={cx("empty-hint")}>差分はありません</div>
+        <div className={cx("empty-hint")}>
+          {parsed && isBinaryDiff(parsed) ? 'バイナリファイルです' : '差分はありません'}
+        </div>
       ) : (
         parsed.hunks.map((hunk, hIdx) => {
           const hunkSel = new Set<number>();

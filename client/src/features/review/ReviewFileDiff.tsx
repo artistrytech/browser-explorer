@@ -332,7 +332,7 @@ export function ReviewFileDiff({
       ) : !rows || rows.length === 0 ? (
         <div className={cx('empty-hint')}>
           {file.binary
-            ? '表示できる差分はありません (バイナリ)'
+            ? 'バイナリファイルです'
             : file.oldPath
               ? '名前の変更のみで、内容の変更はありません'
               : '表示できる差分はありません'}

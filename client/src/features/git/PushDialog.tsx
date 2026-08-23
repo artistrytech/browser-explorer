@@ -4,6 +4,7 @@ import { useGit } from '../../stores/git';
 import { runGitCommands } from './GitCommandDialog';
 import styles from './PushDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
+import { useDialogKeys } from '../../lib/dialogKeys';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -55,9 +56,8 @@ export function PushDialog() {
     setForceWithLease(false);
   }, [open, tracking]);
 
-  if (!open || !repoRoot) return null;
-
   const doPush = () => {
+    if (!repoRoot || !branch) return;
     const args = ['push'];
     if (forceWithLease) args.push('--force-with-lease');
     if (!tracking) args.push('-u'); // 初回 push はトラッキングを設定
@@ -69,8 +69,12 @@ export function PushDialog() {
     void runGitCommands(repoRoot, [args], 'Push');
   };
 
+  const dialogRef = useDialogKeys({ enabled: open, onEnter: doPush, onEscape: close });
+
+  if (!open || !repoRoot) return null;
+
   return (
-    <div className={cx("dialog-backdrop")}>
+    <div ref={dialogRef} className={cx("dialog-backdrop")}>
       <div className={cx("dialog push-dialog")}>
         <div className={cx("dialog-title")}>Push</div>
         <div className={cx("clone-form")}>
