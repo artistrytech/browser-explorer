@@ -107,9 +107,13 @@
   gap: 4px;
 }
 
+/*
+ * 行のクリックでステージ/破棄の対象を選ぶ行。
+ * テキストのコピーができるよう、ブラウザ既定の範囲選択は殺さない
+ * (ドラッグで選択したときは行の選択トグルを見送る。WorkingDiff.tsx の clickLine)
+ */
 .diff-line.wd-selectable {
   cursor: pointer;
-  user-select: none;
 }
 
 /* 選択中の行。追加/削除の行背景を潰さないよう、半透明の黄色を内側の影で重ねる */

@@ -166,8 +166,20 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
     }
   };
 
+  /**
+   * Shift+クリックは行の範囲選択に使うので、ブラウザ既定の「テキスト選択の拡張」は止める。
+   * (Shift 無しのドラッグによるテキストの範囲選択・コピーはそのまま使える)
+   */
+  const mouseDownLine = (e: React.MouseEvent) => {
+    if (e.shiftKey) e.preventDefault();
+  };
+
   /** 行クリック: トグル / Shift で同一 Hunk 内の範囲をまとめて選択 */
   const clickLine = (e: React.MouseEvent, hIdx: number, lIdx: number) => {
+    // ドラッグでテキストを範囲選択したときは、行の選択トグルとして扱わない。
+    // (単純なクリックなら mousedown の時点で選択が解除され collapsed になる。
+    //  Shift+クリックは mousedown で既定動作を止めているのでテキスト選択は起きない)
+    if (!e.shiftKey && !(window.getSelection()?.isCollapsed ?? true)) return;
     const key = `${hIdx}:${lIdx}`;
     if (e.shiftKey && anchorLine && parsed) {
       const [ah, al] = anchorLine.split(':').map(Number);
@@ -283,6 +295,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
                     <div
                       key={lIdx}
                       className={cx(`diff-line ${cls}${selectable ? ' wd-selectable' : ''}${isSel ? ' wd-line-sel' : ''}`)}
+                      onMouseDown={selectable ? mouseDownLine : undefined}
                       onClick={selectable ? (e) => clickLine(e, hIdx, lIdx) : undefined}
                     >
                       <span className={cx("wd-lineno")} aria-hidden="true">{no.old ?? ''}</span>
