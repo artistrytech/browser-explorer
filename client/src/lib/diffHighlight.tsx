@@ -43,6 +43,9 @@ export interface DiffSources {
   new: string | null;
 }
 
+/** colorize に渡すタブ幅。Monaco はタブをこの幅までの空白に展開して出力する */
+const TAB_SIZE = 4;
+
 /**
  * 複数行をまとめて色付けし、行ごとの HTML を返す。
  * 色付けできない場合 (プレーンテキスト・言語未対応・失敗) は null。
@@ -55,7 +58,7 @@ async function colorizeLines(lines: string[], path: string, dark: boolean): Prom
   try {
     // 色は「現在のテーマ」で決まるため、差分だけを見ている場合も明暗を合わせる
     monaco.editor.setTheme(dark ? 'vs-dark' : 'vs');
-    const html = await monaco.editor.colorize(lines.join('\n'), language, { tabSize: 4 });
+    const html = await monaco.editor.colorize(lines.join('\n'), language, { tabSize: TAB_SIZE });
     // Monaco はエディタ内での桁ずれを防ぐため空白を NBSP で出力するが、
     // 差分表示は white-space: pre-wrap なので通常の空白で問題なく、
     // NBSP のままだとコピーしたテキストに紛れ込む
@@ -64,6 +67,43 @@ async function colorizeLines(lines: string[], path: string, dark: boolean): Prom
   } catch {
     return null; // 失敗しても素のテキストで表示できればよい
   }
+}
+
+/** Monaco の isFullWidthCharacter に合わせた全角判定 (タブ位置の計算に使う) */
+function isFullWidth(code: number): boolean {
+  return (
+    (code >= 0x2e80 && code <= 0xd7af) || (code >= 0xf900 && code <= 0xfaff) || (code >= 0xff01 && code <= 0xff5e)
+  );
+}
+
+/**
+ * 素のテキスト上の位置 [start, end) を、色付き HTML 上の文字位置に読み替える。
+ *
+ * Monaco はタブを 1 文字ではなく次のタブ位置までの空白に展開して出力するため、
+ * タブを含む行では素のテキストと HTML とで文字数がずれる (タブ幅 4 でインデントが
+ * タブ 2 個なら 2 文字が 8 文字になり、以降は 6 文字ぶん後ろにずれる)。
+ * 行内強調の範囲は素のテキストに対して求めているので、ここで数え直す。
+ */
+function renderedRange(text: string, [start, end]: WordRange): WordRange {
+  if (!text.includes('\t')) return [start, end];
+  let column = 0; // 表示上の桁 (タブ位置の計算に使う)
+  let rendered = 0; // HTML 上の文字数
+  let outStart = start;
+  let outEnd = end;
+  for (let i = 0; i <= text.length; i++) {
+    if (i === start) outStart = rendered;
+    if (i === end) outEnd = rendered;
+    if (i === text.length) break;
+    if (text[i] === '\t') {
+      const width = TAB_SIZE - (column % TAB_SIZE);
+      column += width;
+      rendered += width;
+    } else {
+      column += isFullWidth(text.charCodeAt(i)) ? 2 : 1;
+      rendered += 1;
+    }
+  }
+  return [outStart, outEnd];
 }
 
 /**
@@ -142,7 +182,7 @@ export function useDiffHighlight(
     const fromFile = { old: oldFile !== null, new: newFile !== null };
     const oldLines: string[] = oldFile ?? [];
     const newLines: string[] = newFile ?? [];
-    const slots: { key: string; tag: string; side: 'old' | 'new'; index: number }[] = [];
+    const slots: { key: string; tag: string; side: 'old' | 'new'; index: number; text: string }[] = [];
     parsed.hunks.forEach((hunk, h) => {
       const nos = hunkLineNumbers(hunk);
       hunk.lines.forEach((line, l) => {
@@ -151,12 +191,13 @@ export function useDiffHighlight(
         const key = `${h}:${l}`;
         const side = tag === '-' ? 'old' : 'new';
         const lines = side === 'old' ? oldLines : newLines;
+        const text = line.slice(1);
         if (fromFile[side]) {
           // ファイル全体の何行目か (1 始まり) で引く
-          slots.push({ key, tag, side, index: ((side === 'old' ? nos[l].old : nos[l].new) ?? 0) - 1 });
+          slots.push({ key, tag, side, index: ((side === 'old' ? nos[l].old : nos[l].new) ?? 0) - 1, text });
         } else {
-          slots.push({ key, tag, side, index: lines.length });
-          lines.push(line.slice(1));
+          slots.push({ key, tag, side, index: lines.length, text });
+          lines.push(text);
         }
       });
     });
@@ -169,7 +210,11 @@ export function useDiffHighlight(
           if (!html) continue;
           const range = ranges.get(slot.key);
           // 行内強調は描画のたびに DOM を起こさなくて済むよう、ここで焼き込む
-          next.set(slot.key, range ? markHtmlRange(html, range, wordClass(slot.tag)) : html);
+          // (範囲は素のテキスト上の位置なので、タブ展開のぶんを読み替えてから渡す)
+          next.set(
+            slot.key,
+            range ? markHtmlRange(html, renderedRange(slot.text, range), wordClass(slot.tag)) : html,
+          );
         }
         setMap(next);
       },
