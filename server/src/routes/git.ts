@@ -1504,3 +1504,78 @@ gitRouter.post('/clone', (req, res) => {
 
   res.json({ ok: true, id });
 });
+
+/**
+ * アーカイブ (zip ダウンロード)。
+ * 対象パス (repo 相対。省略時はリポジトリ全体) の HEAD 時点の内容を git archive で zip 化し、
+ * 添付ファイルとしてそのままレスポンスへ流す (作業ツリーの未コミット変更は含まれない)。
+ * 展開時にフォルダが 1 つできるよう --prefix を付ける。
+ */
+gitRouter.get('/archive', async (req, res) => {
+  const repo = req.query.repo;
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  const raw = req.query.path;
+  const rels = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw])
+    .map((p) => relPath(p))
+    .filter((p) => p.length > 0);
+  const single = rels.length === 1 ? rels[0] : null;
+
+  const run = (args: string[]) =>
+    execFileAsync('git', args, { cwd: repo, windowsHide: true })
+      .then(({ stdout }) => stdout.trim())
+      .catch(() => '');
+
+  // 単一フォルダは HEAD:<rel> を起点にして、その中身が zip 直下に来るようにする。
+  // ファイル / 複数指定 / リポジトリ全体は HEAD + pathspec (repo 相対パスを保ったまま格納)
+  const isDir = single !== null && (await run(['cat-file', '-t', `HEAD:${single}`])) === 'tree';
+  const shortSha = await run(['rev-parse', '--short', 'HEAD']);
+
+  // ファイル名 / --prefix に使えない文字を落とす (Windows で保存できなくなるため)
+  const safe = (s: string) => s.replace(/[\/:*?"<>|]/g, '_').trim() || 'archive';
+  const prefix = safe(path.basename(isDir && single !== null ? single : repo));
+  const nameBase = safe(
+    single === null
+      ? path.basename(repo)
+      : isDir
+        ? path.basename(single)
+        : path.basename(single, path.extname(single)),
+  );
+  const filename = `${nameBase}${shortSha ? `-${shortSha}` : ''}.zip`;
+
+  const args = ['archive', '--format=zip', `--prefix=${prefix}/`];
+  args.push(isDir && single !== null ? `HEAD:${single}` : 'HEAD');
+  if (!isDir && rels.length > 0) args.push('--', ...rels);
+
+  const child = spawn('git', args, { cwd: repo, windowsHide: true });
+  let err = '';
+  let started = false;
+  child.stderr.on('data', (c: Buffer) => {
+    err += c.toString('utf8');
+  });
+  // ヘッダは最初のデータが届いてから送る (それまでに失敗したら JSON エラーを返せるようにする)
+  child.stdout.once('data', (chunk: Buffer) => {
+    started = true;
+    res.setHeader('Content-Type', 'application/zip');
+    // 非 ASCII (日本語フォルダ名など) 用に RFC 5987 形式も併記する
+    const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    );
+    res.write(chunk);
+    child.stdout.pipe(res);
+  });
+  // ダウンロード中断時は git を止める
+  res.on('close', () => {
+    if (!child.killed) child.kill();
+  });
+  child.on('error', (e) => {
+    if (!started) res.status(500).json({ error: 'archive_failed', message: e.message });
+    else res.destroy();
+  });
+  child.on('close', (code) => {
+    if (started) return; // pipe 側で end される (途中終了なら破損 zip となる)
+    if (code === 0) res.status(400).json({ error: 'archive_failed', message: 'アーカイブ対象がありません' });
+    else res.status(400).json({ error: 'archive_failed', message: err.trim() || `git archive exited ${code}` });
+  });
+});

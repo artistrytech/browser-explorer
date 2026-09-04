@@ -31,6 +31,7 @@ const MENU_ITEMS: { key: string; label: string }[] = [
   { key: 'deletePermanent', label: '  完全に削除' },
   { key: 'groupGit', label: '「Git」サブメニュー' },
   { key: 'gitLog', label: '  Git ログ' },
+  { key: 'gitArchive', label: '  アーカイブ' },
   { key: 'resolveConflict', label: '  競合を解消…' },
   { key: 'gitClone', label: '  Git Clone…' },
   { key: 'gitStage', label: '  ステージ' },

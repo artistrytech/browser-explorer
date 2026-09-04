@@ -29,6 +29,41 @@ function reqPath(v: unknown): string {
   return norm(path.resolve(v));
 }
 
+/**
+ * リネーム後の「名前」の検証。
+ * 名前はパスではないので reqPath (path.resolve) は通さない
+ * — 通すと "3.txt" が "C:/.../3.txt" へ絶対パス化され、常に区切り文字を含む扱いになってしまう。
+ * パス区切りと . / .. 、Windows でファイル名に使えない文字だけを拒否する。
+ */
+function reqName(v: unknown): string {
+  const name = typeof v === 'string' ? v : '';
+  const invalid =
+    name.length === 0 ||
+    name === '.' ||
+    name === '..' ||
+    /[/\\]/.test(name) ||
+    // eslint-disable-next-line no-control-regex
+    (process.platform === 'win32' && /[<>:"|?*\x00-\x1f]/.test(name));
+  if (invalid) {
+    const err = new Error('名前に使用できない文字が含まれています') as Error & {
+      status?: number;
+      code?: string;
+    };
+    err.status = 400;
+    err.code = 'bad_name';
+    throw err;
+  }
+  return name;
+}
+
+/** 存在確認 (リネーム先の重複チェック用) */
+async function exists(target: string): Promise<boolean> {
+  return fs
+    .access(target)
+    .then(() => true)
+    .catch(() => false);
+}
+
 fsRouter.get('/volumes', async (_req, res) => {
   res.json({ volumes: await listVolumes(), home: homeDir() });
 });
@@ -88,12 +123,13 @@ fsRouter.post('/create', async (req, res) => {
 
 fsRouter.post('/rename', async (req, res) => {
   const p = reqPath(req.body.path);
-  const newName = reqPath(req.body.newName);
-  if (newName.includes('/') || newName.includes('\\')) {
-    res.status(400).json({ error: 'bad_name', message: '名前に使用できない文字が含まれています' });
+  const newName = reqName(req.body.newName);
+  const dest = path.join(path.dirname(p), newName);
+  // 既存の別ファイル/フォルダを黙って上書きしない (大文字小文字だけの変更は同じ対象なので許可)
+  if (norm(dest).toLowerCase() !== norm(p).toLowerCase() && (await exists(dest))) {
+    res.status(409).json({ error: 'exists', message: '同じ名前のファイル/フォルダが既に存在します' });
     return;
   }
-  const dest = path.join(path.dirname(p), newName);
   await fs.rename(p, dest);
   res.json({ ok: true, path: norm(dest) });
 });

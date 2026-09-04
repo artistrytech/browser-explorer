@@ -35,6 +35,20 @@ export class ApiError extends Error {
   }
 }
 
+/** エラーレスポンス (JSON の error/message) を ApiError にして投げる */
+async function throwApiError(res: Response): Promise<never> {
+  let code = 'error';
+  let message = res.statusText;
+  try {
+    const body = await res.json();
+    code = body.error ?? code;
+    message = body.message ?? message;
+  } catch {
+    /* not json */
+  }
+  throw new ApiError(res.status, code, message);
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -44,19 +58,22 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  if (!res.ok) {
-    let code = 'error';
-    let message = res.statusText;
-    try {
-      const body = await res.json();
-      code = body.error ?? code;
-      message = body.message ?? message;
-    } catch {
-      /* not json */
-    }
-    throw new ApiError(res.status, code, message);
-  }
+  if (!res.ok) await throwApiError(res);
   return res.json() as Promise<T>;
+}
+
+/**
+ * 添付ファイル (バイナリ) の取得。
+ * ファイル名は Content-Disposition から取り出す (非 ASCII は filename*= 側を使う)
+ */
+async function requestFile(url: string): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch(url, { headers: { 'x-app-token': APP_TOKEN } });
+  if (!res.ok) await throwApiError(res);
+  const cd = res.headers.get('content-disposition') ?? '';
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+  const plain = /filename="([^"]*)"/i.exec(cd);
+  const filename = star ? decodeURIComponent(star[1]) : (plain?.[1] ?? 'download');
+  return { blob: await res.blob(), filename };
 }
 
 const get = <T>(url: string) => request<T>(url);
@@ -192,6 +209,12 @@ export const api = {
     post<{ ok: true }>('/api/git/unstage', { repo, paths }),
   gitDiscard: (repo: string, paths: string[], full = false) =>
     post<{ ok: true }>('/api/git/discard', { repo, paths, full }),
+  /**
+   * アーカイブ: 対象パス (repo 相対。空ならリポジトリ全体) の HEAD 時点の内容を zip で取得。
+   * 作業ツリーの未コミット変更は含まれない
+   */
+  gitArchive: (repo: string, paths: string[]) =>
+    requestFile(`/api/git/archive?repo=${q(repo)}${paths.map((p) => `&path=${q(p)}`).join('')}`),
   gitCommit: (repo: string, message: string, amend = false) =>
     post<{ ok: true; commit: string }>('/api/git/commit', { repo, message, amend }),
   /**
