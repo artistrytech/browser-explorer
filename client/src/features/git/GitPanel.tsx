@@ -475,6 +475,17 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   };
 
   /**
+   * Ctrl+Enter (mac は ⌘+Enter) のコミット。
+   * ステージ済みが 1 件も無いときは Commit では何も起きないので Commit All に振る
+   * (確認ダイアログは doCommitAll 側で出る)。
+   * amend はステージ無しでも「直前のコミットのメッセージ修正」として成立するので Commit のまま。
+   */
+  const commitByShortcut = () => {
+    if (staged.length === 0 && !amend) doCommitAll();
+    else doCommit();
+  };
+
+  /**
    * 未追跡ファイルを .git/info/exclude に追加する (.gitignore と違いコミットされない)。
    * 追加するパターンはダイアログで編集でき、既定はパス完全一致。
    */
@@ -1619,7 +1630,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                       // Ctrl+Enter (mac は ⌘+Enter) でコミット実行
                       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                         e.preventDefault();
-                        doCommit();
+                        commitByShortcut();
                       }
                     }}
                   />
