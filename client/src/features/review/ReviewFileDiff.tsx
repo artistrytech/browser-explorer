@@ -144,7 +144,10 @@ export function ReviewFileDiff({
     return () => {
       stale = true; // 選択が素早く変わった場合、古い応答で上書きしない
     };
-  }, [reviewId, file.path, file.oldPath]);
+    // baseCommit / headCommit も依存に含める:
+    // 「最新に更新」でレビューの対象コミットが変わったとき、開いたままの差分を取り直すため
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewId, file.path, file.oldPath, baseCommit, headCommit]);
 
   /**
    * 色付けの状態を正しく取るためのファイル全体 (変更前 / 変更後)。
