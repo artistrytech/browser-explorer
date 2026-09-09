@@ -15,8 +15,6 @@ import { GitPanel } from './features/git/GitPanel';
 import { CloneDialog } from './features/git/CloneDialog';
 import { ConflictResolver } from './features/git/ConflictResolver';
 import { GitCommandDialog } from './features/git/GitCommandDialog';
-import { PushDialog } from './features/git/PushDialog';
-import { FetchDialog } from './features/git/FetchDialog';
 import { SyncDialog } from './features/git/SyncDialog';
 import { StashDialog } from './features/git/StashDialog';
 import { CommitDetailDialog } from './features/git/CommitDetailDialog';
@@ -330,8 +328,6 @@ export default function App() {
       {/* リベース中の全画面ロック。ConflictResolver より前に置き、解消ツールを手前に重ねる */}
       <RebaseOverlay />
       <ConflictResolver />
-      <PushDialog />
-      <FetchDialog />
       <SyncDialog />
       <StashDialog />
       {/* コミット/Stash の詳細。Stash ダイアログの手前に重ねる */}

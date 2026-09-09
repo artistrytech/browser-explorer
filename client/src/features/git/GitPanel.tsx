@@ -25,8 +25,6 @@ import { LogPathFilter } from './LogPathFilter';
 import { openCloneDialog } from './CloneDialog';
 import { openConflictResolver, operationLabel } from '../../stores/conflict';
 import { runGitCommands } from './GitCommandDialog';
-import { openPushDialog } from './PushDialog';
-import { openFetchDialog } from './FetchDialog';
 import { openSyncDialog } from './SyncDialog';
 import { openStashDialog } from './StashDialog';
 import { openAuthDialog } from './AuthDialog';
@@ -692,26 +690,6 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           },
         ];
     openMenu(e.clientX, e.clientY, items);
-  };
-
-  /**
-   * ヘッダ「同期」ボタンの ▾ メニュー。
-   * 既定の一括同期はボタン本体に割り当ててあるので、ここには従来の単独操作だけを残す
-   */
-  const openSyncMenu = (e: React.MouseEvent) => {
-    openMenu(e.clientX, e.clientY, [
-      {
-        label: 'Fetch のみ…',
-        action: () => openFetchDialog(),
-      },
-      {
-        label: 'Pull (現在のブランチ)',
-        action: () =>
-          void confirmDialog('Pull', 'git pull を実行しますか?').then((ok) => {
-            if (ok) void runGitCommands(repoRoot, [['pull']], 'Pull');
-          }),
-      },
-    ]);
   };
 
   /** ヘッダの「ツール」メニュー: 変更の一括破棄 / リベース用バックアップ (backup/rebase/*) の削除 */
@@ -1416,28 +1394,16 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           🌿 {status?.branch ?? '?'}
           {status?.tracking ? ` ↑${status.ahead}↓${status.behind}` : ''}
         </span>
-        {/* 同期/Push/Stash は即時実行せず、確認ダイアログを挟む。
-            「同期」は fetch と、早送りできるブランチの一括更新をまとめた既定の操作で、
-            従来どおりの Fetch のみ / Pull は右の ▾ メニューに残してある。
+        {/* リモートとのやり取り (Push/Pull/Fetch/一括同期) は「同期」ダイアログにまとめ、
+            そこでタブを選んで実行する。Stash と同じく即時実行はしない。
             一括削除モード中はブランチに影響する操作をまとめて止める */}
         <button
-          className={cx("status-btn split-main")}
+          className={cx("status-btn")}
           disabled={busy || bulkMode}
-          title="リモートを取得し、早送りできるローカルブランチをまとめて更新する"
+          title="Push / Pull / Fetch / ブランチの一括同期"
           onClick={() => openSyncDialog()}
         >
           ⟳ 同期
-        </button>
-        <button
-          className={cx("status-btn split-more")}
-          disabled={busy || bulkMode}
-          title="Fetch のみ / Pull"
-          onClick={openSyncMenu}
-        >
-          ▾
-        </button>
-        <button className={cx("status-btn")} disabled={busy || bulkMode} onClick={openPushDialog}>
-          Push
         </button>
         <button className={cx("status-btn")} disabled={busy || bulkMode} onClick={openStashDialog}>
           Stash
