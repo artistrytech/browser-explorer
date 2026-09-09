@@ -65,6 +65,21 @@
   color: var(--danger);
 }
 
+/* 「同期」ボタン: 本体 + ▾ を隙間なく並べて 1 つの分割ボタンに見せる
+   (git-header の gap を打ち消すため、▾ 側に負のマージンを入れている) */
+.status-btn.split-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.status-btn.split-more {
+  margin-left: -6px;
+  padding: 1px 5px;
+  border-left: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
 .git-panel {
   display: flex;
   flex-direction: column;

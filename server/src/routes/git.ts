@@ -759,16 +759,29 @@ gitRouter.get('/branches', async (req, res) => {
   const localNames = new Set(branches.filter((br) => !br.name.startsWith('remotes/')).map((br) => br.name));
   const defaultBranch = await resolveDefaultBranch(g, localNames, b.current);
   const merged = await mergedBranchNames(g, defaultBranch);
-  const upstreamRaw = await g.raw(['for-each-ref', '--format=%(refname:short)%00%(upstream:short)', 'refs/heads']);
-  const upstreamByBranch = new Map<string, string>();
+  // 追跡先は短縮名 (origin/main) だけでなくリモート名と向こう側のフル ref も返す。
+  // 同期機能が `git fetch <remote> <remoteRef>:refs/heads/<local>` を組み立てるのに使う
+  // (短縮名だけでは origin/feature/x のどこまでがリモート名か判別できないため)
+  const upstreamRaw = await g.raw([
+    'for-each-ref',
+    '--format=%(refname:short)%00%(upstream:short)%00%(upstream:remotename)%00%(upstream:remoteref)',
+    'refs/heads',
+  ]);
+  const upstreamByBranch = new Map<string, { upstream: string; upstreamRemote: string; upstreamRef: string }>();
   for (const line of upstreamRaw.split('\n')) {
-    const [name, upstream] = line.split('\0');
-    if (name && upstream) upstreamByBranch.set(name, upstream);
+    const [name, upstream, upstreamRemote, upstreamRef] = line.split('\0');
+    if (name && upstream) {
+      upstreamByBranch.set(name, {
+        upstream,
+        upstreamRemote: upstreamRemote ?? '',
+        upstreamRef: upstreamRef ?? '',
+      });
+    }
   }
   const counts = new Map<string, { ahead: number; behind: number }>();
   await Promise.all(
     branches.map(async (branch) => {
-      const upstream = upstreamByBranch.get(branch.name);
+      const upstream = upstreamByBranch.get(branch.name)?.upstream;
       if (!upstream) return;
       const out = await g.raw(['rev-list', '--left-right', '--count', `${branch.name}...${upstream}`]).catch(() => '');
       const [aheadRaw, behindRaw] = out.trim().split(/\s+/);
@@ -783,6 +796,7 @@ gitRouter.get('/branches', async (req, res) => {
     branches: branches.map((branch) => ({
       ...branch,
       ...counts.get(branch.name),
+      ...upstreamByBranch.get(branch.name),
       ...(merged.has(branch.name) ? { merged: true } : {}),
     })),
   });

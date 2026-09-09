@@ -17,6 +17,7 @@ import { ConflictResolver } from './features/git/ConflictResolver';
 import { GitCommandDialog } from './features/git/GitCommandDialog';
 import { PushDialog } from './features/git/PushDialog';
 import { FetchDialog } from './features/git/FetchDialog';
+import { SyncDialog } from './features/git/SyncDialog';
 import { StashDialog } from './features/git/StashDialog';
 import { CommitDetailDialog } from './features/git/CommitDetailDialog';
 import { AuthDialog } from './features/git/AuthDialog';
@@ -331,6 +332,7 @@ export default function App() {
       <ConflictResolver />
       <PushDialog />
       <FetchDialog />
+      <SyncDialog />
       <StashDialog />
       {/* コミット/Stash の詳細。Stash ダイアログの手前に重ねる */}
       <CommitDetailDialog />

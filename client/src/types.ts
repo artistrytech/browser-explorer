@@ -59,6 +59,12 @@ export interface GitBranch {
   behind?: number;
   /** 既定ブランチにマージ済みのローカルブランチ (既定ブランチ自身は除く)。一括削除の既定チェックに使う */
   merged?: boolean;
+  /** 追跡先の短縮名 (例: origin/main)。表示用 */
+  upstream?: string;
+  /** 追跡先のリモート名 (例: origin)。同期の refspec 組み立て用 */
+  upstreamRemote?: string;
+  /** 追跡先のリモート側フル ref (例: refs/heads/main)。同期の refspec 組み立て用 */
+  upstreamRef?: string;
 }
 
 /** グラフ用ログの 1 コミット (002.md §5.2) */

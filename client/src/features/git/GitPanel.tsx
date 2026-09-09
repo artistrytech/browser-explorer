@@ -27,6 +27,7 @@ import { openConflictResolver, operationLabel } from '../../stores/conflict';
 import { runGitCommands } from './GitCommandDialog';
 import { openPushDialog } from './PushDialog';
 import { openFetchDialog } from './FetchDialog';
+import { openSyncDialog } from './SyncDialog';
 import { openStashDialog } from './StashDialog';
 import { openAuthDialog } from './AuthDialog';
 import { openCommitMessagePicker } from './CommitMessageDialog';
@@ -656,6 +657,12 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             action: () => checkoutBranch(b),
           },
           {
+            // 単独同期。切り替えずに追跡先へ早送りできる (ヘッダの「同期」を 1 件に絞ったもの)
+            label: 'リモートから更新…',
+            disabled: !b.upstream,
+            action: () => openSyncDialog(b.name),
+          },
+          {
             // 現在のブランチを切り替えずに、この行のブランチを起点に作れる
             label: 'ブランチを作成…',
             action: () => openCreateBranchDialog(b.name),
@@ -685,6 +692,26 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           },
         ];
     openMenu(e.clientX, e.clientY, items);
+  };
+
+  /**
+   * ヘッダ「同期」ボタンの ▾ メニュー。
+   * 既定の一括同期はボタン本体に割り当ててあるので、ここには従来の単独操作だけを残す
+   */
+  const openSyncMenu = (e: React.MouseEvent) => {
+    openMenu(e.clientX, e.clientY, [
+      {
+        label: 'Fetch のみ…',
+        action: () => openFetchDialog(),
+      },
+      {
+        label: 'Pull (現在のブランチ)',
+        action: () =>
+          void confirmDialog('Pull', 'git pull を実行しますか?').then((ok) => {
+            if (ok) void runGitCommands(repoRoot, [['pull']], 'Pull');
+          }),
+      },
+    ]);
   };
 
   /** ヘッダの「ツール」メニュー: 変更の一括破棄 / リベース用バックアップ (backup/rebase/*) の削除 */
@@ -1389,21 +1416,25 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           🌿 {status?.branch ?? '?'}
           {status?.tracking ? ` ↑${status.ahead}↓${status.behind}` : ''}
         </span>
-        {/* Fetch/Pull/Stash は即時実行せず、確認ダイアログを挟む (Push と同じフロー)。
+        {/* 同期/Push/Stash は即時実行せず、確認ダイアログを挟む。
+            「同期」は fetch と、早送りできるブランチの一括更新をまとめた既定の操作で、
+            従来どおりの Fetch のみ / Pull は右の ▾ メニューに残してある。
             一括削除モード中はブランチに影響する操作をまとめて止める */}
-        <button className={cx("status-btn")} disabled={busy || bulkMode} onClick={openFetchDialog}>
-          Fetch
+        <button
+          className={cx("status-btn split-main")}
+          disabled={busy || bulkMode}
+          title="リモートを取得し、早送りできるローカルブランチをまとめて更新する"
+          onClick={() => openSyncDialog()}
+        >
+          ⟳ 同期
         </button>
         <button
-          className={cx("status-btn")}
+          className={cx("status-btn split-more")}
           disabled={busy || bulkMode}
-          onClick={() =>
-            void confirmDialog('Pull', 'git pull を実行しますか?').then((ok) => {
-              if (ok) void runGitCommands(repoRoot, [['pull']], 'Pull');
-            })
-          }
+          title="Fetch のみ / Pull"
+          onClick={openSyncMenu}
         >
-          Pull
+          ▾
         </button>
         <button className={cx("status-btn")} disabled={busy || bulkMode} onClick={openPushDialog}>
           Push
