@@ -192,7 +192,7 @@
   flex: 1;
   min-width: 0;
   overflow: auto;
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
 }

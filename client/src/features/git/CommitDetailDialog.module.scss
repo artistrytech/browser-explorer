@@ -132,7 +132,7 @@
 }
 
 .sd-mono {
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 /* --- 差分ファイル一覧 --- */
@@ -221,7 +221,7 @@
   text-align: right;
   width: 64px;
   min-width: 64px;
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 .sd-status {

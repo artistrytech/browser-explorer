@@ -581,7 +581,7 @@
 .commit-files .num {
   text-align: right;
   width: 60px;
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 .cf-status {

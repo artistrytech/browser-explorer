@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
-import { monaco, languageForPath } from '../editor/monacoSetup';
+import { monaco, languageForPath, MONACO_FONT_FAMILY } from '../editor/monacoSetup';
 import { useGit } from '../../stores/git';
 import { useRebase } from '../../stores/rebase';
 import { useSettings } from '../../stores/settings';
@@ -376,6 +376,7 @@ function MergeTool({ file }: { file: string }) {
     const editor = monaco.editor.create(editorHostRef.current, {
       automaticLayout: true,
       minimap: { enabled: false },
+      fontFamily: MONACO_FONT_FAMILY,
       theme: theme === 'dark' ? 'vs-dark' : 'vs',
       value: buildResult(segs, res),
       language: languageForPath(file),

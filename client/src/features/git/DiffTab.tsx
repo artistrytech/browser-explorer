@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { api } from '../../api/client';
-import { monaco, languageForPath } from '../editor/monacoSetup';
+import { monaco, languageForPath, MONACO_FONT_FAMILY } from '../editor/monacoSetup';
 import { useSettings } from '../../stores/settings';
 import { switchView, replaceView, useUi } from '../../stores/ui';
 import { toastError } from '../../stores/toast';
@@ -122,6 +122,7 @@ export function DiffTab() {
       renderSideBySide: true,
       automaticLayout: true,
       minimap: { enabled: false },
+      fontFamily: MONACO_FONT_FAMILY,
       theme: theme === 'dark' ? 'vs-dark' : 'vs',
     });
     const lang = languageForPath(current.path);

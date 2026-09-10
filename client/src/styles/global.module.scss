@@ -1,10 +1,34 @@
 :global {
+  /*
+   * 等幅フォント: UDEV Gothic (JetBrains Mono + BIZ UDGothic の合成、SIL OFL 1.1)。
+   * Consolas だと日本語がビットマップ風の MS ゴシックにフォールバックして差分が読みづらいため、
+   * 英数字と日本語を同じ書体で 1:2 幅に揃えられるものを同梱する。
+   * ファイルは client/public/fonts (ライセンスも同じ場所)。配布元の TTF を無改変で置く
+   * (woff2 化は OFL 上「改変版」扱いになり Reserved Font Name の制限に触れうるため避ける)。
+   */
+  @font-face {
+    font-family: 'UDEV Gothic';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/fonts/UDEVGothic-Regular.ttf') format('truetype');
+  }
+  @font-face {
+    font-family: 'UDEV Gothic';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/fonts/UDEVGothic-Bold.ttf') format('truetype');
+  }
+
   * {
     box-sizing: border-box;
   }
 
   :root,
   body[data-theme='light'] {
+    /* 差分・ハッシュ・コマンド出力などコード系テキストの共通フォント (Monaco には JS 側で渡す) */
+    --font-mono: 'UDEV Gothic', Consolas, 'Courier New', monospace;
     --bg: #ffffff;
     --bg-alt: #f3f3f3;
     --bg-hover: #e8f0fe;

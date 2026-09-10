@@ -37,7 +37,7 @@
 
 .graph-hash {
   flex: none;
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
   color: var(--text-dim);
 }
 

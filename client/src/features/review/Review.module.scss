@@ -194,7 +194,7 @@
 
 .rv-branches code,
 .rv-c-branch code {
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 3px;
@@ -202,7 +202,7 @@
 }
 
 .rv-hashes {
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   opacity: 0.8;
 }
@@ -227,7 +227,7 @@
 }
 
 .rv-banner code {
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 .rv-split {
@@ -310,7 +310,7 @@
   flex: none;
   width: 16px;
   text-align: center;
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-dim);
 }
@@ -404,9 +404,9 @@
 
 /* 角の丸みは自分で持つ (親の overflow: hidden を外したため) */
 .rv-diff-body {
-  font-family: Consolas, 'Courier New', monospace;
-  font-size: 12px;
-  line-height: 1.5;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
   border-radius: 0 0 4px 4px;
   overflow: hidden;
 }
@@ -517,7 +517,7 @@
 }
 
 .rv-comment-loc {
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
   color: var(--accent);
 }
 
@@ -733,7 +733,7 @@
   border: 1px solid var(--border);
   border-radius: 3px;
   padding: 8px;
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre;
 }

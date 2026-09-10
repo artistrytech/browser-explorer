@@ -29,6 +29,19 @@ self.MonacoEnvironment = {
 
 export { monaco };
 
+/**
+ * Monaco に渡す等幅フォント。CSS 変数 --font-mono (styles/global.module.scss) と同じ内容。
+ * Monaco は文字幅を自前で計測するため CSS の継承では効かず、オプションで渡す必要がある。
+ */
+export const MONACO_FONT_FAMILY = "'UDEV Gothic', Consolas, 'Courier New', monospace";
+
+// Web フォントは実際に使われるまで読み込まれないため、ここで先読みしておく。
+// フォールバック字体で計測した文字幅のまま描画されると桁がずれるので、読み込み後に再計測させる。
+document.fonts
+  .load("13px 'UDEV Gothic'")
+  .then(() => monaco.editor.remeasureFonts())
+  .catch(() => {});
+
 /** パスから Monaco の言語 ID を推定 */
 export function languageForPath(path: string): string {
   const uri = monaco.Uri.file(path);

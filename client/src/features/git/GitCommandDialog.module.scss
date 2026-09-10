@@ -99,7 +99,7 @@
 }
 
 .gitcmd-command {
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
   word-break: break-all;
@@ -118,7 +118,7 @@
   margin: 4px 0 0;
   padding: 6px 8px;
   border-left: 3px solid var(--border);
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-all;

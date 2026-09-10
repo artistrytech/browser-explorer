@@ -90,7 +90,7 @@
 }
 
 .target-hash {
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
   color: var(--text-dim);
   flex: none;
 }
@@ -103,7 +103,7 @@
 
 /* 実行される git コマンドのプレビュー */
 .preview {
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-dim);
 }
