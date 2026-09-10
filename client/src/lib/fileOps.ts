@@ -5,6 +5,7 @@ import { useGit } from '../stores/git';
 import { useUi, type ExternalTool } from '../stores/ui';
 import { useToast, toastError } from '../stores/toast';
 import { confirmDialog, promptDialog } from '../stores/dialog';
+import { isMarkdownPath, openMarkdownPreview } from '../features/preview/MarkdownTab';
 import { joinPath, baseName, formatSize, formatDate, parentPath } from './paths';
 import { saveEnteredChild } from './focusMemory';
 import type { FsEntry } from '../types';
@@ -36,6 +37,7 @@ export async function runExternalTool(tool: ExternalTool, paths: string[]): Prom
 /**
  * ダブルクリック / Enter でエントリを開く。ファイルで拡張子に既定ツール (extDefaults) が
  * 設定されていればそのツールで起動し、無ければ従来どおり (フォルダは移動 / ファイルはエディタ)。
+ * ただし Markdown は既定でプレビュータブに開く (エディタは右クリック「エディタで開く」から)。
  */
 export function openWithDefault(entry: FsEntry): void {
   if (entry.type === 'file') {
@@ -44,6 +46,10 @@ export function openWithDefault(entry: FsEntry): void {
     const tool = toolId ? externalTools.find((t) => t.id === toolId) : undefined;
     if (tool) {
       void runExternalTool(tool, [entry.path]);
+      return;
+    }
+    if (isMarkdownPath(entry.path)) {
+      openMarkdownPreview(entry.path);
       return;
     }
   }

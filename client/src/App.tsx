@@ -27,6 +27,7 @@ import { CherryPickDialog } from './features/git/CherryPickDialog';
 import { RevertDialog } from './features/git/RevertDialog';
 import { DiffTab, useDiffTab, closeDiffTab, diffTargetFromUrl } from './features/git/DiffTab';
 import { ReviewTab } from './features/review/ReviewTab';
+import { MarkdownTab, usePreviewTab, closePreviewTab, previewPathFromUrl } from './features/preview/MarkdownTab';
 import { ReviewCreateDialog } from './features/review/ReviewCreateDialog';
 import { ReviewExportDialog } from './features/review/ReviewExportDialog';
 import { ContextMenuHost } from './components/ContextMenu';
@@ -62,6 +63,7 @@ export default function App() {
   const tabs = useEditor((s) => s.tabs);
   const activePath = useEditor((s) => s.activePath);
   const diffTarget = useDiffTab((s) => s.current);
+  const previewPath = usePreviewTab((s) => s.current);
   const repoRoot = useGit((s) => s.repoRoot);
   /** コミットタブに出す変更ファイル数 (ステージ済み + 変更 + 未追跡。リポジトリ外では出さない) */
   const changedCount = useGit((s) => s.status?.files.length ?? null);
@@ -86,6 +88,7 @@ export default function App() {
     const initialSearch = searchFromUrl();
     const initialDiff = diffTargetFromUrl();
     const initialReview = reviewIdFromUrl();
+    const initialPreview = previewPathFromUrl();
     const params = new URLSearchParams();
     params.set('path', initial);
     if (initialView !== 'files') params.set('view', initialView);
@@ -100,10 +103,12 @@ export default function App() {
       params.set('dpath', initialDiff.path);
     }
     if (initialReview) params.set('review', String(initialReview));
+    if (initialPreview) params.set('ppath', initialPreview);
     history.replaceState({ path: initial, view: initialView }, '', `${location.pathname}?${params}`);
     useUi.getState().setView(initialView);
     useGit.getState().setLogFilter(initialLogFilter);
     if (initialDiff) useDiffTab.getState().open(initialDiff);
+    if (initialPreview) usePreviewTab.getState().open(initialPreview);
     void navigate(initial, false).then(() => {
       if (initialSearch) void useExplorer.getState().runSearch(initialSearch, false);
     });
@@ -126,6 +131,11 @@ export default function App() {
       const nextDiff = diffTargetFromUrl();
       if (nextDiff && (curDiff?.hash !== nextDiff.hash || curDiff?.path !== nextDiff.path)) {
         useDiffTab.getState().open(nextDiff);
+      }
+      // Markdown プレビューの対象も URL から復元 (同一対象なら参照を維持)
+      const nextPreview = previewPathFromUrl();
+      if (nextPreview && usePreviewTab.getState().current !== nextPreview) {
+        usePreviewTab.getState().open(nextPreview);
       }
       // レビュータブ: 一覧 ⇄ 詳細も URL から復元する
       useReview.getState().syncFromUrl();
@@ -227,6 +237,11 @@ export default function App() {
     if (view === 'diff' && !diffTarget) replaceView('files');
   }, [view, diffTarget]);
 
+  // プレビュータブ: 対象が無いのに view=preview なら files へ
+  useEffect(() => {
+    if (view === 'preview' && !previewPath) replaceView('files');
+  }, [view, previewPath]);
+
   useEffect(() => {
     const activeTab = tabs.find((t) => t.path === activePath);
     const title =
@@ -234,11 +249,13 @@ export default function App() {
         ? baseName(path) || path
         : view === 'editor'
           ? activeTab?.name || 'Explorer'
-          : (isGitView(view) || view === 'review') && repoRoot
-            ? baseName(repoRoot) || repoRoot
-            : 'Explorer';
+          : view === 'preview' && previewPath
+            ? baseName(previewPath)
+            : (isGitView(view) || view === 'review') && repoRoot
+              ? baseName(repoRoot) || repoRoot
+              : 'Explorer';
     document.title = title;
-  }, [activePath, path, repoRoot, tabs, view]);
+  }, [activePath, path, previewPath, repoRoot, tabs, view]);
 
   return (
     <div className={cx("app")}>
@@ -250,6 +267,31 @@ export default function App() {
         {tabs.length > 0 && (
           <button className={cx(`view-tab${view === 'editor' ? ' active' : ''}`)} onClick={() => switchView('editor')}>
             📝 エディタ ({tabs.length})
+          </button>
+        )}
+        {previewPath && (
+          <button
+            className={cx(`view-tab${view === 'preview' ? ' active' : ''}`)}
+            onClick={() => switchView('preview')}
+            onMouseDown={(e) => {
+              // 中クリックでも閉じられるように (エディタタブと同様)
+              if (e.button === 1) {
+                e.preventDefault();
+                closePreviewTab();
+              }
+            }}
+          >
+            👁 {baseName(previewPath)}
+            <span
+              className={cx("view-tab-close")}
+              title="プレビュータブを閉じる"
+              onClick={(e) => {
+                e.stopPropagation();
+                closePreviewTab();
+              }}
+            >
+              ✕
+            </span>
           </button>
         )}
         {/* Git 系は独立した最上位タブ (コミットは旧「変更」と同機能)。履歴もそれぞれ独立 */}
@@ -315,6 +357,9 @@ export default function App() {
             </div>
             <div className={cx(`main-view${view === 'diff' ? '' : ' hidden'}`)}>
               {view === 'diff' && <DiffTab />}
+            </div>
+            <div className={cx(`main-view${view === 'preview' ? '' : ' hidden'}`)}>
+              {view === 'preview' && <MarkdownTab />}
             </div>
           </div>
         </Panel>

@@ -2,10 +2,18 @@ import { create } from 'zustand';
 import { api } from '../api/client';
 
 /**
- * メイン領域の表示: ファイル一覧 / コミット(変更) / ログ / ブランチ / エディタ / コミット差分。
+ * メイン領域の表示: ファイル一覧 / コミット(変更) / ログ / ブランチ / エディタ / コミット差分 / Markdown プレビュー。
  * Git 系 (commit/log/branches) はそれぞれ独立した最上位タブ (ブラウザ履歴も独立)。
  */
-export type MainView = 'files' | 'commit' | 'log' | 'branches' | 'review' | 'editor' | 'diff';
+export type MainView =
+  | 'files'
+  | 'commit'
+  | 'log'
+  | 'branches'
+  | 'review'
+  | 'editor'
+  | 'diff'
+  | 'preview';
 
 /** Git パネルを表示するビューか */
 export function isGitView(v: MainView): boolean {
@@ -93,7 +101,13 @@ export async function refreshUiConfig(): Promise<void> {
 export function viewFromUrl(): MainView {
   const v = new URLSearchParams(location.search).get('view');
   if (v === 'git') return 'commit';
-  return v === 'commit' || v === 'log' || v === 'branches' || v === 'review' || v === 'editor' || v === 'diff'
+  return v === 'commit' ||
+    v === 'log' ||
+    v === 'branches' ||
+    v === 'review' ||
+    v === 'editor' ||
+    v === 'diff' ||
+    v === 'preview'
     ? v
     : 'files';
 }

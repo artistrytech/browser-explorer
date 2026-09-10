@@ -94,6 +94,26 @@ fsRouter.get('/read', async (req, res) => {
   res.json({ path: norm(p), ...result, size: st.size, mtime: st.mtimeMs });
 });
 
+/**
+ * ファイルの内容をそのまま返す (Markdown プレビュー内の相対パス画像等)。
+ * Content-Type は拡張子から判定。上限は /read と同じ。
+ */
+fsRouter.get('/raw', async (req, res, next) => {
+  const p = reqPath(req.query.path);
+  const st = await fs.stat(p);
+  if (!st.isFile()) {
+    res.status(400).json({ error: 'not_file', message: 'ファイルではありません' });
+    return;
+  }
+  if (st.size > MAX_READ_SIZE) {
+    res.status(413).json({ error: 'too_large', message: 'ファイルが大きすぎます (20MB 超)' });
+    return;
+  }
+  res.sendFile(path.resolve(p), { dotfiles: 'allow' }, (err) => {
+    if (err) next(err);
+  });
+});
+
 fsRouter.post('/write', async (req, res) => {
   const { path: p, content, encoding, eol, bom } = req.body as {
     path: string;

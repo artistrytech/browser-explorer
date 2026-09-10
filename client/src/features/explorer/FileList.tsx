@@ -29,6 +29,7 @@ import { formatSize, formatDate, kindLabel, fileIcon, baseName } from '../../lib
 import { pinFolder, unpinFolder } from '../../lib/quickaccessOps';
 import { saveFocus, loadFocus, saveEnteredChild } from '../../lib/focusMemory';
 import { openCloneDialog } from '../git/CloneDialog';
+import { isMarkdownPath, openMarkdownPreview } from '../preview/MarkdownTab';
 import { openConflictResolver } from '../../stores/conflict';
 import { api } from '../../api/client';
 import { toastError, useToast } from '../../stores/toast';
@@ -466,6 +467,10 @@ export function FileList() {
           ]
         : [
             { id: 'openEditor', label: 'エディタで開く', action: () => openEntry(entry) },
+            // Markdown はダブルクリックの既定がプレビューなので、明示的に選べる項目も出す
+            ...(isMarkdownPath(entry.path)
+              ? [{ id: 'openPreview', label: 'プレビューで開く', action: () => openMarkdownPreview(entry.path) }]
+              : []),
             // ファイル: 同じフォルダを別ウィンドウで開いて対象にフォーカス
             { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(path, entry.name) },
             { separator: true },

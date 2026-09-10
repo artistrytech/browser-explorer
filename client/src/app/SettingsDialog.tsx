@@ -18,6 +18,7 @@ const MENU_ITEMS: { key: string; label: string }[] = [
   { key: 'groupOpen', label: '「開く」サブメニュー' },
   { key: 'open', label: '  開く' },
   { key: 'openEditor', label: '  エディタで開く' },
+  { key: 'openPreview', label: '  プレビューで開く (Markdown)' },
   { key: 'openNewWindow', label: '  別ウィンドウで開く' },
   { key: 'osFileManager', label: '  Explorer / Finder で開く' },
   { key: 'osTerminal', label: '  コマンドプロンプト / ターミナルで開く' },

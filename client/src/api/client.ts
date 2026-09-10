@@ -76,6 +76,13 @@ async function requestFile(url: string): Promise<{ blob: Blob; filename: string 
   return { blob: await res.blob(), filename };
 }
 
+/** バイナリ (画像等) を Blob で取得 */
+async function requestBlob(url: string): Promise<Blob> {
+  const res = await fetch(url, { headers: { 'x-app-token': APP_TOKEN } });
+  if (!res.ok) await throwApiError(res);
+  return res.blob();
+}
+
 const get = <T>(url: string) => request<T>(url);
 const post = <T>(url: string, body: unknown) =>
   request<T>(url, { method: 'POST', body: JSON.stringify(body) });
@@ -94,6 +101,8 @@ export const api = {
     get<FsEntry & { ctime: number; mode: number }>(`/api/fs/stat?path=${q(path)}`),
   read: (path: string, encoding?: string) =>
     get<ReadResult>(`/api/fs/read?path=${q(path)}${encoding ? `&encoding=${q(encoding)}` : ''}`),
+  /** ファイルの内容を Blob で取得 (Markdown プレビュー内の画像用) */
+  readBlob: (path: string) => requestBlob(`/api/fs/raw?path=${q(path)}`),
   write: (body: { path: string; content: string; encoding?: string; eol?: Eol; bom?: boolean }) =>
     post<{ ok: true; size: number; mtime: number }>('/api/fs/write', body),
   mkdir: (path: string) => post<{ ok: true; path: string }>('/api/fs/mkdir', { path }),
