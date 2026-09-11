@@ -10,6 +10,7 @@ import { useSettings } from '../../stores/settings';
 import { switchView, replaceView, useUi } from '../../stores/ui';
 import { toastError } from '../../stores/toast';
 import { baseName, parentPath, joinPath } from '../../lib/paths';
+import { savePreviewScroll, loadPreviewScroll } from '../../lib/previewViewMemory';
 import styles from './MarkdownTab.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -161,8 +162,15 @@ export function MarkdownTab() {
   const [data, setData] = useState<PreviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   /** 画像用に生成した object URL (差し替え/アンマウント時に解放する) */
   const blobUrls = useRef<string[]>([]);
+  /**
+   * 復元待ちのスクロール位置 (sessionStorage 由来)。描画直後に適用し、
+   * その後に画像が読み込まれて高さが変わった場合も、ユーザーがまだ動かしていなければ再適用する
+   */
+  const pendingScroll = useRef<{ target: number; applied: number | null } | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const load = async (path: string) => {
     try {
@@ -181,8 +189,45 @@ export function MarkdownTab() {
     setData(null);
     setError(null);
     if (!current) return;
+    const saved = loadPreviewScroll(current);
+    pendingScroll.current = saved !== null && saved > 0 ? { target: saved, applied: null } : null;
     void load(current);
+    return () => {
+      // 別ファイルへの切替・タブ非表示 (アンマウント) 時に最終位置を保存
+      clearTimeout(saveTimer.current);
+      const el = scrollRef.current;
+      if (el) savePreviewScroll(current, el.scrollTop);
+    };
   }, [current]);
+
+  /** 保存済みのスクロール位置を適用 (まだ動かされていない場合のみ) */
+  const applyPendingScroll = () => {
+    const el = scrollRef.current;
+    const pending = pendingScroll.current;
+    if (!el || !pending) return;
+    if (pending.applied !== null && Math.abs(el.scrollTop - pending.applied) > 1) {
+      // ユーザーがスクロールした → 以後は復元しない
+      pendingScroll.current = null;
+      return;
+    }
+    el.scrollTop = pending.target;
+    pending.applied = el.scrollTop;
+  };
+
+  // 描画直後にスクロール位置を復元 (再読込時も同じ位置を保つ)
+  useEffect(() => {
+    if (data) applyPendingScroll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  const onScroll = () => {
+    if (!current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const top = el.scrollTop;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => savePreviewScroll(current, top), 150);
+  };
 
   // ファイルが保存されたら再描画 (エディタで編集 → 保存 → プレビューに反映)
   useEffect(() => {
@@ -237,6 +282,8 @@ export function MarkdownTab() {
           if (cancelled) return;
           const url = URL.createObjectURL(blob);
           blobUrls.current.push(url);
+          // 画像の高さ分だけ本文が伸びるので、復元位置がずれないよう読み込み後に再適用
+          img.onload = applyPendingScroll;
           img.src = url;
         })
         .catch(() => {
@@ -342,7 +389,7 @@ export function MarkdownTab() {
       ) : !data ? (
         <div className={cx('empty-hint')}>読み込み中…</div>
       ) : (
-        <div className={cx('md-tab-scroll')}>
+        <div className={cx('md-tab-scroll')} ref={scrollRef} onScroll={onScroll}>
           <div
             ref={bodyRef}
             className={cx('md-body')}
