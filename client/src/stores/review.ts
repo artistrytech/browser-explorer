@@ -1,25 +1,33 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
-import { pushReviewView, reviewIdFromUrl } from './ui';
-import { clearReviewView } from '../lib/reviewViewMemory';
+import { pushReviewView, reviewFileFromUrl, reviewIdFromUrl } from './ui';
+import { clearReviewView, loadReviewView, saveReviewView } from '../lib/reviewViewMemory';
 import type { Review, ReviewComment, ReviewDetail } from '../types';
 
 /**
  * レビュータブの状態。
  * 「一覧」と「詳細」は URL (?view=review&review=<id>) で表現し、
  * ブラウザバックで詳細 → 一覧 → 前のタブと戻れるようにする。
+ * 詳細で選択中のファイルも URL (&rfile=<path>) に含め、戻る/進むでファイル間を移動できるようにする。
  */
 interface ReviewStore {
   /** 表示中のレビュー ID。null なら一覧 */
   currentId: number | null;
+  /** 詳細で選択中のファイル (変更後パス)。null なら未選択 (先頭を自動選択する) */
+  currentFile: string | null;
   list: Review[];
   listLoading: boolean;
   detail: ReviewDetail | null;
   detailLoading: boolean;
   loadList: (repo: string) => Promise<void>;
   loadDetail: (id: number, opts?: { silent?: boolean }) => Promise<void>;
-  /** 詳細を開く (履歴に積む) */
+  /** 詳細を開く (履歴に積む)。前回選択していたファイルがあればそれを開く */
   open: (id: number) => void;
+  /**
+   * 詳細でファイルを選ぶ (履歴に積む)。
+   * replace=true はユーザー操作でない自動選択用で、現在の履歴エントリを差し替える。
+   */
+  selectFile: (path: string, replace?: boolean) => void;
   /** 一覧へ戻る (履歴に積む) */
   backToList: () => void;
   /** popstate: URL から表示対象を復元する */
@@ -33,8 +41,14 @@ interface ReviewStore {
   removeReview: (id: number) => void;
 }
 
+/** 初期表示: URL に選択ファイルが無ければ、前回の表示状態 (sessionStorage) から引き継ぐ */
+function initialFile(id: number | null): string | null {
+  return reviewFileFromUrl() ?? (id !== null ? (loadReviewView(id)?.path ?? null) : null);
+}
+
 export const useReview = create<ReviewStore>((set, get) => ({
   currentId: reviewIdFromUrl(),
+  currentFile: initialFile(reviewIdFromUrl()),
   list: [],
   listLoading: false,
   detail: null,
@@ -62,18 +76,29 @@ export const useReview = create<ReviewStore>((set, get) => ({
   },
 
   open: (id) => {
-    set({ currentId: id, detail: null });
-    pushReviewView(id);
+    const file = loadReviewView(id)?.path ?? null;
+    set({ currentId: id, currentFile: file, detail: null });
+    pushReviewView(id, file);
+  },
+
+  selectFile: (path, replace = false) => {
+    const id = get().currentId;
+    if (id === null) return;
+    set({ currentFile: path });
+    saveReviewView(id, { path });
+    pushReviewView(id, path, replace);
   },
 
   backToList: () => {
-    set({ currentId: null, detail: null });
+    set({ currentId: null, currentFile: null, detail: null });
     pushReviewView(null);
   },
 
   syncFromUrl: () => {
     const id = reviewIdFromUrl();
-    if (id !== get().currentId) set({ currentId: id, detail: null });
+    const file = reviewFileFromUrl();
+    if (id !== get().currentId) set({ currentId: id, currentFile: file, detail: null });
+    else if (file !== get().currentFile) set({ currentFile: file });
   },
 
   applyComment: (comment) => {
@@ -113,7 +138,7 @@ export const useReview = create<ReviewStore>((set, get) => ({
     clearReviewView(id);
     set({ list: get().list.filter((r) => r.id !== id) });
     if (get().currentId === id) {
-      set({ currentId: null, detail: null });
+      set({ currentId: null, currentFile: null, detail: null });
       pushReviewView(null);
     }
   },

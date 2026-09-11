@@ -119,22 +119,32 @@ export function reviewIdFromUrl(): number | null {
   return v && Number.isInteger(id) && id > 0 ? id : null;
 }
 
+/** URL の ?rfile= からレビュー詳細で選択中のファイル (変更後パス) を復元 */
+export function reviewFileFromUrl(): string | null {
+  return new URLSearchParams(location.search).get('rfile') || null;
+}
+
 /**
  * レビュータブの表示を URL に反映して履歴に積む。
  * id を渡すと詳細、null で一覧 (ブラウザバックで詳細 → 一覧 → 前のタブと戻れる)。
+ * file は詳細で選択中のファイル。切り替えるたびに積むので、戻る/進むでファイル間も移動できる。
+ *
+ * replace=true では履歴に積まず現在のエントリを差し替える
+ * (一覧から消えたファイルの代わりに先頭を自動選択する等、ユーザー操作でない切替に使う)。
  */
-export function pushReviewView(id: number | null): void {
+export function pushReviewView(id: number | null, file: string | null = null, replace = false): void {
   const params = new URLSearchParams(location.search);
   params.set('view', 'review');
   if (id === null) params.delete('review');
   else params.set('review', String(id));
+  if (id === null || file === null) params.delete('rfile');
+  else params.set('rfile', file);
   const search = `?${params}`;
   if (location.search !== search) {
-    history.pushState(
-      { path: params.get('path'), view: 'review' },
-      '',
-      `${location.pathname}${search}`,
-    );
+    const state = { path: params.get('path'), view: 'review' };
+    const url = `${location.pathname}${search}`;
+    if (replace) history.replaceState(state, '', url);
+    else history.pushState(state, '', url);
   }
   useUi.getState().setView('review');
 }

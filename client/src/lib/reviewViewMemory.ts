@@ -13,8 +13,8 @@ export interface ReviewViewRecord {
   filter: string;
   /** ファイル一覧のスクロール位置 */
   listScrollTop: number;
-  /** 差分ペインのスクロール位置 */
-  diffScrollTop: number;
+  /** 差分ペインのスクロール位置 (ファイルの変更後パスごと)。同じファイルを再度開いた際に復元する */
+  diffScrollTops: Record<string, number>;
   ts: number;
 }
 
@@ -22,13 +22,15 @@ const EMPTY: Omit<ReviewViewRecord, 'ts'> = {
   path: null,
   filter: '',
   listScrollTop: 0,
-  diffScrollTop: 0,
+  diffScrollTops: {},
 };
 
 export function loadReviewView(id: number): ReviewViewRecord | null {
   try {
     const raw = sessionStorage.getItem(PREFIX + id);
-    return raw ? (JSON.parse(raw) as ReviewViewRecord) : null;
+    if (!raw) return null;
+    const rec = JSON.parse(raw) as ReviewViewRecord;
+    return { ...rec, diffScrollTops: rec.diffScrollTops ?? {} };
   } catch {
     return null;
   }
@@ -42,6 +44,17 @@ export function saveReviewView(id: number, partial: Partial<Omit<ReviewViewRecor
   } catch {
     /* storage full 等は無視 */
   }
+}
+
+/** 差分ペインのスクロール位置をファイル単位で保存する */
+export function saveReviewDiffScroll(id: number, path: string, scrollTop: number): void {
+  const prev = loadReviewView(id)?.diffScrollTops ?? {};
+  saveReviewView(id, { diffScrollTops: { ...prev, [path]: scrollTop } });
+}
+
+/** 保存済みの差分ペインのスクロール位置 (無ければ 0) */
+export function loadReviewDiffScroll(id: number, path: string): number {
+  return loadReviewView(id)?.diffScrollTops[path] ?? 0;
 }
 
 export function clearReviewView(id: number): void {

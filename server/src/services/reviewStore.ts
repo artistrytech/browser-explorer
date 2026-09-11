@@ -245,7 +245,7 @@ export function addComment(c: {
 
 export function updateComment(
   id: number,
-  patch: { body?: string; resolved?: boolean },
+  patch: { body?: string; resolved?: boolean; outdated?: boolean },
 ): ReviewComment | null {
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -256,6 +256,11 @@ export function updateComment(
   if (patch.resolved !== undefined) {
     sets.push('resolved = ?');
     values.push(patch.resolved ? 1 : 0);
+  }
+  // outdated はユーザーが「位置は合っている」と確認したときに外す (立てるのは markOutdated のみ)
+  if (patch.outdated !== undefined) {
+    sets.push('outdated = ?');
+    values.push(patch.outdated ? 1 : 0);
   }
   if (sets.length === 0) return null;
   sets.push('updated_at = ?');

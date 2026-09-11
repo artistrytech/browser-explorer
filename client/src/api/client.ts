@@ -358,7 +358,7 @@ export const api = {
     lineEnd: number;
     body: string;
   }) => post<{ comment: ReviewComment }>('/api/review/comment', body),
-  reviewUpdateComment: (id: number, patch: { body?: string; resolved?: boolean }) =>
+  reviewUpdateComment: (id: number, patch: { body?: string; resolved?: boolean; outdated?: boolean }) =>
     put<{ comment: ReviewComment }>('/api/review/comment', { id, ...patch }),
   reviewDeleteComment: (id: number) => del<{ ok: true }>('/api/review/comment', { id }),
   reviewSetViewed: (id: number, path: string, viewed: boolean) =>

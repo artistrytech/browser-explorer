@@ -40,6 +40,7 @@ import { useReview } from './stores/review';
 import { useSettings } from './stores/settings';
 import {
   useUi,
+  reviewFileFromUrl,
   reviewIdFromUrl,
   viewFromUrl,
   switchView,
@@ -88,6 +89,7 @@ export default function App() {
     const initialSearch = searchFromUrl();
     const initialDiff = diffTargetFromUrl();
     const initialReview = reviewIdFromUrl();
+    const initialReviewFile = reviewFileFromUrl();
     const initialPreview = previewPathFromUrl();
     const params = new URLSearchParams();
     params.set('path', initial);
@@ -102,7 +104,10 @@ export default function App() {
       params.set('dhash', initialDiff.hash);
       params.set('dpath', initialDiff.path);
     }
-    if (initialReview) params.set('review', String(initialReview));
+    if (initialReview) {
+      params.set('review', String(initialReview));
+      if (initialReviewFile) params.set('rfile', initialReviewFile);
+    }
     if (initialPreview) params.set('ppath', initialPreview);
     history.replaceState({ path: initial, view: initialView }, '', `${location.pathname}?${params}`);
     useUi.getState().setView(initialView);
@@ -137,7 +142,7 @@ export default function App() {
       if (nextPreview && usePreviewTab.getState().current !== nextPreview) {
         usePreviewTab.getState().open(nextPreview);
       }
-      // レビュータブ: 一覧 ⇄ 詳細も URL から復元する
+      // レビュータブ: 一覧 ⇄ 詳細・選択中ファイルも URL から復元する
       useReview.getState().syncFromUrl();
     };
     window.addEventListener('popstate', onPop);

@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { api } from '../../api/client';
 import { confirmDialog, promptDialog } from '../../stores/dialog';
 import { unresolvedByPath, useReview } from '../../stores/review';
+import { reviewFileFromUrl } from '../../stores/ui';
 import { toastError, useToast } from '../../stores/toast';
-import { loadReviewView, saveReviewView } from '../../lib/reviewViewMemory';
+import {
+  loadReviewDiffScroll,
+  loadReviewView,
+  saveReviewDiffScroll,
+  saveReviewView,
+} from '../../lib/reviewViewMemory';
 import { baseName, parentPath } from '../../lib/paths';
 import { ReviewFileDiff } from './ReviewFileDiff';
 import { openReviewExportDialog } from './ReviewExportDialog';
@@ -28,12 +34,20 @@ export function ReviewDetail({ id }: { id: number }) {
   const detail = useReview((s) => s.detail);
   const loading = useReview((s) => s.detailLoading);
   const [filter, setFilter] = useState(() => loadReviewView(id)?.filter ?? '');
-  const [selected, setSelected] = useState<string | null>(() => loadReviewView(id)?.path ?? null);
+  /** 選択中ファイル。URL (&rfile=) と同期していて、戻る/進むでも変わる */
+  const selected = useReview((s) => s.currentFile);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summary, setSummary] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const diffRef = useRef<HTMLDivElement>(null);
+  /**
+   * 差分ペインの復元待ちスクロール位置 (sessionStorage 由来)。
+   * 差分は非同期に読み込まれるので、ReviewFileDiff の描画完了 (onRendered) を待って適用する。
+   * 待っている間は内容の入れ替えで scrollTop が 0 に丸められるため、その scroll イベントは保存しない
+   */
+  const pendingDiffScroll = useRef<number | null>(null);
+  const diffSaveTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     void useReview.getState().loadDetail(id).catch(toastError);
@@ -53,24 +67,61 @@ export function ReviewDetail({ id }: { id: number }) {
     );
   }, [files, filter]);
 
-  // 選択中のファイルが一覧から消えたら先頭を選び直す
+  // 選択中のファイルが一覧から消えたら先頭を選び直す (ユーザー操作ではないので履歴には積まない)。
+  // URL に選択ファイルが無い (sessionStorage から復元した直後) 場合も URL へ反映する
   useEffect(() => {
     if (filtered.length === 0) return;
-    if (!selected || !filtered.some((f) => f.path === selected)) {
-      setSelected(filtered[0].path);
-      saveReviewView(id, { path: filtered[0].path });
+    const target = selected && filtered.some((f) => f.path === selected) ? selected : filtered[0].path;
+    if (target !== selected || reviewFileFromUrl() !== target) {
+      useReview.getState().selectFile(target, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtered, selected]);
 
-  // 別タブから戻った際のスクロール位置復元 (差分の読み込み後に効かせる)
+  // 別タブから戻った際のファイル一覧のスクロール位置復元 (一覧は detail から同期的に描画される)
   useEffect(() => {
     const saved = loadReviewView(id);
-    if (!saved) return;
-    if (listRef.current) listRef.current.scrollTop = saved.listScrollTop;
-    if (diffRef.current) diffRef.current.scrollTop = saved.diffScrollTop;
+    if (saved && listRef.current) listRef.current.scrollTop = saved.listScrollTop;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail?.review.id]);
+
+  /**
+   * 差分ペインのスクロール位置: 表示するファイルが変わる (クリック・戻る/進む・別タブから戻る・
+   * 「最新に更新」で差分を取り直す) たびに、保存済みの位置を復元待ちにする。
+   * クリーンアップで直前のファイルの最終位置を保存する (DOM が入れ替わる前に読むため layout effect)。
+   */
+  const baseCommit = detail?.review.baseCommit;
+  const headCommit = detail?.review.headCommit;
+  useLayoutEffect(() => {
+    if (!selected) {
+      pendingDiffScroll.current = null;
+      return;
+    }
+    const path = selected;
+    pendingDiffScroll.current = loadReviewDiffScroll(id, path);
+    return () => {
+      clearTimeout(diffSaveTimer.current);
+      // 復元前に離れた場合は、丸められた scrollTop で保存済みの位置を上書きしない
+      if (pendingDiffScroll.current !== null) return;
+      if (diffRef.current) saveReviewDiffScroll(id, path, diffRef.current.scrollTop);
+    };
+  }, [id, selected, baseCommit, headCommit]);
+
+  /** ReviewFileDiff の描画完了: 復元待ちの位置を適用する */
+  const onDiffRendered = () => {
+    const el = diffRef.current;
+    const target = pendingDiffScroll.current;
+    if (!el || target === null) return;
+    el.scrollTop = target;
+    pendingDiffScroll.current = null;
+  };
+
+  const onDiffScroll = (top: number) => {
+    if (!selected || pendingDiffScroll.current !== null) return;
+    const path = selected;
+    clearTimeout(diffSaveTimer.current);
+    diffSaveTimer.current = setTimeout(() => saveReviewDiffScroll(id, path, top), 150);
+  };
 
   if (!detail) {
     return (
@@ -92,9 +143,7 @@ export function ReviewDetail({ id }: { id: number }) {
   const current = files.find((f) => f.path === selected) ?? null;
 
   const selectFile = (f: CommitFile) => {
-    setSelected(f.path);
-    saveReviewView(id, { path: f.path, diffScrollTop: 0 });
-    if (diffRef.current) diffRef.current.scrollTop = 0;
+    if (f.path !== selected) useReview.getState().selectFile(f.path);
   };
 
   const changeFilter = (v: string) => {
@@ -315,7 +364,7 @@ export function ReviewDetail({ id }: { id: number }) {
           <div
             className={cx('rv-diff-host')}
             ref={diffRef}
-            onScroll={(e) => saveReviewView(id, { diffScrollTop: e.currentTarget.scrollTop })}
+            onScroll={(e) => onDiffScroll(e.currentTarget.scrollTop)}
           >
             {!available ? (
               <div className={cx('empty-hint')}>差分を表示できません</div>
@@ -327,6 +376,7 @@ export function ReviewDetail({ id }: { id: number }) {
                 readOnly={readOnly}
                 baseCommit={review.baseCommit}
                 headCommit={review.headCommit}
+                onRendered={onDiffRendered}
               />
             ) : (
               <div className={cx('empty-hint')}>ファイルを選択してください</div>

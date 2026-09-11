@@ -526,9 +526,9 @@
 }
 
 .rv-comment-actions {
-  flex: 1;
+  flex: none;
+  margin-left: auto;
   display: flex;
-  justify-content: flex-end;
   gap: 8px;
 }
 
@@ -541,6 +541,53 @@
 .rv-badge.rv-badge-done {
   color: var(--add);
   border-color: var(--add);
+}
+
+/* バッジ内の「×」(位置ずれの可能性を外す) */
+.rv-badge-x {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 0 0 4px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.rv-badge-x:hover {
+  color: var(--danger);
+}
+
+/* 解決済みコメントの展開/折りたたみ */
+.rv-toggle {
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+  width: 12px;
+  font-size: 11px;
+  flex: none;
+}
+
+/* 折りたたみ中に見出し行へ出す本文の 1 行目 */
+.rv-comment-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.rv-comment.rv-resolved .rv-comment-head {
+  margin-bottom: 0;
+}
+
+.rv-comment.rv-resolved .rv-comment-body,
+.rv-comment.rv-resolved .rv-textarea {
+  margin-top: 4px;
 }
 
 .rv-link {

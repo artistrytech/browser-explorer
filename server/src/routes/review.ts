@@ -320,13 +320,19 @@ reviewRouter.post('/comment', (req, res) => {
 });
 
 reviewRouter.put('/comment', (req, res) => {
-  const { id, body, resolved } = (req.body ?? {}) as { id?: number; body?: string; resolved?: boolean };
+  const { id, body, resolved, outdated } = (req.body ?? {}) as {
+    id?: number;
+    body?: string;
+    resolved?: boolean;
+    outdated?: boolean;
+  };
   const cid = reviewId(id);
   const text = typeof body === 'string' ? body.trim() : undefined;
   if (text !== undefined && !text) badRequest('コメントが空です');
   const comment = updateComment(cid, {
     ...(text !== undefined ? { body: text } : {}),
     ...(typeof resolved === 'boolean' ? { resolved } : {}),
+    ...(typeof outdated === 'boolean' ? { outdated } : {}),
   });
   if (!comment) notFound('comment not found');
   res.json({ comment });

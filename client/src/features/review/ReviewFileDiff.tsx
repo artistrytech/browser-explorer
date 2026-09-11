@@ -95,6 +95,7 @@ export function ReviewFileDiff({
   readOnly,
   baseCommit,
   headCommit,
+  onRendered,
 }: {
   reviewId: number;
   file: CommitFile;
@@ -105,6 +106,8 @@ export function ReviewFileDiff({
   /** 色付けをファイル全体から行うための、固定したコミット */
   baseCommit: string;
   headCommit: string;
+  /** 差分の読み込みが終わって DOM に描画された直後 (親がスクロール位置を復元するために使う) */
+  onRendered?: () => void;
 }) {
   const repoRoot = useGit((s) => s.repoRoot);
   const menuConfig = useUi((s) => s.menuConfig);
@@ -250,6 +253,13 @@ export function ReviewFileDiff({
   };
 
   const rows = useMemo(() => (parsed ? buildRows(parsed) : null), [parsed]);
+
+  // 読み込み完了 (失敗も含む) を親へ通知する。コールバックの参照が変わっても再通知はしない
+  const onRenderedRef = useRef(onRendered);
+  onRenderedRef.current = onRendered;
+  useEffect(() => {
+    if (!loading) onRenderedRef.current?.();
+  }, [loading]);
   const highlight = useDiffHighlight(parsed, file.path, sources);
 
   // 行末 (side + 行番号) ごとのコメント。位置が特定できないものは先頭にまとめて出す
@@ -417,7 +427,10 @@ export function ReviewFileDiff({
   );
 }
 
-/** コメント 1 件 (本文は素のテキストとして折り返し表示する) */
+/**
+ * コメント 1 件 (本文は素のテキストとして折り返し表示する)。
+ * 解決済みは本文を折りたたみ、見出し行に 1 行目だけを出す (▸ で展開)。
+ */
 function CommentItem({
   comment,
   readOnly,
@@ -429,6 +442,10 @@ function CommentItem({
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(comment.body);
+  /** 解決済みコメントを一時的に展開しているか (解決状態が変わったら閉じ直す) */
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => setExpanded(false), [comment.resolved]);
+  const collapsed = comment.resolved && !expanded && !editing;
 
   const save = async () => {
     const body = text.trim();
@@ -445,6 +462,21 @@ function CommentItem({
   const toggleResolved = async () => {
     try {
       const r = await api.reviewUpdateComment(comment.id, { resolved: !comment.resolved });
+      useReview.getState().applyComment(r.comment);
+    } catch (e) {
+      toastError(e);
+    }
+  };
+
+  /** 「位置ずれの可能性」を外す: 更新後の差分でも位置が合っていると確認したとき */
+  const clearOutdated = async () => {
+    const ok = await confirmDialog(
+      '「位置ずれの可能性」のマーキングを外しますか?',
+      'このコメントは通常のコメントとして扱われ、未解決数や Markdown 出力の対象に戻ります。',
+    );
+    if (!ok) return;
+    try {
+      const r = await api.reviewUpdateComment(comment.id, { outdated: false });
       useReview.getState().applyComment(r.comment);
     } catch (e) {
       toastError(e);
@@ -468,12 +500,43 @@ function CommentItem({
       )}
     >
       <div className={cx('rv-comment-head')}>
+        {comment.resolved && (
+          <button
+            className={cx('rv-toggle')}
+            title={collapsed ? '展開' : '折りたたむ'}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {collapsed ? '▸' : '▾'}
+          </button>
+        )}
         {showLocation && <span className={cx('rv-comment-loc')}>{rangeLabel(comment)}</span>}
         <span className={cx('rv-comment-date')}>
           {new Date(comment.updatedAt).toLocaleString('ja-JP')}
         </span>
-        {comment.outdated && <span className={cx('rv-badge')}>位置ずれの可能性</span>}
+        {comment.outdated && (
+          <span className={cx('rv-badge')}>
+            位置ずれの可能性
+            {!readOnly && (
+              <button
+                className={cx('rv-badge-x')}
+                title="このマーキングを外す"
+                onClick={() => void clearOutdated()}
+              >
+                ×
+              </button>
+            )}
+          </span>
+        )}
         {comment.resolved && <span className={cx('rv-badge rv-badge-done')}>解決済み</span>}
+        {collapsed && (
+          <span
+            className={cx('rv-comment-preview')}
+            title={comment.body}
+            onClick={() => setExpanded(true)}
+          >
+            {comment.body.split('\n', 1)[0]}
+          </span>
+        )}
         <span className={cx('rv-comment-actions')}>
           {!readOnly && !editing && (
             <>
@@ -520,7 +583,7 @@ function CommentItem({
             </button>
           </div>
         </>
-      ) : (
+      ) : collapsed ? null : (
         <div className={cx('rv-comment-body')}>{comment.body}</div>
       )}
     </div>
