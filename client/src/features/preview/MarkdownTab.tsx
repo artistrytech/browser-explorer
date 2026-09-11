@@ -6,7 +6,13 @@ import { api } from '../../api/client';
 import { onFsChange } from '../../api/ws';
 import { monaco } from '../editor/monacoSetup';
 import { useEditor } from '../../stores/editor';
-import { useSettings } from '../../stores/settings';
+import {
+  useSettings,
+  clampPreviewZoom,
+  PREVIEW_ZOOM_MIN,
+  PREVIEW_ZOOM_MAX,
+  PREVIEW_ZOOM_STEP,
+} from '../../stores/settings';
 import { switchView, replaceView, useUi } from '../../stores/ui';
 import { toastError } from '../../stores/toast';
 import { baseName, parentPath, joinPath } from '../../lib/paths';
@@ -159,6 +165,7 @@ export function MarkdownTab() {
   const fullscreen = usePreviewTab((s) => s.fullscreen);
   const setFullscreen = usePreviewTab((s) => s.setFullscreen);
   const theme = useSettings((s) => s.settings.theme);
+  const zoom = useSettings((s) => s.settings.previewZoom);
   const [data, setData] = useState<PreviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -239,6 +246,45 @@ export function MarkdownTab() {
       timer = setTimeout(() => void load(current), 200);
     });
   }, [current]);
+
+  /** 拡大率を変更 (設定として永続化)。delta は STEP 単位の増減、absolute は指定値へ */
+  const setZoom = (next: number) => {
+    const z = clampPreviewZoom(next);
+    if (z !== useSettings.getState().settings.previewZoom) useSettings.getState().update({ previewZoom: z });
+  };
+  const zoomBy = (dir: 1 | -1) => setZoom(useSettings.getState().settings.previewZoom + dir * PREVIEW_ZOOM_STEP);
+
+  // Ctrl+ホイールで拡大縮小 (ブラウザ自体のズームは抑止)。passive にできないので addEventListener で登録
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !data) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      if (e.deltaY !== 0) zoomBy(e.deltaY < 0 ? 1 : -1);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  // Ctrl + / Ctrl - / Ctrl 0 で拡大縮小/リセット (プレビュー表示中のみ。入力欄にフォーカスがある間は対象外)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.defaultPrevented) return;
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el?.closest('.monaco-editor')) return;
+      // '+' は US/JIS どちらの配列でも Shift が必要なので shiftKey は '+' のときだけ許容する
+      if (e.key === '+' || (e.key === '=' && !e.shiftKey)) zoomBy(1);
+      else if (e.key === '-' && !e.shiftKey) zoomBy(-1);
+      else if (e.key === '0' && !e.shiftKey) setZoom(100);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 全画面モード中は Esc で解除 (ダイアログ等が手前にある場合はそちらの Esc を優先させるため、
   // 既に処理済み (defaultPrevented) のイベントは無視する)
@@ -377,6 +423,28 @@ export function MarkdownTab() {
         <button className={cx('status-btn')} title="再読込" onClick={() => void load(current)}>
           ⟳
         </button>
+        {/* 拡大率: −/+ で STEP ずつ、% 表示クリックで 100% に戻す (Ctrl+ホイール / Ctrl+± / Ctrl+0 も可) */}
+        <span className={cx('md-zoom')}>
+          <button
+            className={cx('status-btn')}
+            title={`縮小 (Ctrl+−)`}
+            disabled={zoom <= PREVIEW_ZOOM_MIN}
+            onClick={() => zoomBy(-1)}
+          >
+            −
+          </button>
+          <button className={cx('status-btn md-zoom-value')} title="拡大率をリセット (Ctrl+0)" onClick={() => setZoom(100)}>
+            {zoom}%
+          </button>
+          <button
+            className={cx('status-btn')}
+            title={`拡大 (Ctrl++)`}
+            disabled={zoom >= PREVIEW_ZOOM_MAX}
+            onClick={() => zoomBy(1)}
+          >
+            +
+          </button>
+        </span>
         <button className={cx('status-btn')} title="全画面モード (Esc で終了)" onClick={() => setFullscreen(true)}>
           ⛶ 全画面
         </button>
@@ -393,6 +461,7 @@ export function MarkdownTab() {
           <div
             ref={bodyRef}
             className={cx('md-body')}
+            style={{ zoom: zoom / 100 }}
             onClick={onClick}
             // marked → DOMPurify でサニタイズ済みの HTML
             dangerouslySetInnerHTML={{ __html: data.html }}

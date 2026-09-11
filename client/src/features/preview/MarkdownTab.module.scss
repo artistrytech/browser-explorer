@@ -105,6 +105,33 @@
   white-space: nowrap;
 }
 
+.md-zoom {
+  display: inline-flex;
+  align-items: center;
+
+  .status-btn {
+    border-radius: 0;
+    min-width: 24px;
+  }
+
+  .status-btn:first-child {
+    border-radius: 3px 0 0 3px;
+  }
+
+  .status-btn:last-child {
+    border-radius: 0 3px 3px 0;
+  }
+
+  .status-btn + .status-btn {
+    border-left: none;
+  }
+}
+
+.md-zoom-value {
+  min-width: 48px;
+  font-variant-numeric: tabular-nums;
+}
+
 .md-tab-scroll {
   flex: 1;
   min-height: 0;

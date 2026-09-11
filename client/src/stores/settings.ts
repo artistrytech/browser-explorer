@@ -33,6 +33,18 @@ export interface Settings {
   defaultEncoding: string;
   defaultEol: 'CRLF' | 'LF';
   sidebarWidth: number;
+  /** Markdown プレビューの拡大率 (%)。PREVIEW_ZOOM_MIN〜MAX */
+  previewZoom: number;
+}
+
+export const PREVIEW_ZOOM_MIN = 50;
+export const PREVIEW_ZOOM_MAX = 300;
+export const PREVIEW_ZOOM_STEP = 10;
+
+/** 拡大率を範囲内に丸める (STEP 単位) */
+export function clampPreviewZoom(z: number): number {
+  const stepped = Math.round(z / PREVIEW_ZOOM_STEP) * PREVIEW_ZOOM_STEP;
+  return Math.min(PREVIEW_ZOOM_MAX, Math.max(PREVIEW_ZOOM_MIN, stepped));
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -48,6 +60,7 @@ const DEFAULT_SETTINGS: Settings = {
   defaultEncoding: 'UTF-8',
   defaultEol: 'LF',
   sidebarWidth: 18,
+  previewZoom: 100,
 };
 
 interface SettingsStore {
