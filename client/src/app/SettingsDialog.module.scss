@@ -311,3 +311,24 @@
   background: var(--bg);
   color: inherit;
 }
+
+/* 数値入力の横に補助ボタンを並べる (アプリログの保存期間 → アプリログを開く) */
+.settings-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+  text-decoration: underline dotted;
+}
+
+.settings-link-btn:hover {
+  text-decoration: underline;
+}

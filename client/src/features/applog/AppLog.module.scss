@@ -1,0 +1,268 @@
+/* アプリログビュー (サーバ・クライアントの動作ログの検索) */
+
+.applog {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.applog-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+  font-size: 12px;
+}
+
+.applog-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  width: 100%;
+}
+
+.applog-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.applog-input,
+.applog-select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.applog-input.q {
+  width: 260px;
+}
+
+.applog-input.id {
+  width: 150px;
+  font-family: var(--font-mono);
+}
+
+.applog-spacer {
+  flex: 1;
+}
+
+.applog-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 3px;
+  padding: 2px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.applog-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.applog-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.applog-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.applog-btn.danger {
+  color: var(--danger);
+}
+
+.applog-close {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.applog-close:hover {
+  color: var(--danger);
+}
+
+.applog-meta {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.applog-meta .mono {
+  font-family: var(--font-mono);
+}
+
+.applog-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--font-mono);
+  text-decoration: underline dotted;
+}
+
+.applog-link:hover {
+  text-decoration: underline;
+}
+
+/* --- 一覧 --- */
+
+.applog-table {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.applog-tr {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.applog-tr:hover:not(.applog-th) {
+  background: var(--bg-hover);
+}
+
+.applog-tr.applog-th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-alt);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: default;
+}
+
+.applog-tr.selected {
+  background: var(--bg-selected);
+}
+
+.applog-tr.level-error {
+  color: var(--danger);
+}
+
+.applog-tr.level-warn .applog-c-level {
+  color: #b26a00;
+}
+
+.applog-tr.level-debug {
+  color: var(--text-dim);
+}
+
+.applog-c-ts {
+  flex: none;
+  width: 150px;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.applog-c-level {
+  flex: none;
+  width: 42px;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.applog-c-src {
+  flex: none;
+  width: 48px;
+  color: var(--text-dim);
+}
+
+.applog-c-sid,
+.applog-c-rid {
+  flex: none;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.applog-c-sid {
+  width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.applog-c-rid {
+  width: 96px;
+}
+
+.applog-c-msg {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+/* 選択行の下に展開する詳細 */
+.applog-detail {
+  padding: 6px 10px 10px 172px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+  font-size: 12px;
+}
+
+.applog-detail-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.applog-detail-key {
+  flex: none;
+  width: 80px;
+  color: var(--text-dim);
+}
+
+.applog-detail pre {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  max-height: 320px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.applog-more {
+  padding: 8px;
+  text-align: center;
+}
+
+.empty-hint {
+  padding: 28px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.applog-error {
+  padding: 8px 12px;
+  color: var(--danger);
+  border-bottom: 1px solid var(--border);
+}

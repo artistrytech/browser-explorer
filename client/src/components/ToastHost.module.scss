@@ -30,3 +30,22 @@
 .toast.success {
   border-color: var(--add);
 }
+
+/* エラーに紐づくリクエスト ID (クリックでアプリログを開く) */
+.toast-rid {
+  display: block;
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.toast-rid:hover {
+  color: var(--accent);
+}

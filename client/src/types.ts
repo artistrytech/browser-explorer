@@ -202,6 +202,48 @@ export interface AppSettings {
   externalTools: ExternalToolDef[];
   diffTools: DiffToolDef[];
   extDefaults: Record<string, string>;
+  /** アプリログの保存日数 (既定 30) */
+  logRetentionDays: number;
+}
+
+// --- アプリログ (server/services/logger.ts) ---
+
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogSource = 'server' | 'client';
+
+export interface LogEntry {
+  id: number;
+  /** ISO 8601 (UTC) */
+  ts: string;
+  level: LogLevel;
+  source: LogSource;
+  /** access / error / event / crash / client 等 */
+  event: string;
+  sessionId: string | null;
+  requestId: string | null;
+  message: string;
+  detail: Record<string, unknown> | null;
+}
+
+/** /api/log のクエリ。level は「これ以上」 */
+export interface LogQueryParams {
+  q?: string;
+  level?: LogLevel;
+  source?: LogSource;
+  session?: string;
+  request?: string;
+  from?: string;
+  to?: string;
+  before?: number;
+  limit?: number;
+}
+
+export interface LogSessionSummary {
+  sessionId: string;
+  firstTs: string;
+  lastTs: string;
+  count: number;
+  errors: number;
 }
 
 // --- コードレビュー (レビュータブ) ---

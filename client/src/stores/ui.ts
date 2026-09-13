@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { api } from '../api/client';
 
 /**
- * メイン領域の表示: ファイル一覧 / コミット(変更) / ログ / ブランチ / エディタ / コミット差分 / Markdown プレビュー。
+ * メイン領域の表示: ファイル一覧 / コミット(変更) / ログ / ブランチ / エディタ / コミット差分 / Markdown プレビュー /
+ * アプリログ (サーバ・クライアントの動作ログ。Git のログとは別)。
  * Git 系 (commit/log/branches) はそれぞれ独立した最上位タブ (ブラウザ履歴も独立)。
  */
 export type MainView =
@@ -13,7 +14,8 @@ export type MainView =
   | 'review'
   | 'editor'
   | 'diff'
-  | 'preview';
+  | 'preview'
+  | 'applog';
 
 /** Git パネルを表示するビューか */
 export function isGitView(v: MainView): boolean {
@@ -107,7 +109,8 @@ export function viewFromUrl(): MainView {
     v === 'review' ||
     v === 'editor' ||
     v === 'diff' ||
-    v === 'preview'
+    v === 'preview' ||
+    v === 'applog'
     ? v
     : 'files';
 }

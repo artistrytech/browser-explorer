@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useUi, refreshUiConfig } from '../stores/ui';
 import { useSettings, DEFAULT_COLUMN_WIDTHS, type ModKey } from '../stores/settings';
-import { api, APP_TOKEN } from '../api/client';
+import { api, apiHeaders } from '../api/client';
 import { useToast, toastError } from '../stores/toast';
 import { externalToolPresets, diffToolPresets } from '../lib/toolPresets';
 import type { AppSettings, DiffToolDef, ExternalToolDef } from '../types';
 import styles from './SettingsDialog.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
 import { useDialogKeys } from '../lib/dialogKeys';
+import { openAppLog } from '../stores/applog';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -303,7 +304,7 @@ export function SettingsDialog() {
 
   const doExport = async () => {
     try {
-      const res = await fetch('/api/state/export', { headers: { 'x-app-token': APP_TOKEN } });
+      const res = await fetch('/api/state/export', { headers: apiHeaders() });
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -504,6 +505,29 @@ export function SettingsDialog() {
                     value={draft.commitFilesLimit}
                     onChange={(e) => patch({ commitFilesLimit: Number(e.target.value) || 100 })}
                   />,
+                )}
+              {draft &&
+                row(
+                  'アプリログの保存期間 (日)',
+                  <span className={cx("settings-inline")}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={3650}
+                      value={draft.logRetentionDays}
+                      onChange={(e) => patch({ logRetentionDays: Number(e.target.value) || 30 })}
+                    />
+                    <button
+                      type="button"
+                      className={cx("settings-link-btn")}
+                      onClick={() => {
+                        setSettingsOpen(false);
+                        openAppLog();
+                      }}
+                    >
+                      アプリログを開く
+                    </button>
+                  </span>,
                 )}
             </>
           )}

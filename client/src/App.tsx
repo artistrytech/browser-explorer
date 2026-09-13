@@ -28,6 +28,7 @@ import { RevertDialog } from './features/git/RevertDialog';
 import { DiffTab, useDiffTab, closeDiffTab, diffTargetFromUrl } from './features/git/DiffTab';
 import { ReviewTab } from './features/review/ReviewTab';
 import { MarkdownTab, usePreviewTab, closePreviewTab, previewPathFromUrl } from './features/preview/MarkdownTab';
+import { AppLogTab } from './features/applog/AppLogTab';
 import { ReviewCreateDialog } from './features/review/ReviewCreateDialog';
 import { ReviewExportDialog } from './features/review/ReviewExportDialog';
 import { ContextMenuHost } from './components/ContextMenu';
@@ -51,6 +52,7 @@ import {
 } from './stores/ui';
 import { onFsChange, onWsEvent } from './api/ws';
 import { useRebase } from './stores/rebase';
+import { useAppLog, closeAppLog } from './stores/applog';
 import { api } from './api/client';
 import { parentPath, isRootPath, baseName } from './lib/paths';
 import styles from './App.module.scss';
@@ -65,6 +67,7 @@ export default function App() {
   const activePath = useEditor((s) => s.activePath);
   const diffTarget = useDiffTab((s) => s.current);
   const previewPath = usePreviewTab((s) => s.current);
+  const appLogOpened = useAppLog((s) => s.opened);
   const repoRoot = useGit((s) => s.repoRoot);
   /** コミットタブに出す変更ファイル数 (ステージ済み + 変更 + 未追跡。リポジトリ外では出さない) */
   const changedCount = useGit((s) => s.status?.files.length ?? null);
@@ -114,6 +117,7 @@ export default function App() {
     useGit.getState().setLogFilter(initialLogFilter);
     if (initialDiff) useDiffTab.getState().open(initialDiff);
     if (initialPreview) usePreviewTab.getState().open(initialPreview);
+    if (initialView === 'applog') useAppLog.setState({ opened: true });
     void navigate(initial, false).then(() => {
       if (initialSearch) void useExplorer.getState().runSearch(initialSearch, false);
     });
@@ -124,7 +128,10 @@ export default function App() {
         const q = searchFromUrl();
         if (q) void useExplorer.getState().runSearch(q, false);
       });
-      useUi.getState().setView(viewFromUrl());
+      const nextView = viewFromUrl();
+      useUi.getState().setView(nextView);
+      // アプリログタブは閉じた後でも履歴で戻れるので、その場合はタブを復活させる
+      if (nextView === 'applog') useAppLog.setState({ opened: true });
       const cur = useGit.getState().logFilter;
       const next = logFilterFromUrl();
       // 内容が同じなら参照を維持 (不要な再読込を避ける)
@@ -256,7 +263,9 @@ export default function App() {
           ? activeTab?.name || 'Explorer'
           : view === 'preview' && previewPath
             ? baseName(previewPath)
-            : (isGitView(view) || view === 'review') && repoRoot
+            : view === 'applog'
+              ? 'アプリログ'
+              : (isGitView(view) || view === 'review') && repoRoot
               ? baseName(repoRoot) || repoRoot
               : 'Explorer';
     document.title = title;
@@ -312,6 +321,30 @@ export default function App() {
         <button className={cx(`view-tab${view === 'review' ? ' active' : ''}`)} onClick={() => switchView('review')}>
           🔍 レビュー
         </button>
+        {appLogOpened && (
+          <button
+            className={cx(`view-tab${view === 'applog' ? ' active' : ''}`)}
+            onClick={() => switchView('applog')}
+            onMouseDown={(e) => {
+              if (e.button === 1) {
+                e.preventDefault();
+                closeAppLog();
+              }
+            }}
+          >
+            🩺 アプリログ
+            <span
+              className={cx("view-tab-close")}
+              title="アプリログタブを閉じる"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeAppLog();
+              }}
+            >
+              ✕
+            </span>
+          </button>
+        )}
         {diffTarget && (
           <button
             className={cx(`view-tab${view === 'diff' ? ' active' : ''}`)}
@@ -365,6 +398,9 @@ export default function App() {
             </div>
             <div className={cx(`main-view${view === 'preview' ? '' : ' hidden'}`)}>
               {view === 'preview' && <MarkdownTab />}
+            </div>
+            <div className={cx(`main-view${view === 'applog' ? '' : ' hidden'}`)}>
+              {view === 'applog' && <AppLogTab />}
             </div>
           </div>
         </Panel>

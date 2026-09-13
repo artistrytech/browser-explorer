@@ -3,10 +3,13 @@ import type { Server } from 'node:http';
 import chokidar, { FSWatcher } from 'chokidar';
 import { norm } from '../services/fsService.js';
 import { config } from '../config.js';
+import { errorDetail, logger, sanitizeId } from '../services/logger.js';
 
 interface ClientState {
   watcher: FSWatcher | null;
   watchedPath: string | null;
+  /** クライアント (ブラウザのタブ) のセッション ID (?session=)。ログの紐づけ用 */
+  sessionId: string | null;
 }
 
 const sockets = new Set<WebSocket>();
@@ -32,17 +35,22 @@ export function attachWatcher(server: Server): void {
     socket.on('error', () => {});
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname !== '/ws' || url.searchParams.get('token') !== config.token) {
+      logger.warn(`ws upgrade rejected: ${url.pathname}`, { event: 'ws' });
       socket.destroy();
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   });
 
-  wss.on('connection', (ws) => {
-    clients.set(ws, { watcher: null, watchedPath: null });
+  wss.on('connection', (ws, req) => {
+    const sessionId = sanitizeId(new URL(req.url ?? '/', 'http://localhost').searchParams.get('session'));
+    clients.set(ws, { watcher: null, watchedPath: null, sessionId });
     sockets.add(ws);
+    logger.debug('ws connected', { event: 'ws', sessionId });
     // クライアントが切断すると 'error' が飛ぶことがある。リスナが無いと例外になるため受けておく
-    ws.on('error', () => {});
+    ws.on('error', (err) => {
+      logger.warn(`ws error: ${err.message}`, { event: 'ws', sessionId, detail: errorDetail(err) });
+    });
 
     ws.on('message', async (raw) => {
       let msg: { type: string; path?: string };
@@ -70,7 +78,13 @@ export function attachWatcher(server: Server): void {
             );
           }
         });
-        watcher.on('error', () => {});
+        watcher.on('error', (err) => {
+          logger.warn(`fs watcher error (${msg.path}): ${err instanceof Error ? err.message : String(err)}`, {
+            event: 'watcher',
+            sessionId: state.sessionId,
+            detail: { path: msg.path, ...errorDetail(err) },
+          });
+        });
         state.watcher = watcher;
       } else if (msg.type === 'unwatch') {
         await state.watcher?.close().catch(() => {});
@@ -79,9 +93,10 @@ export function attachWatcher(server: Server): void {
       }
     });
 
-    ws.on('close', async () => {
+    ws.on('close', async (code) => {
       sockets.delete(ws);
       const state = clients.get(ws);
+      logger.debug(`ws closed (${code})`, { event: 'ws', sessionId: state?.sessionId ?? sessionId });
       await state?.watcher?.close().catch(() => {});
       clients.delete(ws);
     });

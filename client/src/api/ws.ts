@@ -1,4 +1,5 @@
 import { APP_TOKEN } from './client';
+import { getSessionId } from '../lib/session';
 
 export interface FsChangeEvent {
   type: string;
@@ -17,7 +18,8 @@ const eventListeners = new Map<string, Set<EventListener>>();
 
 function connect(): WebSocket {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}/ws?token=${APP_TOKEN}`);
+  // session はサーバ側ログの紐づけ用 (タブ単位)
+  const ws = new WebSocket(`${proto}://${location.host}/ws?token=${APP_TOKEN}&session=${getSessionId()}`);
   ws.onopen = () => {
     if (watchedPath) ws.send(JSON.stringify({ type: 'watch', path: watchedPath }));
   };

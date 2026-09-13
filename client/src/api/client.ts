@@ -11,6 +11,10 @@ import type {
   GitCommit,
   GitGraphCommit,
   GitStatus,
+  LogEntry,
+  LogLevel,
+  LogQueryParams,
+  LogSessionSummary,
   MergeState,
   RebaseActionResult,
   RebaseBackup,
@@ -21,43 +25,75 @@ import type {
   ReviewDetail,
   VolumeInfo,
 } from '../types';
+import { getSessionId } from '../lib/session';
 
 declare const __APP_TOKEN__: string;
 export const APP_TOKEN = __APP_TOKEN__;
+
+/**
+ * 全 API 共通のヘッダ: トークン (認証) + セッション ID (ログの紐づけ。タブ単位)
+ * 生の fetch を使う箇所 (エクスポート等) もこれを使う
+ */
+export function apiHeaders(extra?: Record<string, string>): Record<string, string> {
+  return { 'x-app-token': APP_TOKEN, 'x-session-id': getSessionId(), ...extra };
+}
 
 export class ApiError extends Error {
   constructor(
     public status: number,
     public code: string,
     message: string,
+    /** サーバが発行したリクエスト ID (x-request-id)。アプリログで検索できる。届かなかった場合は null */
+    public requestId: string | null = null,
   ) {
     super(message);
   }
 }
 
-/** エラーレスポンス (JSON の error/message) を ApiError にして投げる */
+/**
+ * エラーレスポンス (JSON の error/message) を ApiError にして投げる。
+ * 非 JSON の 500 (ボディ空) は Vite のプロキシがサーバに繋げなかったときの応答なので、
+ * "Internal Server Error" ではなく接続エラーとして区別する。
+ */
 async function throwApiError(res: Response): Promise<never> {
   let code = 'error';
   let message = res.statusText;
+  let json = false;
   try {
     const body = await res.json();
+    json = true;
     code = body.error ?? code;
     message = body.message ?? message;
   } catch {
     /* not json */
   }
-  throw new ApiError(res.status, code, message);
+  const requestId = res.headers.get('x-request-id');
+  if (!json && !requestId && (res.status === 500 || res.status === 502 || res.status === 504)) {
+    code = 'unreachable';
+    message = 'サーバーに接続できません (再起動中またはクラッシュしている可能性があります)';
+  }
+  throw new ApiError(res.status, code, message, requestId);
+}
+
+/**
+ * fetch 自体の失敗 (ネットワーク断・サーバ停止で Vite も落ちている等) も ApiError に揃える。
+ * TypeError: Failed to fetch のままだと原因が分からないため
+ */
+function wrapFetchError(e: unknown, url: string): never {
+  if (e instanceof ApiError) throw e;
+  const err = new ApiError(0, 'network', `サーバーに接続できません (${url})`);
+  err.cause = e;
+  throw err;
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
     headers: {
-      'x-app-token': APP_TOKEN,
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...apiHeaders(init?.body ? { 'Content-Type': 'application/json' } : undefined),
       ...init?.headers,
     },
-  });
+  }).catch((e) => wrapFetchError(e, url));
   if (!res.ok) await throwApiError(res);
   return res.json() as Promise<T>;
 }
@@ -67,7 +103,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
  * ファイル名は Content-Disposition から取り出す (非 ASCII は filename*= 側を使う)
  */
 async function requestFile(url: string): Promise<{ blob: Blob; filename: string }> {
-  const res = await fetch(url, { headers: { 'x-app-token': APP_TOKEN } });
+  const res = await fetch(url, { headers: apiHeaders() }).catch((e) => wrapFetchError(e, url));
   if (!res.ok) await throwApiError(res);
   const cd = res.headers.get('content-disposition') ?? '';
   const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
@@ -78,7 +114,7 @@ async function requestFile(url: string): Promise<{ blob: Blob; filename: string 
 
 /** バイナリ (画像等) を Blob で取得 */
 async function requestBlob(url: string): Promise<Blob> {
-  const res = await fetch(url, { headers: { 'x-app-token': APP_TOKEN } });
+  const res = await fetch(url, { headers: apiHeaders() }).catch((e) => wrapFetchError(e, url));
   if (!res.ok) await throwApiError(res);
   return res.blob();
 }
@@ -365,6 +401,21 @@ export const api = {
     post<{ ok: true }>('/api/review/viewed', { id, path, viewed }),
   /** 未解決コメントの Markdown */
   reviewExport: (id: number) => get<{ markdown: string; count: number }>(`/api/review/export?id=${id}`),
+
+  // --- アプリログ (services/logger.ts) ---
+  logQuery: (p: LogQueryParams) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(p)) {
+      if (v !== undefined && v !== null && v !== '') params.set(k, String(v));
+    }
+    return get<{ entries: LogEntry[]; hasMore: boolean }>(`/api/log?${params}`);
+  },
+  logSessions: () => get<{ sessions: LogSessionSummary[] }>('/api/log/sessions'),
+  logStats: () => get<{ count: number; retentionDays: number }>('/api/log/stats'),
+  logClear: () => del<{ ok: true; deleted: number }>('/api/log', {}),
+  /** クライアント側のエラー等をサーバのログへ送る (失敗しても呼び出し側には伝えない) */
+  logClient: (level: LogLevel, message: string, event?: string, detail?: Record<string, unknown>) =>
+    post<{ ok: true }>('/api/log/client', { level, message, event, detail }).catch(() => ({ ok: true as const })),
 
   // --- state ---
   getState: () => get<AppState>('/api/state'),

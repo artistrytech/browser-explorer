@@ -7,10 +7,56 @@ import { stateRouter } from './routes/state.js';
 import { reviewRouter } from './routes/review.js';
 import { osRouter } from './routes/os.js';
 import { quickaccessRouter } from './routes/quickaccess.js';
+import { logRouter } from './routes/log.js';
 import { attachWatcher } from './ws/watcher.js';
-import { getAppConfig, saveAppConfig, type AppConfigKey } from './services/appConfigStore.js';
+import {
+  getAppConfig,
+  getLogRetentionDays,
+  saveAppConfig,
+  type AppConfigKey,
+} from './services/appConfigStore.js';
+import { errorDetail, logger, newRequestId, purgeLogs, sanitizeId } from './services/logger.js';
 
 const app = express();
+
+/**
+ * リクエスト ID / セッション ID (services/logger.ts)
+ * - requestId: ここで発行し、レスポンスヘッダ x-request-id とエラー JSON で返す
+ * - sessionId: クライアント (ブラウザのタブ) が x-session-id で送ってくる
+ * 認証より前に置き、401/403 も記録できるようにする。
+ */
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  const requestId = newRequestId();
+  const sessionId = sanitizeId(req.headers['x-session-id']);
+  res.locals.requestId = requestId;
+  res.locals.sessionId = sessionId;
+  res.setHeader('x-request-id', requestId);
+  const started = process.hrtime.bigint();
+  // ログビュー自身のポーリングで埋まらないよう、/api/log は失敗時のみ記録する
+  // (finish 時点では req.path がマウント前の値に戻っているので、ここで判定しておく)
+  const isLogApi = req.path.startsWith('/log');
+  res.on('finish', () => {
+    const status = res.statusCode;
+    if (isLogApi && status < 400) return;
+    const ms = Number(process.hrtime.bigint() - started) / 1e6;
+    const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info';
+    logger[level](`${req.method} ${req.originalUrl} ${status} ${ms.toFixed(1)}ms`, {
+      event: 'access',
+      requestId,
+      sessionId,
+      detail: {
+        method: req.method,
+        path: req.path,
+        url: req.originalUrl,
+        status,
+        durationMs: Math.round(ms * 10) / 10,
+        ...(res.locals.error ? { error: res.locals.error } : {}),
+      },
+    });
+  });
+  next();
+});
+
 app.use(express.json({ limit: '50mb' }));
 
 /**
@@ -52,6 +98,7 @@ app.use('/api/state', stateRouter);
 app.use('/api/review', reviewRouter);
 app.use('/api/os', osRouter);
 app.use('/api/quickaccess', quickaccessRouter);
+app.use('/api/log', logRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, platform: process.platform });
@@ -91,24 +138,92 @@ app.get('/api/settings', (_req, res) => {
 // 設定保存: 指定キーのみ検証・正規化して DB へ (再起動不要で即時反映)
 app.put('/api/settings', (req, res) => {
   const body = (req.body ?? {}) as Partial<Record<AppConfigKey, unknown>>;
-  res.json(saveAppConfig(body));
+  const saved = saveAppConfig(body);
+  logger.info(`設定を保存しました (${Object.keys(body).join(', ')})`, {
+    event: 'settings',
+    requestId: res.locals.requestId as string,
+    sessionId: res.locals.sessionId as string | null,
+  });
+  res.json(saved);
 });
 
-// エラーハンドラ: 種別付き JSON で返す (plan §10)
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use((err: Error & { status?: number; code?: string }, _req: Request, res: Response, _next: NextFunction) => {
+/**
+ * エラーハンドラ: 種別付き JSON で返す (plan §10)。
+ * スタックはログ (アプリログビュー) に残し、レスポンスには requestId を付けて突き合わせられるようにする。
+ * ステータスが不正な値 (数値以外・範囲外) だと res.status() 自体が例外になり Express 既定の
+ * "Internal Server Error" (非 JSON) に落ちるので、ここで 500 に丸める。
+ */
+app.use((err: Error & { status?: unknown; code?: string }, req: Request, res: Response, next: NextFunction) => {
+  const rawStatus = typeof err.status === 'number' ? err.status : Number(err.status);
   const status =
-    err.status ??
-    (err.code === 'ENOENT' ? 404 : err.code === 'EACCES' || err.code === 'EPERM' ? 403 : 500);
+    Number.isInteger(rawStatus) && rawStatus >= 400 && rawStatus <= 599
+      ? rawStatus
+      : err.code === 'ENOENT'
+        ? 404
+        : err.code === 'EACCES' || err.code === 'EPERM'
+          ? 403
+          : 500;
+  const requestId = res.locals.requestId as string | undefined;
+  const sessionId = res.locals.sessionId as string | null | undefined;
+  // アクセスログ (finish 時) にも要約を載せる
+  res.locals.error = { code: err.code ?? 'internal', message: err.message };
+  logger[status >= 500 ? 'error' : 'warn'](`${req.method} ${req.originalUrl} → ${status}: ${err.message}`, {
+    event: 'error',
+    requestId,
+    sessionId,
+    detail: { ...errorDetail(err), method: req.method, url: req.originalUrl, status },
+  });
+  if (res.headersSent) {
+    // 送信途中で失敗した場合は JSON を返せない。接続を閉じて終える
+    next(err);
+    return;
+  }
   res.status(status).json({
     error: err.code ?? 'internal',
     message: err.message,
+    requestId,
   });
 });
+
+/**
+ * プロセス全体の未捕捉例外。ルート外 (WS / chokidar / タイマー等) で起きたものはここでしか拾えない。
+ * uncaughtException は状態が壊れている可能性があるので記録してから終了 (start.bat / --watch が再起動する前提)。
+ * unhandledRejection は記録のみ (Node 既定は終了だが、ローカルツールとしては継続を優先)
+ */
+process.on('uncaughtException', (err) => {
+  logger.error(`uncaughtException: ${err instanceof Error ? err.message : String(err)}`, {
+    event: 'crash',
+    detail: errorDetail(err),
+  });
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  logger.error(`unhandledRejection: ${reason instanceof Error ? reason.message : String(reason)}`, {
+    event: 'crash',
+    detail: errorDetail(reason),
+  });
+});
+
+// ログの保存期間 (設定 logRetentionDays) を超えた行を起動時と 1 時間ごとに削除する
+function runLogPurge(): void {
+  const days = getLogRetentionDays();
+  const n = purgeLogs(days);
+  if (n > 0) logger.info(`保存期間 (${days} 日) を超えたログを ${n} 件削除しました`, { event: 'log' });
+}
+runLogPurge();
+setInterval(runLogPurge, 60 * 60 * 1000).unref();
 
 const server = http.createServer(app);
 attachWatcher(server);
 
 server.listen(config.port, config.host, () => {
-  console.log(`[server] listening on http://${config.host}:${config.port}`);
+  logger.info(`server started: http://${config.host}:${config.port} (pid ${process.pid}, node ${process.version})`, {
+    event: 'lifecycle',
+    detail: { pid: process.pid, node: process.version, platform: process.platform },
+  });
+});
+// listen 失敗 (ポート使用中等) は続行できないので記録して終了する
+server.on('error', (err) => {
+  logger.error(`server error: ${err.message}`, { event: 'lifecycle', detail: errorDetail(err) });
+  process.exit(1);
 });

@@ -36,7 +36,12 @@ export interface AppConfig {
   diffTools: DiffToolDef[];
   /** 拡張子 (ドット無し・小文字) → externalTool.id。ダブルクリック時の既定起動ツール */
   extDefaults: Record<string, string>;
+  /** アプリログ (data/logs.db) の保存日数。これより古い行は定期的に削除する */
+  logRetentionDays: number;
 }
+
+export const DEFAULT_LOG_RETENTION_DAYS = 30;
+export const MAX_LOG_RETENTION_DAYS = 3650;
 
 /** GUI から更新できる設定キー */
 export type AppConfigKey = keyof AppConfig;
@@ -124,6 +129,10 @@ function getExtDefaults(): Record<string, string> {
   return readSetting<Record<string, string>>('extDefaults') ?? {};
 }
 
+export function getLogRetentionDays(): number {
+  return readSetting<number>('logRetentionDays') ?? DEFAULT_LOG_RETENTION_DAYS;
+}
+
 /** 現在有効な設定 (未設定の項目は既定値) をまとめて返す */
 export function getAppConfig(): AppConfig {
   return {
@@ -132,6 +141,7 @@ export function getAppConfig(): AppConfig {
     externalTools: getExternalTools(),
     diffTools: getDiffTools(),
     extDefaults: getExtDefaults(),
+    logRetentionDays: getLogRetentionDays(),
   };
 }
 
@@ -188,6 +198,13 @@ export function saveAppConfig(partial: Partial<Record<AppConfigKey, unknown>>): 
         if (ext && typeof val === 'string' && val) cleaned[ext] = val;
       }
       writeSetting('extDefaults', cleaned);
+    }
+    if (partial.logRetentionDays !== undefined) {
+      const n = Number(partial.logRetentionDays);
+      writeSetting(
+        'logRetentionDays',
+        Number.isFinite(n) && n >= 1 ? Math.min(MAX_LOG_RETENTION_DAYS, Math.floor(n)) : DEFAULT_LOG_RETENTION_DAYS,
+      );
     }
   });
   tx();

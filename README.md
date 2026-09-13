@@ -39,6 +39,7 @@ npm run dev     # server (127.0.0.1:5175) + client (127.0.0.1:5173) を並列起
 ```
 config.jsonc     # ポート・API トークン (+ 各設定の初回 seed 値。コメント可)
 data/app.db      # SQLite (設定・外部ツール・ブックマーク等の永続化)
+data/logs.db     # SQLite (アプリログ。保存期間は設定で変更)
 server/          # Express + simple-git + chokidar + better-sqlite3
 client/          # React + Vite + Zustand + Monaco Editor
 ```
@@ -74,6 +75,25 @@ client/          # React + Vite + Zustand + Monaco Editor
   (自分/相手の対比 + Monaco の編集可能な統合結果ペイン)。バイナリ・片側削除は片側採用のみ。
 - **Git Clone…**: Git 管理外のフォルダ/空白の右クリックから。ブランチ指定 / shallow /
   サブモジュール対応、進捗を WebSocket でストリーム表示。
+
+## アプリログ (動作ログの記録と確認)
+
+サーバ・クライアントの動作ログを `data/logs.db` (SQLite。設定用の `app.db` とは別) に記録し、
+ツールバーの 🩺 (または設定 → 一般 → 「アプリログを開く」) から画面上で確認・検索できる。
+
+- **ID による紐づけ**
+  - **セッション ID**: ブラウザのタブ単位 (sessionStorage)。全 API に `x-session-id`、WS に `?session=` で送る。
+  - **リクエスト ID**: HTTP リクエストごとにサーバが発行。レスポンスの `x-request-id` とエラー JSON の
+    `requestId` に含める。エラートーストにも表示され、クリックするとそのリクエストのログが開く。
+- **記録内容**: アクセスログ (メソッド / パス / ステータス / 所要時間)、エラー (スタック付き)、
+  未捕捉例外 (`uncaughtException` / `unhandledRejection`)、WS の接続/切断、ブラウザ側の未捕捉例外や
+  トーストに出したエラー (`POST /api/log/client`)。
+- **検索**: 文字列 (メッセージ・詳細)、レベル (debug/info/warn/error 以上)、発生元 (サーバ/クライアント)、
+  セッション ID (候補付き。「このタブのみ」ボタンあり)、リクエスト ID、期間。行クリックで詳細 (JSON・スタック) を展開。
+- **保存期間**: 既定 30 日。設定 → 一般 → 「アプリログの保存期間 (日)」で変更。起動時と 1 時間ごとに古い行を削除する。
+  「全削除」で即時に全消去も可能。
+- 開発時、トーストに「サーバーに接続できません」と出る場合は Vite のプロキシがサーバに繋げていない
+  (`node --watch` の再起動中、またはクラッシュ)。クラッシュならその直前のログが `uncaughtException` として残る。
 
 ## セキュリティ (plan §2.2)
 
