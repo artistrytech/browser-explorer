@@ -39,7 +39,8 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
     const status = res.statusCode;
     if (isLogApi && status < 400) return;
     const ms = Number(process.hrtime.bigint() - started) / 1e6;
-    const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info';
+    // 4xx は通常操作で起こり得る応答 (ファイルパスを一覧しようとした等) なので info に留める
+    const level = status >= 500 ? 'error' : 'info';
     logger[level](`${req.method} ${req.originalUrl} ${status} ${ms.toFixed(1)}ms`, {
       event: 'access',
       requestId,
@@ -160,9 +161,11 @@ app.use((err: Error & { status?: unknown; code?: string }, req: Request, res: Re
       ? rawStatus
       : err.code === 'ENOENT'
         ? 404
-        : err.code === 'EACCES' || err.code === 'EPERM'
-          ? 403
-          : 500;
+        : err.code === 'ENOTDIR'
+          ? 400
+          : err.code === 'EACCES' || err.code === 'EPERM'
+            ? 403
+            : 500;
   const requestId = res.locals.requestId as string | undefined;
   const sessionId = res.locals.sessionId as string | null | undefined;
   // アクセスログ (finish 時) にも要約を載せる

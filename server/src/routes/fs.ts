@@ -70,6 +70,13 @@ fsRouter.get('/volumes', async (_req, res) => {
 
 fsRouter.get('/list', async (req, res) => {
   const p = reqPath(req.query.path);
+  // パス入力にファイルが指定されるのは通常操作で起こり得る (クライアント側でファイルを開く救済をする) ので、
+  // readdir の ENOTDIR (500 扱い) にせず 4xx で返す
+  const st = await fs.stat(p);
+  if (!st.isDirectory()) {
+    res.status(400).json({ error: 'not_dir', message: 'フォルダではありません' });
+    return;
+  }
   res.json({ path: norm(p), entries: await listDir(p) });
 });
 
