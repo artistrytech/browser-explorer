@@ -223,6 +223,8 @@ export function GitGraph({
   const status = useGit((s) => s.status);
   const rowsRef = useRef<HTMLDivElement>(null);
   const scrollRestoredRef = useRef(false);
+  // 読み込みの世代番号。リポジトリ切替や連続した再読み込みで古い応答が後から届いても捨てる
+  const loadSeq = useRef(0);
 
   const toggleAll = (checked: boolean) => {
     setAll(checked);
@@ -271,6 +273,7 @@ export function GitGraph({
   }, [commits, repo, filter, branch]);
 
   const load = (reset: boolean) => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     const skip = reset ? 0 : commits.length;
     api
@@ -283,12 +286,17 @@ export function GitGraph({
         follow: filter?.follow,
       })
       .then((r) => {
+        if (seq !== loadSeq.current) return;
         // ページングはレーン連続性のため読み込み済み全体を再計算する (§5.4)
         setCommits((prev) => (reset ? r.commits : [...prev, ...r.commits]));
         setHasMore(r.commits.length === PAGE);
       })
-      .catch(toastError)
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        if (seq === loadSeq.current) toastError(e);
+      })
+      .finally(() => {
+        if (seq === loadSeq.current) setLoading(false);
+      });
   };
 
   useEffect(() => {
@@ -405,7 +413,7 @@ export function GitGraph({
             </button>
           );
         })}
-        {rows.length === 0 && !loading && <div className={cx("empty-hint")}>コミットがありません</div>}
+        {rows.length === 0 && <div className={cx("empty-hint")}>{loading ? '読み込み中…' : 'コミットがありません'}</div>}
         {hasMore && (
           <button className={cx("btn graph-more")} disabled={loading} onClick={() => load(false)}>
             {loading ? '読み込み中…' : 'さらに読み込む'}

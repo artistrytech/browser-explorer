@@ -3,7 +3,8 @@ import { api } from '../api/client';
 import { useExplorer } from '../stores/explorer';
 import { useSettings } from '../stores/settings';
 import { useGit } from '../stores/git';
-import { switchView } from '../stores/ui';
+import { useReview } from '../stores/review';
+import { pushReviewView, switchView, useUi, type MainView } from '../stores/ui';
 import { useContextMenu } from '../components/ContextMenu';
 import { baseName } from '../lib/paths';
 import { unpinFolder } from '../lib/quickaccessOps';
@@ -12,6 +13,9 @@ import styles from './Sidebar.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
 
 const cx = createCssModuleClassNames(styles);
+
+/** リポジトリ選択時にそのまま保持する最上位タブ。それ以外 (エディタ等) は「ファイル」へ移る */
+const REPO_KEEP_VIEWS: readonly MainView[] = ['files', 'commit', 'log', 'branches', 'review'];
 
 export function Sidebar() {
   const { path, navigate } = useExplorer();
@@ -34,19 +38,29 @@ export function Sidebar() {
 
   /**
    * サイドバーのリンク遷移。Ctrl (mac は ⌘) + クリックはブラウザの別タブで開く。
-   * view を指定するとその最上位タブ (リポジトリなら commit) で開く。
+   * 通常は「ファイル」タブで開く。keepView を指定すると、現在のタブが REPO_KEEP_VIEWS なら保持する
+   * (navigate はビューを files に戻すので、完了後に元のタブへ切り替え直す)。
    */
-  const go = (e: React.MouseEvent, target: string, view?: 'commit') => {
+  const go = (e: React.MouseEvent, target: string, keepView = false) => {
+    const current = useUi.getState().view;
+    const view: MainView = keepView && REPO_KEEP_VIEWS.includes(current) ? current : 'files';
     if (e.ctrlKey || e.metaKey) {
       const params = new URLSearchParams();
       params.set('path', target);
-      if (view) params.set('view', view);
+      if (view !== 'files') params.set('view', view);
       window.open(`${location.pathname}?${params}`, '_blank');
       return;
     }
-    const p = navigate(target);
-    if (view) void p.then(() => switchView(view));
-    else void p;
+    const sameRepo = repoRoot === target;
+    void navigate(target).then(() => {
+      if (view === 'review') {
+        // 同じリポジトリなら開いていたレビュー詳細を URL ごと保持、別リポジトリなら一覧へ
+        const { currentId, currentFile } = useReview.getState();
+        pushReviewView(sameRepo ? currentId : null, sameRepo ? currentFile : null);
+      } else {
+        switchView(view);
+      }
+    });
   };
 
   const item = (
@@ -121,7 +135,7 @@ export function Sidebar() {
             key={r}
             className={cx(`side-item${repoRoot === r ? ' active' : ''}`)}
             title={`${r}\n(Ctrl+クリックで別タブ)`}
-            onClick={(e) => go(e, r, 'commit')}
+            onClick={(e) => go(e, r, true)}
             onContextMenu={(e) => {
               e.preventDefault();
               openMenu(e.clientX, e.clientY, [

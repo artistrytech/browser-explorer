@@ -16,6 +16,8 @@ interface ReviewStore {
   /** 詳細で選択中のファイル (変更後パス)。null なら未選択 (先頭を自動選択する) */
   currentFile: string | null;
   list: Review[];
+  /** list がどのリポジトリのものか (別リポジトリへ切り替えたら前の一覧を見せないため) */
+  listRepo: string | null;
   listLoading: boolean;
   detail: ReviewDetail | null;
   detailLoading: boolean;
@@ -50,17 +52,21 @@ export const useReview = create<ReviewStore>((set, get) => ({
   currentId: reviewIdFromUrl(),
   currentFile: initialFile(reviewIdFromUrl()),
   list: [],
+  listRepo: null,
   listLoading: false,
   detail: null,
   detailLoading: false,
 
   loadList: async (repo) => {
-    set({ listLoading: true });
+    // 別リポジトリの一覧は先に消して「読み込み中…」にする (同じリポジトリの再読込は表示を維持)
+    set({ listLoading: true, listRepo: repo, ...(get().listRepo !== repo ? { list: [] } : {}) });
     try {
       const { reviews } = await api.reviewList(repo);
+      // 待っている間に別リポジトリの読み込みが始まっていたら、この結果は捨てる
+      if (get().listRepo !== repo) return;
       set({ list: reviews });
     } finally {
-      set({ listLoading: false });
+      if (get().listRepo === repo) set({ listLoading: false });
     }
   },
 

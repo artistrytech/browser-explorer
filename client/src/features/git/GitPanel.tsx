@@ -161,13 +161,25 @@ function statusLabel(f: GitFileStatus, staged: boolean): string {
 
 /** tab は最上位タブ (コミット/ログ/ブランチ) から与えられる */
 export function GitPanel({ tab }: { tab: GitTab }) {
-  const { repoRoot, status, refreshStatus, mergeState, logFilter } = useGit();
+  const { repoRoot, status, loading, refreshStatus, mergeState, logFilter } = useGit();
   const { addRepository, repositories } = useSettings();
   const show = useToast((s) => s.show);
   const [message, setMessage] = useState('');
   const [amend, setAmend] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [branches, setBranches] = useState<GitBranch[]>([]);
+  // null = 読み込み中 (リポジトリ切替直後に前のリポジトリの一覧を見せないため)
+  const [branches, setBranches] = useState<GitBranch[] | null>(null);
+  // ブランチ一覧の取得世代。古い応答 (切替前のリポジトリ等) で上書きしないための番号
+  const branchesSeq = useRef(0);
+  const loadBranches = (root: string) => {
+    const seq = ++branchesSeq.current;
+    api
+      .gitBranches(root)
+      .then((r) => {
+        if (seq === branchesSeq.current) setBranches(r.branches);
+      })
+      .catch(toastError);
+  };
   const [collapsedBranchGroups, setCollapsedBranchGroups] = useState<Set<string>>(new Set());
   /** ローカルブランチの一括削除モード。ON の間はブランチの他操作を止める */
   const [bulkMode, setBulkMode] = useState(false);
@@ -292,10 +304,9 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   }, [commitDraft]);
 
   useEffect(() => {
-    if (repoRoot && tab === 'branches') {
-      api.gitBranches(repoRoot).then((r) => setBranches(r.branches)).catch(toastError);
-    }
-  }, [repoRoot, tab, status]);
+    if (repoRoot && tab === 'branches' && !loading) loadBranches(repoRoot);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repoRoot, tab, status, loading]);
 
   // 一括削除モードは「ブランチ」タブ専用。他タブへ移ったりリポジトリが変わったらキャンセル扱い
   useEffect(() => {
@@ -311,6 +322,8 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     setBulkTargets(new Set());
     setBulkForce(new Set());
     setKeepBranches(repoRoot ? loadBranchKeep(repoRoot) : new Set());
+    setBranches(null);
+    branchesSeq.current++; // 取得中の古いリポジトリの応答を無効化
   }, [repoRoot]);
 
   // キーボードで選択を動かしたとき、その行が隠れていればスクロールして見せる
@@ -709,8 +722,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             .gitRebaseBackupDelete(repoRoot, bk.name)
             .then(() => {
               show('success', 'バックアップブランチを削除しました');
-              if (tab === 'branches')
-                api.gitBranches(repoRoot).then((r) => setBranches(r.branches)).catch(toastError);
+              if (tab === 'branches') loadBranches(repoRoot);
             })
             .catch(toastError);
         }),
@@ -749,8 +761,8 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     });
   };
 
-  const localBranches = branches.filter((b) => !isRemoteBranch(b));
-  const remoteBranches = branches.filter((b) => isRemoteBranch(b));
+  const localBranches = (branches ?? []).filter((b) => !isRemoteBranch(b));
+  const remoteBranches = (branches ?? []).filter((b) => isRemoteBranch(b));
   const localBranchTree = buildBranchTree(localBranches, 'local');
   const remoteBranchTree = buildBranchTree(remoteBranches, 'remote');
   /** 表示順の行 (キーボード移動用)。ローカル → リモートの順で並ぶ */
@@ -1521,7 +1533,12 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         </div>
       )}
 
-      {tab === 'log' ? (
+      {loading ? (
+        // リポジトリ切替中: 前後のリポジトリの内容が混ざって見えないよう、status が届くまで本体を出さない
+        <div className={cx("git-body")}>
+          <div className={cx("empty-hint")}>読み込み中…</div>
+        </div>
+      ) : tab === 'log' ? (
         // ログタブ: グラフ + コミット詳細 + 差分プレビューの 3 ペイン。
         // 分割方向を変えたら保存済みサイズを読み直したいので key で作り直す
         <PanelGroup
@@ -1704,8 +1721,14 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   tabIndex={0}
                   onKeyDown={branchListKeyDown}
                 >
-                  {renderBranchSection('ローカルブランチ', localBranches.length, localBranchTree)}
-                  {renderBranchSection('リモートブランチ', remoteBranches.length, remoteBranchTree)}
+                  {branches === null ? (
+                    <div className={cx("empty-hint")}>読み込み中…</div>
+                  ) : (
+                    <>
+                      {renderBranchSection('ローカルブランチ', localBranches.length, localBranchTree)}
+                      {renderBranchSection('リモートブランチ', remoteBranches.length, remoteBranchTree)}
+                    </>
+                  )}
                 </div>
               </div>
             )}

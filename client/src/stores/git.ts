@@ -21,6 +21,11 @@ export type OverlayCode = 'normal' | 'modified' | 'staged' | 'untracked' | 'conf
 interface GitStore {
   repoRoot: string | null;
   status: GitStatus | null;
+  /**
+   * リポジトリ切替中 (別リポジトリへ移動してから最初の status が届くまで)。
+   * この間は Git パネルの中身を出さず、切替前後の内容が混ざって見えないようにする
+   */
+  loading: boolean;
   /** repo 相対ではなく絶対パス → オーバーレイコード */
   overlay: Record<string, OverlayCode>;
   /** マージ/リベース/cherry-pick の進行状態 (002.md §2.2) */
@@ -68,16 +73,31 @@ function buildOverlay(root: string, status: GitStatus): Record<string, OverlayCo
 
 const NO_MERGE: MergeState = { inProgress: null, conflicted: [] };
 
+/** dirPath がリポジトリ root 配下か */
+function isUnder(dirPath: string, root: string): boolean {
+  return dirPath === root || dirPath.startsWith(`${root}/`);
+}
+
+/** checkRepo の世代番号。パス移動が連続したとき、古い isRepo 応答で上書きしないための番号 */
+let checkSeq = 0;
+
 export const useGit = create<GitStore>((set, get) => ({
   repoRoot: null,
   status: null,
+  loading: false,
   overlay: {},
   mergeState: NO_MERGE,
   logFilter: null,
 
   checkRepo: async (dirPath) => {
+    const seq = ++checkSeq;
+    const prevRoot = get().repoRoot;
+    // 現在のリポジトリの外へ移動した時点で切替中にする (isRepo の応答を待たず古い内容を隠す)
+    if (prevRoot && !isUnder(dirPath, prevRoot)) set({ loading: true });
+    const cleared = { repoRoot: null, status: null, loading: false, overlay: {}, mergeState: NO_MERGE, logFilter: null };
     try {
       const { isRepo, root } = await api.isRepo(dirPath);
+      if (seq !== checkSeq) return; // その後さらに移動した (新しい checkRepo に任せる)
       if (isRepo && root) {
         if (get().repoRoot !== root) {
           // 初回検出 (null → repo) は URL から復元した logFilter を保持する
@@ -85,19 +105,21 @@ export const useGit = create<GitStore>((set, get) => ({
           set({
             repoRoot: root,
             status: null,
+            loading: true,
             overlay: {},
             mergeState: NO_MERGE,
             ...(keepFilter ? {} : { logFilter: null }),
           });
         } else {
-          set({ repoRoot: root });
+          // 同じリポジトリ内の移動。最初の status がまだ届いていなければ切替中のまま
+          set({ repoRoot: root, loading: get().status === null });
         }
         await get().refreshStatus();
       } else {
-        set({ repoRoot: null, status: null, overlay: {}, mergeState: NO_MERGE, logFilter: null });
+        set(cleared);
       }
     } catch {
-      set({ repoRoot: null, status: null, overlay: {}, mergeState: NO_MERGE, logFilter: null });
+      if (seq === checkSeq) set(cleared);
     }
   },
 
@@ -109,9 +131,12 @@ export const useGit = create<GitStore>((set, get) => ({
         api.gitStatus(root),
         api.gitMergeState(root).catch(() => NO_MERGE),
       ]);
-      set({ status, overlay: buildOverlay(root, status), mergeState });
+      // 待っている間に別リポジトリへ切り替わっていたら、古いリポジトリの結果は捨てる
+      if (get().repoRoot !== root) return;
+      set({ status, loading: false, overlay: buildOverlay(root, status), mergeState });
     } catch {
       /* repo が消えた等 */
+      if (get().repoRoot === root) set({ loading: false });
     }
   },
 
