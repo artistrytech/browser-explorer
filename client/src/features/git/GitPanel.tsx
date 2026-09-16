@@ -303,11 +303,6 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     useCommitDraft.getState().clear();
   }, [commitDraft]);
 
-  useEffect(() => {
-    if (repoRoot && tab === 'branches' && !loading) loadBranches(repoRoot);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repoRoot, tab, status, loading]);
-
   // 一括削除モードは「ブランチ」タブ専用。他タブへ移ったりリポジトリが変わったらキャンセル扱い
   useEffect(() => {
     if (tab !== 'branches') {
@@ -317,14 +312,22 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     }
   }, [tab]);
 
+  // リポジトリ切替時の初期化。取得中の古いリポジトリの応答を無効化するため世代番号も進める。
+  // 下の一覧取得より先に置く: マウント時 (レビュー等の別ビューから戻ったとき) は両方が同時に走るので、
+  // 逆順だと取得直後に世代が進んで応答が捨てられ「読み込み中…」のまま止まる
   useEffect(() => {
     setBulkMode(false);
     setBulkTargets(new Set());
     setBulkForce(new Set());
     setKeepBranches(repoRoot ? loadBranchKeep(repoRoot) : new Set());
     setBranches(null);
-    branchesSeq.current++; // 取得中の古いリポジトリの応答を無効化
+    branchesSeq.current++;
   }, [repoRoot]);
+
+  useEffect(() => {
+    if (repoRoot && tab === 'branches' && !loading) loadBranches(repoRoot);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repoRoot, tab, status, loading]);
 
   // キーボードで選択を動かしたとき、その行が隠れていればスクロールして見せる
   useEffect(() => {
