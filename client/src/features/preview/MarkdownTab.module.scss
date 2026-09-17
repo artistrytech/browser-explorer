@@ -264,6 +264,37 @@
     }
   }
 
+  /* mermaid 図 (```mermaid)。描画前はソースがそのまま pre として見え、描画後に SVG へ置き換わる */
+  pre:global(.md-mermaid-rendered) {
+    /* pre の等幅フォント・white-space が SVG 内のラベル (foreignObject) に継承されないよう戻す */
+    font-family: inherit;
+    font-size: inherit;
+    line-height: normal;
+    white-space: normal;
+    text-align: center;
+    overflow-x: auto;
+
+    svg {
+      max-width: 100%;
+      height: auto;
+    }
+  }
+
+  pre:global(.md-mermaid-error) {
+    border-color: var(--danger);
+
+    > div {
+      color: var(--danger);
+      font-family: inherit;
+      white-space: pre-wrap;
+      margin-bottom: 0.6em;
+    }
+
+    > code {
+      display: block;
+    }
+  }
+
   blockquote {
     margin-left: 0;
     padding: 0.2em 1em;

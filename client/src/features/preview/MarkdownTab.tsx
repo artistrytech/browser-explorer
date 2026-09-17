@@ -17,6 +17,7 @@ import { switchView, replaceView, useUi } from '../../stores/ui';
 import { toastError } from '../../stores/toast';
 import { baseName, parentPath, joinPath } from '../../lib/paths';
 import { savePreviewScroll, loadPreviewScroll } from '../../lib/previewViewMemory';
+import { renderMermaid } from './mermaid';
 import styles from './MarkdownTab.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -95,6 +96,13 @@ function slugify(text: string): string {
 
 const HEADING_ID_PREFIX = 'md-';
 
+/** mermaid 記法のコードブロックに付けるクラス (描画後処理の目印。CSS Modules を通さない素のクラス名) */
+const MERMAID_CLASS = 'md-mermaid';
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 const md = new Marked({
   gfm: true,
   breaks: false,
@@ -104,6 +112,12 @@ const md = new Marked({
       const inner = this.parser.parseInline(tokens);
       const plain = tokens.map((t) => ('text' in t ? String(t.text) : '')).join('');
       return `<h${depth} id="${HEADING_ID_PREFIX}${slugify(plain)}">${inner}</h${depth}>\n`;
+    },
+    // ```mermaid ブロックは描画後処理で SVG に置き換える (それ以外は false を返して既定のコードブロック描画へ)
+    code({ text, lang }) {
+      const name = (lang ?? '').trim().split(/\s+/)[0].toLowerCase();
+      if (name !== 'mermaid') return false;
+      return `<pre class="${MERMAID_CLASS}">${escapeHtml(text)}</pre>\n`;
     },
   },
 });
@@ -337,6 +351,33 @@ export function MarkdownTab() {
         });
     });
 
+    // mermaid 図: ソースを data-src に保持したまま SVG に描き替える。失敗したらエラー文言とソースを表示
+    host.querySelectorAll<HTMLElement>(`pre.${MERMAID_CLASS}`).forEach((block) => {
+      const source = block.dataset.src ?? block.textContent ?? '';
+      block.dataset.src = source;
+      renderMermaid(source, theme === 'dark' ? 'dark' : 'default')
+        .then(({ svg, bindFunctions }) => {
+          if (cancelled) return;
+          // mermaid (securityLevel: strict) がラベルをサニタイズ済みの SVG
+          block.innerHTML = svg;
+          bindFunctions?.(block);
+          block.classList.add(`${MERMAID_CLASS}-rendered`);
+          block.classList.remove(`${MERMAID_CLASS}-error`);
+          // 図の高さ分だけ本文が伸びるので、復元位置がずれないよう描画後に再適用
+          applyPendingScroll();
+        })
+        .catch((e: unknown) => {
+          if (cancelled) return;
+          const msg = document.createElement('div');
+          msg.textContent = `mermaid 図を描画できません: ${e instanceof Error ? e.message : String(e)}`;
+          const code = document.createElement('code');
+          code.textContent = source;
+          block.replaceChildren(msg, code);
+          block.classList.add(`${MERMAID_CLASS}-error`);
+          block.classList.remove(`${MERMAID_CLASS}-rendered`);
+        });
+    });
+
     host.querySelectorAll<HTMLElement>('pre > code[class*="language-"]').forEach((code) => {
       const m = /language-([\w+#.-]+)/.exec(code.className);
       const lang = m ? monacoLangFor(m[1]) : null;
@@ -355,7 +396,9 @@ export function MarkdownTab() {
     return () => {
       cancelled = true;
     };
-  }, [data, current]);
+    // テーマ切替時は mermaid 図を配色に合わせて描き直す (画像・コード色付けも再実行されるが data-src から復元されるだけ)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, current, theme]);
 
   useEffect(() => {
     return () => {
