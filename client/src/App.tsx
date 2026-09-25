@@ -12,6 +12,7 @@ import { SettingsDialog } from './app/SettingsDialog';
 import { FileList } from './features/explorer/FileList';
 import { EditorPane } from './features/editor/EditorPane';
 import { GitPanel } from './features/git/GitPanel';
+import { GitToolbar, GitMergeBanner } from './features/git/GitToolbar';
 import { CloneDialog } from './features/git/CloneDialog';
 import { ConflictResolver } from './features/git/ConflictResolver';
 import { GitCommandDialog } from './features/git/GitCommandDialog';
@@ -379,6 +380,9 @@ export default function App() {
         <Panel>
           <div className={cx("main-area")}>
             <div className={cx(`main-view${view === 'files' ? '' : ' hidden'}`)}>
+              {/* リポジトリ内ならファイルタブにも Git のツールバー (ブランチ・同期・Stash 等) を出す */}
+              <GitToolbar />
+              <GitMergeBanner />
               <FileList />
             </div>
             <div className={cx(`main-view${view === 'editor' ? '' : ' hidden'}`)}>

@@ -15,7 +15,6 @@ import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import { useGit, GitTab } from '../../stores/git';
 import { useUi, defaultDiffToolIndex } from '../../stores/ui';
 import { useExplorer } from '../../stores/explorer';
-import { useSettings } from '../../stores/settings';
 import { useToast, toastError } from '../../stores/toast';
 import { confirmDialog, confirmDialogWithOption, promptDialog } from '../../stores/dialog';
 import { useCommitDraft } from '../../stores/commitDraft';
@@ -23,19 +22,16 @@ import { WorkingDiff, type FocusFile } from './WorkingDiff';
 import { GitGraph } from './GitGraph';
 import { LogPathFilter } from './LogPathFilter';
 import { openCloneDialog } from './CloneDialog';
-import { openConflictResolver, operationLabel } from '../../stores/conflict';
 import { runGitCommands } from './GitCommandDialog';
+import { GitToolbar, GitMergeBanner } from './GitToolbar';
 import { openSyncDialog } from './SyncDialog';
-import { openStashDialog } from './StashDialog';
-import { openAuthDialog } from './AuthDialog';
 import { openCommitMessagePicker } from './CommitMessageDialog';
 import { openCreateBranchDialog, openRemoteCheckoutDialog, openRenameBranchDialog } from './BranchDialog';
 import { openRebaseDialog } from './Rebase';
-import { openDiscardAllDialog } from './DiscardAllDialog';
 import { openCommitDiff } from './DiffTab';
 import { CommitFileDiff, commitFileLabel } from './CommitFileDiff';
 import { useRebase } from '../../stores/rebase';
-import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus, RebaseBackup } from '../../types';
+import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
 import styles from './GitPanel.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -161,8 +157,7 @@ function statusLabel(f: GitFileStatus, staged: boolean): string {
 
 /** tab は最上位タブ (コミット/ログ/ブランチ) から与えられる */
 export function GitPanel({ tab }: { tab: GitTab }) {
-  const { repoRoot, status, loading, refreshStatus, mergeState, logFilter } = useGit();
-  const { addRepository, repositories } = useSettings();
+  const { repoRoot, status, loading, refreshStatus, logFilter } = useGit();
   const show = useToast((s) => s.show);
   const [message, setMessage] = useState('');
   const [amend, setAmend] = useState(false);
@@ -706,52 +701,6 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           },
         ];
     openMenu(e.clientX, e.clientY, items);
-  };
-
-  /** ヘッダの「ツール」メニュー: 変更の一括破棄 / リベース用バックアップ (backup/rebase/*) の削除 */
-  const openToolsMenu = (e: React.MouseEvent) => {
-    const { clientX: x, clientY: y } = e;
-    const deleteItem = (bk: RebaseBackup): MenuItem => ({
-      label: `🗑 ${bk.name}`,
-      danger: true,
-      action: () =>
-        void confirmDialog(
-          'バックアップブランチを削除',
-          `${bk.name}\n(${bk.hash} ${bk.date} ${bk.subject}) を削除しますか?`,
-          true,
-        ).then((ok) => {
-          if (!ok) return;
-          void api
-            .gitRebaseBackupDelete(repoRoot, bk.name)
-            .then(() => {
-              show('success', 'バックアップブランチを削除しました');
-              if (tab === 'branches') loadBranches(repoRoot);
-            })
-            .catch(toastError);
-        }),
-    });
-    const buildMenu = (backupItems: MenuItem[]): MenuItem[] => [
-      {
-        label: '変更をすべて破棄…',
-        danger: true,
-        action: () => openDiscardAllDialog(),
-      },
-      { separator: true },
-      {
-        label: 'リベースのバックアップを削除',
-        submenu: backupItems,
-      },
-    ];
-    void api
-      .gitRebaseBackups(repoRoot)
-      .then(({ backups }) => {
-        const backupItems =
-          backups.length > 0
-            ? backups.map(deleteItem)
-            : [{ label: '(バックアップはありません)', disabled: true }];
-        openMenu(x, y, buildMenu(backupItems));
-      })
-      .catch(() => openMenu(x, y, buildMenu([{ label: '(取得に失敗しました)', disabled: true }])));
   };
 
   const toggleBranchGroup = (key: string) => {
@@ -1404,46 +1353,13 @@ export function GitPanel({ tab }: { tab: GitTab }) {
 
   return (
     <div className={cx("git-panel")}>
-      <div className={cx("git-header")}>
-        <span className={cx("git-repo-name")} title={repoRoot}>
-          🌿 {status?.branch ?? '?'}
-          {status?.tracking ? ` ↑${status.ahead}↓${status.behind}` : ''}
-        </span>
-        {/* リモートとのやり取り (Push/Pull/Fetch/一括同期) は「同期」ダイアログにまとめ、
-            そこでタブを選んで実行する。Stash と同じく即時実行はしない。
-            一括削除モード中はブランチに影響する操作をまとめて止める */}
-        <button
-          className={cx("status-btn")}
-          disabled={busy || bulkMode}
-          title="Push / Pull / Fetch / ブランチの一括同期"
-          onClick={() => openSyncDialog()}
-        >
-          ⟳ 同期
-        </button>
-        <button className={cx("status-btn")} disabled={busy || bulkMode} onClick={openStashDialog}>
-          Stash
-        </button>
-        <button
-          className={cx("status-btn")}
-          title="このリポジトリの認証設定 (SSH 鍵 / 資格情報ヘルパー)"
-          onClick={openAuthDialog}
-        >
-          🔑 認証
-        </button>
-        <button
-          className={cx("status-btn")}
-          title="リベース用バックアップの管理など"
-          disabled={bulkMode}
-          onClick={openToolsMenu}
-        >
-          🧰 ツール ▾
-        </button>
-        {!repositories.includes(repoRoot) && (
-          <button className={cx("status-btn")} onClick={() => addRepository(repoRoot)} title="サイドバーに登録">
-            ★ 登録
-          </button>
-        )}
-        <span className={cx("status-spacer")} />
+      <GitToolbar
+        busy={busy}
+        lockBranchOps={bulkMode}
+        onBackupDeleted={() => {
+          if (tab === 'branches') loadBranches(repoRoot);
+        }}
+      >
         {/* ログタブの分割方向 (localStorage に保持。別タブ・再起動後も引き継ぐ) */}
         {tab === 'log' && (
           <>
@@ -1463,78 +1379,9 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             </button>
           </>
         )}
-      </div>
+      </GitToolbar>
 
-      {/* 進行中の操作がなくても、未解決の競合 (stash 復元 / cherry-pick --no-commit) は知らせる */}
-      {(mergeState.inProgress || mergeState.conflicted.length > 0) && (
-        <div className={cx("merge-banner")}>
-          {mergeState.inProgress ? (
-            <>
-              ⚠ {operationLabel(mergeState.inProgress)}が進行中です
-              {mergeState.conflicted.length > 0 && ` (競合 ${mergeState.conflicted.length} 件)`}
-            </>
-          ) : (
-            <>
-              ⚠ 未解決の競合が {mergeState.conflicted.length} 件あります (stash の復元 / cherry-pick
-              --no-commit など)
-            </>
-          )}
-          {mergeState.conflicted.length > 0 ? (
-            <button className={cx("btn")} onClick={() => openConflictResolver('')}>
-              競合を解消…
-            </button>
-          ) : (
-            <button
-              className={cx("btn")}
-              onClick={() =>
-                void runGitCommands(
-                  repoRoot,
-                  [
-                    mergeState.inProgress === 'merge'
-                      ? ['commit', '--no-edit']
-                      : mergeState.inProgress === 'rebase'
-                        ? ['rebase', '--continue']
-                        : ['cherry-pick', '--continue'],
-                  ],
-                  '続行 (完了)',
-                )
-              }
-            >
-              完了 (コミット)
-            </button>
-          )}
-          <button
-            className={cx("btn danger")}
-            onClick={() =>
-              void confirmDialog(
-                '中止',
-                mergeState.inProgress
-                  ? '進行中の操作を中止して開始前の状態へ戻します。よろしいですか?'
-                  : '適用された変更と競合の解決結果を取り消し、HEAD の状態へ戻します (git reset --merge)。\n' +
-                      'stash から復元した場合、退避は残るのでやり直せます。よろしいですか?',
-                true,
-              ).then((ok) => {
-                if (ok)
-                  void runGitCommands(
-                    repoRoot,
-                    [
-                      mergeState.inProgress === 'merge'
-                        ? ['merge', '--abort']
-                        : mergeState.inProgress === 'rebase'
-                          ? ['rebase', '--abort']
-                          : mergeState.inProgress === 'cherry-pick'
-                            ? ['cherry-pick', '--abort']
-                            : ['reset', '--merge'],
-                    ],
-                    '中止',
-                  );
-              })
-            }
-          >
-            {mergeState.inProgress ? '中止' : '取り消す'}
-          </button>
-        </div>
-      )}
+      <GitMergeBanner />
 
       {loading ? (
         // リポジトリ切替中: 前後のリポジトリの内容が混ざって見えないよう、status が届くまで本体を出さない
