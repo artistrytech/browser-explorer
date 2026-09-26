@@ -7,8 +7,10 @@ import { useSettings } from '../../stores/settings';
 import { useToast, toastError } from '../../stores/toast';
 import { confirmDialog } from '../../stores/dialog';
 import { useConflictResolver, usePendingStash, operationLabel } from '../../stores/conflict';
+import { useContextMenu } from '../../components/ContextMenu';
 import { runGitCommands } from './GitCommandDialog';
-import type { ConflictFile, ConflictVersions, MergeState } from '../../types';
+import { openCommitDetail } from './CommitDetailDialog';
+import type { ConflictFile, ConflictLog, ConflictLogSide, ConflictVersions, MergeState } from '../../types';
 import styles from './ConflictResolver.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -94,7 +96,7 @@ function ConflictList() {
   // アプリ起点のリベース中は、続行/中止をセッション経由 (バックアップ管理付き) に差し替える
   const rebaseSession = useRebase((s) => s.session);
   const isRebaseSession = rebaseSession?.repo === repoRoot && mergeState.inProgress === 'rebase';
-  const { dir, sticky, openFile, close } = useConflictResolver();
+  const { dir, sticky, openFile, openLog, close } = useConflictResolver();
   // 進行中の git 操作がない競合 (stash 復元 / cherry-pick --no-commit)。
   // 競合が 0 件になっても表示を保つため、開いた時点の判定 (sticky) を使う
   const isPending = sticky && !mergeState.inProgress;
@@ -201,7 +203,17 @@ function ConflictList() {
       </div>
       <div className={cx("conflict-list")}>
         {files.map((f) => (
-          <button key={f.path} className={cx("conflict-row")} onClick={() => openFile(f.path)}>
+          <button
+            key={f.path}
+            className={cx("conflict-row")}
+            onClick={() => openFile(f.path)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              useContextMenu.getState().open(e.clientX, e.clientY, [
+                { label: 'ログを表示', action: () => openLog(f.path) },
+              ]);
+            }}
+          >
             <span className={cx("ov-conflicted")}>⚠</span>
             <span className={cx("conflict-path")}>{f.path}</span>
             <span className={cx("conflict-kind")}>
@@ -447,6 +459,20 @@ function MergeTool({ file }: { file: string }) {
     if (unresolvedIdx.length === lines.length) revealInPanes(unresolvedIdx[at]);
   };
 
+  // ファイルを開いたら最初の競合ブロックへスクロールする (対比ペイン・結果ペインとも)。
+  // 結果ペインのカーソルもそこへ置くので、続く「▼ 次」は 2 番目の競合へ進む
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!isTextTool || !editor || res.length === 0) return;
+    revealInPanes(0);
+    const first = editor.getModel()?.findMatches('^<{7}', false, true, false, null, false)[0];
+    if (first) {
+      editor.revealLineInCenter(first.range.startLineNumber);
+      editor.setPosition({ lineNumber: first.range.startLineNumber, column: 1 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTextTool]);
+
   const markResolved = async () => {
     const editor = editorRef.current;
     const content = editor ? editor.getValue() : null;
@@ -622,8 +648,115 @@ function MergeTool({ file }: { file: string }) {
   );
 }
 
+// --- 競合ファイルのログ比較 (左右のブランチ) ---
+
+function ConflictLogView({ file }: { file: string }) {
+  const repoRoot = useGit((s) => s.repoRoot)!;
+  const mergeKind = useGit((s) => s.mergeState.inProgress);
+  const { backToList, openFile } = useConflictResolver();
+  // 進行中フラグが残らない stash 復元 (pop) の競合では、控えておいた退避を相手側とする
+  const pendingStash = usePendingStash((s) => s.pending);
+  const theirsHint = !mergeKind && pendingStash?.repo === repoRoot ? pendingStash.hash : undefined;
+  const [log, setLog] = useState<ConflictLog | null>(null);
+  const [onlyUnique, setOnlyUnique] = useState(false);
+  /** 左右の同じコミットを連動してハイライトする */
+  const [hover, setHover] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stale = false;
+    setLog(null);
+    api
+      .gitConflictLog(repoRoot, file, theirsHint)
+      .then((r) => {
+        if (!stale) setLog(r);
+      })
+      .catch(toastError);
+    return () => {
+      stale = true;
+    };
+  }, [repoRoot, file, theirsHint]);
+
+  const labels = sideLabel(mergeKind);
+
+  const renderSide = (side: ConflictLogSide | null, title: string, cls: 'mine' | 'theirs') => {
+    const commits = side ? (onlyUnique ? side.commits.filter((c) => c.unique) : side.commits) : [];
+    // 分岐点より前 (両側に共通の履歴) の先頭に区切りを入れる
+    const firstShared = commits.findIndex((c) => !c.unique);
+    return (
+      <div className={cx("merge-pane")}>
+        <div className={cx(`merge-pane-title ${cls}`)}>
+          {title}
+          {side?.hash && <span className={cx("clog-ref")}>{side.hash.slice(0, 7)}</span>}
+        </div>
+        {!side ? (
+          <div className={cx("empty-hint")}>相手側の参照を特定できません。</div>
+        ) : commits.length === 0 ? (
+          <div className={cx("empty-hint")}>
+            {onlyUnique ? '分岐点以降、この側でのファイルの変更はありません。' : 'このファイルの履歴はありません。'}
+          </div>
+        ) : (
+          commits.map((c, i) => (
+            <div key={c.hash}>
+              {i === firstShared && log?.base && (
+                <div className={cx("clog-divider")}>分岐点 ({log.base.slice(0, 7)}) 以前 — 両側で共通の履歴</div>
+              )}
+              <button
+                className={cx(`clog-row${c.unique ? ' unique' : ' shared'}${hover === c.hash ? ' hover' : ''}`)}
+                onMouseEnter={() => setHover(c.hash)}
+                onMouseLeave={() => setHover((h) => (h === c.hash ? null : h))}
+                onClick={() => void openCommitDetail(repoRoot, c.hash)}
+                title={`${c.hash}\n${c.subject}\n\n(クリックで詳細)`}
+              >
+                <span className={cx("clog-hash")}>{c.hash.slice(0, 7)}</span>
+                <span className={cx("clog-subject")}>
+                  {c.refs.map((r) => (
+                    <span key={r} className={cx("clog-ref")}>{r}</span>
+                  ))}
+                  {c.subject}
+                </span>
+                <span className={cx("clog-meta")}>
+                  {c.author} · {c.date.slice(0, 16).replace('T', ' ')}
+                </span>
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div className={cx("conflict-head")}>
+        <button className={cx("btn")} onClick={backToList}>← 一覧へ</button>
+        <b>{file} のログ</b>
+        <label className={cx("merge-hint")}>
+          <input type="checkbox" checked={onlyUnique} onChange={(e) => setOnlyUnique(e.target.checked)} />{' '}
+          分岐点以降のみ
+        </label>
+        <span className={cx("status-spacer")} />
+        <span className={cx("merge-hint")}>強調表示は分岐点以降にその側だけで入ったコミット</span>
+      </div>
+      {!log ? (
+        <div className={cx("empty-hint")}>読み込み中…</div>
+      ) : (
+        <div className={cx("merge-top")}>
+          {renderSide(log.ours, labels.mine, 'mine')}
+          {renderSide(log.theirs, labels.theirs, 'theirs')}
+        </div>
+      )}
+      <div className={cx("conflict-actions")}>
+        <span className={cx("status-spacer")} />
+        <button className={cx("btn primary")} onClick={() => openFile(file)}>
+          競合を解消
+        </button>
+      </div>
+    </>
+  );
+}
+
 export function ConflictResolver() {
-  const { open, file, sticky, close } = useConflictResolver();
+  const { open, file, logFile, sticky, close } = useConflictResolver();
   const repoRoot = useGit((s) => s.repoRoot);
   const inProgress = useGit((s) => s.mergeState.inProgress);
 
@@ -638,7 +771,9 @@ export function ConflictResolver() {
 
   return (
     <div className={cx("conflict-overlay")}>
-      <div className={cx("conflict-window")}>{file ? <MergeTool file={file} /> : <ConflictList />}</div>
+      <div className={cx("conflict-window")}>
+        {file ? <MergeTool file={file} /> : logFile ? <ConflictLogView file={logFile} /> : <ConflictList />}
+      </div>
     </div>
   );
 }

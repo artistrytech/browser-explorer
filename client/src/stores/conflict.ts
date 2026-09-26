@@ -33,6 +33,8 @@ interface ConflictStore {
   dir: string;
   /** 3-way ツールで開いているファイル (repo 相対)。null なら一覧 */
   file: string | null;
+  /** 左右のブランチでログを比較しているファイル (repo 相対)。null なら非表示 */
+  logFile: string | null;
   /**
    * 進行中の git 操作を伴わない競合 ('pending') として開いたか。
    * この場合は競合が 0 件になっても自動で閉じず、後始末 (退避の削除など) を案内する。
@@ -40,6 +42,7 @@ interface ConflictStore {
   sticky: boolean;
   show: (dir: string, sticky: boolean) => void;
   openFile: (path: string) => void;
+  openLog: (path: string) => void;
   backToList: () => void;
   close: () => void;
 }
@@ -48,11 +51,13 @@ export const useConflictResolver = create<ConflictStore>((set) => ({
   open: false,
   dir: '',
   file: null,
+  logFile: null,
   sticky: false,
-  show: (dir, sticky) => set({ open: true, dir, sticky, file: null }),
-  openFile: (file) => set({ file }),
-  backToList: () => set({ file: null }),
-  close: () => set({ open: false, file: null }),
+  show: (dir, sticky) => set({ open: true, dir, sticky, file: null, logFile: null }),
+  openFile: (file) => set({ file, logFile: null }),
+  openLog: (logFile) => set({ logFile, file: null }),
+  backToList: () => set({ file: null, logFile: null }),
+  close: () => set({ open: false, file: null, logFile: null }),
 }));
 
 export function openConflictResolver(relDir: string): void {

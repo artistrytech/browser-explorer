@@ -883,6 +883,80 @@ gitRouter.get('/conflict/versions', async (req, res) => {
   });
 });
 
+/**
+ * 競合ファイルのログを左右 (自分 = HEAD / 相手 = MERGE_HEAD 等) で比較するためのログ。
+ * 相手側の参照は進行中の操作から自動判定する。進行中フラグが残らない競合 (stash 復元など) は
+ * クライアントが theirs に参照 (stash のハッシュ等) を渡せる。
+ * 各コミットには、分岐点 (merge-base) 以降にその側だけで入ったものかどうか (unique) を付ける。
+ */
+gitRouter.get('/conflict/log', async (req, res) => {
+  const g = git(req.query.repo);
+  const rel = relPath(req.query.path);
+  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  const gitDir = (await g.revparse(['--absolute-git-dir'])).trim();
+  const resolveRef = (ref: string) =>
+    g.revparse(['--verify', '--quiet', `${ref}^{commit}`]).then((h) => h.trim() || null, () => null);
+
+  let theirsRef: string | null = null;
+  const theirsParam = typeof req.query.theirs === 'string' ? req.query.theirs : '';
+  if (theirsParam) theirsRef = theirsParam;
+  else {
+    // rebase 中に競合で止まっているコミットは REBASE_HEAD
+    for (const name of ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REBASE_HEAD']) {
+      if (existsSync(path.join(gitDir, name))) {
+        theirsRef = name;
+        break;
+      }
+    }
+  }
+  const oursHash = await resolveRef('HEAD');
+  const theirsHash = theirsRef ? await resolveRef(theirsRef) : null;
+  const base =
+    oursHash && theirsHash
+      ? (await g.raw(['merge-base', oursHash, theirsHash]).catch(() => '')).trim() || null
+      : null;
+
+  const fmt = '--pretty=format:%H%x1f%P%x1f%an%x1f%aI%x1f%D%x1f%s%x1e';
+  const sideLog = async (hash: string) => {
+    const [out, uniqueOut] = await Promise.all([
+      g.raw(['log', `--max-count=${limit}`, fmt, hash, '--', rel]).catch(() => ''),
+      // 分岐点以降にこの側だけで入ったコミット
+      base
+        ? g.raw(['log', '--format=%H', `--max-count=${limit}`, `${base}..${hash}`, '--', rel]).catch(() => '')
+        : Promise.resolve(''),
+    ]);
+    const unique = new Set(uniqueOut.split('\n').map((l) => l.trim()).filter(Boolean));
+    return out
+      .split('\x1e')
+      .map((rec) => rec.replace(/^\s+/, ''))
+      .filter((rec) => rec.length > 0)
+      .map((rec) => {
+        const [h, parents, author, date, refs, subject] = rec.split('\x1f');
+        return {
+          hash: h,
+          parents: parents ? parents.split(' ').filter(Boolean) : [],
+          author,
+          date,
+          refs: refs ? refs.split(', ').filter(Boolean) : [],
+          subject: subject ?? '',
+          // merge-base が取れない (無関係な履歴) 場合は全て固有扱い
+          unique: base ? unique.has(h) : true,
+        };
+      });
+  };
+
+  const [ours, theirs] = await Promise.all([
+    oursHash ? sideLog(oursHash) : Promise.resolve([]),
+    theirsHash ? sideLog(theirsHash) : Promise.resolve(null),
+  ]);
+  res.json({
+    path: rel,
+    base,
+    ours: { ref: 'HEAD', hash: oursHash, commits: ours },
+    theirs: theirsHash && theirs ? { ref: theirsRef, hash: theirsHash, commits: theirs } : null,
+  });
+});
+
 /** 統合結果を保存して git add (解決としてマーク, §2.6) */
 gitRouter.post('/conflict/resolve', async (req, res) => {
   const repo = req.body.repo as string;

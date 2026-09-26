@@ -275,3 +275,73 @@
   flex: 1;
   min-height: 160px;
 }
+
+/* --- 競合ファイルのログ比較 --- */
+
+.clog-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 8px;
+  border: none;
+  border-left: 3px solid transparent;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+}
+
+.clog-row.unique {
+  border-left-color: var(--accent);
+}
+
+.clog-row.shared {
+  color: var(--text-dim);
+}
+
+.clog-row:hover,
+.clog-row.hover {
+  background: var(--bg-hover);
+}
+
+.clog-hash {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.clog-subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clog-meta {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.clog-ref {
+  display: inline-block;
+  margin: 0 4px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: normal;
+  color: var(--text-dim);
+}
+
+.clog-divider {
+  padding: 4px 8px;
+  border-top: 1px dashed var(--border);
+  color: var(--text-dim);
+  font-family: system-ui, sans-serif;
+  font-size: 11px;
+}

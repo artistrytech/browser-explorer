@@ -130,6 +130,21 @@ export interface ConflictVersions {
   binary: boolean;
 }
 
+/** 競合ファイルのログ比較 (片側)。unique = 分岐点 (merge-base) 以降にこの側だけで入ったコミット */
+export interface ConflictLogSide {
+  ref: string;
+  hash: string | null;
+  commits: (GitGraphCommit & { unique: boolean })[];
+}
+
+export interface ConflictLog {
+  path: string;
+  base: string | null;
+  ours: ConflictLogSide;
+  /** 相手側の参照が特定できない場合は null */
+  theirs: ConflictLogSide | null;
+}
+
 /** コミットの差分ファイル 1 件 (行数はバイナリ時 null) */
 export interface CommitFile {
   path: string;

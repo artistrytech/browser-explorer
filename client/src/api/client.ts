@@ -3,6 +3,7 @@ import type {
   AppState,
   CommitFilesResult,
   ConflictFile,
+  ConflictLog,
   ConflictVersions,
   Eol,
   Favorite,
@@ -320,6 +321,10 @@ export const api = {
     get<{ files: ConflictFile[] }>(`/api/git/conflicts?repo=${q(repo)}${dir ? `&dir=${q(dir)}` : ''}`),
   gitConflictVersions: (repo: string, path: string) =>
     get<ConflictVersions>(`/api/git/conflict/versions?repo=${q(repo)}&path=${q(path)}`),
+  gitConflictLog: (repo: string, path: string, theirs?: string) =>
+    get<ConflictLog>(
+      `/api/git/conflict/log?repo=${q(repo)}&path=${q(path)}${theirs ? `&theirs=${q(theirs)}` : ''}`,
+    ),
   gitConflictResolve: (repo: string, path: string, content: string) =>
     post<{ ok: true }>('/api/git/conflict/resolve', { repo, path, content }),
   gitConflictTake: (repo: string, paths: string[], side: 'ours' | 'theirs') =>
