@@ -8,6 +8,8 @@ import { pushReviewView, switchView, useUi, type MainView } from '../stores/ui';
 import { useContextMenu } from '../components/ContextMenu';
 import { baseName } from '../lib/paths';
 import { unpinFolder } from '../lib/quickaccessOps';
+import { loadCollapsedSections, saveCollapsedSections } from '../lib/sidebarMemory';
+import { Chevron, FolderTree } from './FolderTree';
 import type { VolumeInfo } from '../types';
 import styles from './Sidebar.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
@@ -25,6 +27,7 @@ export function Sidebar() {
   const openMenu = useContextMenu((s) => s.open);
   const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
   const [home, setHome] = useState<string>('');
+  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsedSections);
 
   useEffect(() => {
     api
@@ -63,6 +66,28 @@ export function Sidebar() {
     });
   };
 
+  const toggleSection = (id: string) => {
+    const next = new Set(collapsed);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setCollapsed(next);
+    saveCollapsedSections(next);
+  };
+
+  /** 折り畳み可能なルート項目の見出し */
+  const heading = (id: string, label: string) => (
+    <button
+      className={cx('side-heading')}
+      aria-expanded={!collapsed.has(id)}
+      onClick={() => toggleSection(id)}
+    >
+      <span className={cx('side-chevron')}>
+        <Chevron open={!collapsed.has(id)} />
+      </span>
+      {label}
+    </button>
+  );
+
   const item = (
     key: string,
     label: string,
@@ -90,9 +115,9 @@ export function Sidebar() {
   return (
     <div className={cx("sidebar")}>
       <div className={cx("side-section")}>
-        <div className={cx("side-heading")}>クイックアクセス</div>
-        {home && item('home', 'Home', '🏠', home)}
-        {favorites.map((f) => (
+        {heading('quick', 'クイックアクセス')}
+        {!collapsed.has('quick') && home && item('home', 'Home', '🏠', home)}
+        {!collapsed.has('quick') && favorites.map((f) => (
           // ピン項目: ホバーで ✕ を表示。解除は確認ダイアログ必須 (002.md §7.3)
           <div key={f.path} className={cx("side-item-wrap")}>
             <button
@@ -124,13 +149,13 @@ export function Sidebar() {
       </div>
 
       <div className={cx("side-section")}>
-        <div className={cx("side-heading")}>場所</div>
-        {volumes.map((v) => item(v.path, v.name, '💽', v.path))}
+        {heading('places', '場所')}
+        {!collapsed.has('places') && <FolderTree volumes={volumes} onOpen={(e, p) => go(e, p)} />}
       </div>
 
       <div className={cx("side-section")}>
-        <div className={cx("side-heading")}>リポジトリ</div>
-        {repositories.map((r) => (
+        {heading('repos', 'リポジトリ')}
+        {!collapsed.has('repos') && repositories.map((r) => (
           <button
             key={r}
             className={cx(`side-item${repoRoot === r ? ' active' : ''}`)}
@@ -153,7 +178,7 @@ export function Sidebar() {
             </span>
           </button>
         ))}
-        {repositories.length === 0 && <div className={cx("side-empty")}>(未登録)</div>}
+        {!collapsed.has('repos') && repositories.length === 0 && <div className={cx("side-empty")}>(未登録)</div>}
       </div>
     </div>
   );

@@ -10,10 +10,82 @@
 }
 
 .side-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  border: none;
+  background: transparent;
   font-size: 11px;
   color: var(--text-dim);
-  padding: 4px 12px;
+  padding: 4px 12px 4px 4px;
   text-transform: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.side-heading:hover {
+  color: var(--text);
+}
+
+.side-chevron,
+.tree-twisty {
+  width: 20px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+/* 「く」の字の折り畳みアイコン。開いているときは 90° 回して下向きにする */
+.chevron-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.12s;
+}
+
+.chevron-icon.open {
+  transform: rotate(90deg);
+}
+
+.tree-item {
+  gap: 4px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+.tree-twisty {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+}
+
+.tree-twisty:hover {
+  color: var(--text);
+}
+
+.tree-twisty.leaf {
+  visibility: hidden;
+}
+
+/* 「場所」のツリーは高さに上限を設け、超えた分はツリー内でスクロールする */
+.tree-scroll {
+  max-height: 45vh;
+  overflow-y: auto;
+}
+
+.tree-note {
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 2px 0;
 }
 
 .side-item {
