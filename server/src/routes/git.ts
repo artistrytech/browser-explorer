@@ -1347,8 +1347,10 @@ function backupTimestamp(): string {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
-/** 成功時の後始末: 任意でバックアップを削除し、セッションを消す */
+/** 成功時の後始末: セッションを消し、任意でバックアップを削除する */
 async function finalizeRebaseSuccess(repo: string, session: RebaseSession): Promise<string[]> {
+  // await を挟む前にセッションを消す (途中で /rebase/session を読まれても古いセッションを返さない)
+  clearRebaseSession(repo);
   const notes: string[] = [];
   if (session.deleteBackupOnSuccess) {
     if (await branchExists(repo, session.backupBranch)) {
@@ -1359,7 +1361,6 @@ async function finalizeRebaseSuccess(repo: string, session: RebaseSession): Prom
   } else {
     notes.push(`バックアップブランチ: ${session.backupBranch}`);
   }
-  clearRebaseSession(repo);
   return notes;
 }
 
@@ -1410,10 +1411,12 @@ gitRouter.post('/rebase/start', async (req, res) => {
 
   const result = await runGitCapture(repo, ['rebase', onto]);
   const mergeState = await getMergeState(g);
-  broadcastEvent('git:rebase', { repo });
 
+  // git:rebase の通知は後始末 (セッション削除) の後に送る。先に送ると、受け手の
+  // /rebase/session 再取得が後始末中に割り込み、消える前のセッションでロックが復活する
   if (mergeState.inProgress) {
     // 競合等で一時停止 → セッションは保持し、競合解消 UI へ誘導する
+    broadcastEvent('git:rebase', { repo });
     res.json({ ok: result.ok, phase: 'conflict', output: result.output, session, mergeState });
     return;
   }
@@ -1421,6 +1424,7 @@ gitRouter.post('/rebase/start', async (req, res) => {
   if (result.ok) {
     // 競合なく完走 (up-to-date 含む) → 成功として後始末
     const notes = await finalizeRebaseSuccess(repo, session);
+    broadcastEvent('git:rebase', { repo });
     res.json({ ok: true, phase: 'done', output: result.output, notes, mergeState });
     return;
   }
@@ -1450,17 +1454,20 @@ gitRouter.post('/rebase/continue', async (req, res) => {
 
   const result = await runGitCapture(repo, ['rebase', '--continue']);
   const mergeState = await getMergeState(g);
-  broadcastEvent('git:rebase', { repo });
 
+  // 通知は後始末の後 (/rebase/start と同じ理由)
   if (mergeState.inProgress) {
+    broadcastEvent('git:rebase', { repo });
     res.json({ ok: result.ok, phase: 'conflict', output: result.output, session, mergeState });
     return;
   }
   if (result.ok) {
     const notes = await finalizeRebaseSuccess(repo, session);
+    broadcastEvent('git:rebase', { repo });
     res.json({ ok: true, phase: 'done', output: result.output, notes, mergeState });
     return;
   }
+  broadcastEvent('git:rebase', { repo });
   res.json({ ok: false, phase: 'conflict', output: result.output, session, mergeState });
 });
 
