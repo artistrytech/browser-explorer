@@ -4,6 +4,7 @@ import type {
   CommitFilesResult,
   ConflictFile,
   ConflictLog,
+  ConflictSides,
   ConflictVersions,
   Eol,
   Favorite,
@@ -321,6 +322,8 @@ export const api = {
     get<{ files: ConflictFile[] }>(`/api/git/conflicts?repo=${q(repo)}${dir ? `&dir=${q(dir)}` : ''}`),
   gitConflictVersions: (repo: string, path: string) =>
     get<ConflictVersions>(`/api/git/conflict/versions?repo=${q(repo)}&path=${q(path)}`),
+  gitConflictSides: (repo: string, theirs?: string) =>
+    get<ConflictSides>(`/api/git/conflict/sides?repo=${q(repo)}${theirs ? `&theirs=${q(theirs)}` : ''}`),
   gitConflictLog: (repo: string, path: string, theirs?: string) =>
     get<ConflictLog>(
       `/api/git/conflict/log?repo=${q(repo)}&path=${q(path)}${theirs ? `&theirs=${q(theirs)}` : ''}`,

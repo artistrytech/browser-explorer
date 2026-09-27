@@ -10,7 +10,15 @@ import { useConflictResolver, usePendingStash, operationLabel } from '../../stor
 import { useContextMenu } from '../../components/ContextMenu';
 import { runGitCommands } from './GitCommandDialog';
 import { openCommitDetail } from './CommitDetailDialog';
-import type { ConflictFile, ConflictLog, ConflictLogSide, ConflictVersions, MergeState } from '../../types';
+import type {
+  ConflictFile,
+  ConflictLog,
+  ConflictLogSide,
+  ConflictSide,
+  ConflictSides,
+  ConflictVersions,
+  MergeState,
+} from '../../types';
 import styles from './ConflictResolver.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -90,7 +98,7 @@ function buildResult(segs: Segment[], res: Resolution[]): string {
 
 // --- 競合ファイル一覧 (§2.3) ---
 
-function ConflictList() {
+function ConflictList({ sides }: { sides: ConflictSides | null }) {
   const repoRoot = useGit((s) => s.repoRoot)!;
   const mergeState = useGit((s) => s.mergeState);
   // アプリ起点のリベース中は、続行/中止をセッション経由 (バックアップ管理付き) に差し替える
@@ -201,6 +209,7 @@ function ConflictList() {
         <span className={cx("status-spacer")} />
         <button className={cx("dialog-close")} onClick={close} title="閉じる">✕</button>
       </div>
+      <ConflictSidesLine sides={sides} />
       <div className={cx("conflict-list")}>
         {files.map((f) => (
           <button
@@ -352,7 +361,7 @@ function sideLabel(mergeKind: MergeState['inProgress']): { mine: string; theirs:
   return { mine: '自分 (Mine / HEAD)', theirs: `相手 (Theirs / ${source})` };
 }
 
-function MergeTool({ file }: { file: string }) {
+function MergeTool({ file, sides }: { file: string; sides: ConflictSides | null }) {
   const repoRoot = useGit((s) => s.repoRoot)!;
   const mergeKind = useGit((s) => s.mergeState.inProgress);
   const theme = useSettings((s) => s.settings.theme);
@@ -573,6 +582,7 @@ function MergeTool({ file }: { file: string }) {
           <button className={cx("btn")} onClick={backToList}>← 一覧へ</button>
           <b>{file}</b>
         </div>
+        <ConflictSidesLine sides={sides} />
         <div className={cx("empty-hint")}>読み込み中…</div>
       </>
     );
@@ -589,6 +599,7 @@ function MergeTool({ file }: { file: string }) {
           <b>{file} の競合を解消</b>
           <span className={cx("conflict-kind")}>{versions.kind}{versions.binary ? ' (binary)' : ''}</span>
         </div>
+        <ConflictSidesLine sides={sides} />
         <div className={cx("conflict-binary")}>
           <p>
             {versions.binary
@@ -621,6 +632,7 @@ function MergeTool({ file }: { file: string }) {
         <span className={cx("status-spacer")} />
         <span className={cx("merge-hint")}>ブロック採用で結果を再生成します (結果ペインの手編集はその際に失われます)</span>
       </div>
+      <ConflictSidesLine sides={sides} />
       <div className={cx("merge-top")}>
         <div className={cx("merge-pane")} ref={minePaneRef} onScroll={() => syncScroll('mine')}>
           <div className={cx("merge-pane-title mine")}>{labels.mine}</div>
@@ -650,7 +662,7 @@ function MergeTool({ file }: { file: string }) {
 
 // --- 競合ファイルのログ比較 (左右のブランチ) ---
 
-function ConflictLogView({ file }: { file: string }) {
+function ConflictLogView({ file, sides }: { file: string; sides: ConflictSides | null }) {
   const repoRoot = useGit((s) => s.repoRoot)!;
   const mergeKind = useGit((s) => s.mergeState.inProgress);
   const { backToList, openFile } = useConflictResolver();
@@ -737,6 +749,7 @@ function ConflictLogView({ file }: { file: string }) {
         <span className={cx("status-spacer")} />
         <span className={cx("merge-hint")}>強調表示は分岐点以降にその側だけで入ったコミット</span>
       </div>
+      <ConflictSidesLine sides={sides} />
       {!log ? (
         <div className={cx("empty-hint")}>読み込み中…</div>
       ) : (
@@ -755,10 +768,71 @@ function ConflictLogView({ file }: { file: string }) {
   );
 }
 
+// --- ヘッダの「自分 / 相手」の具体的なブランチ名 ---
+
+function ConflictSidesLine({ sides }: { sides: ConflictSides | null }) {
+  if (!sides) return null;
+  const renderSide = (label: string, s: ConflictSide | null, cls: 'mine' | 'theirs') => (
+    <span
+      className={cx("sides-item")}
+      title={s ? [s.name, s.hash, s.subject].filter(Boolean).join('\n') : undefined}
+    >
+      <span className={cx(`sides-tag ${cls}`)}>{label}</span>
+      {s ? (
+        <>
+          <b className={cx("sides-name")}>{s.name ?? '(不明)'}</b>
+          {s.hash && <span className={cx("clog-ref")}>{s.hash.slice(0, 7)}</span>}
+          {s.note && <span className={cx("merge-hint")}>{s.note}</span>}
+          {/* merge 以外は相手が特定のコミット (適用中のコミットや退避) なので件名も出す */}
+          {cls === 'theirs' && sides.operation !== 'merge' && s.subject && (
+            <span className={cx("sides-subject")}>{s.subject}</span>
+          )}
+        </>
+      ) : (
+        <span className={cx("merge-hint")}>(特定できません)</span>
+      )}
+    </span>
+  );
+  return (
+    <div className={cx("conflict-sides")}>
+      {renderSide('自分 (ours)', sides.ours, 'mine')}
+      <span className={cx("sides-arrow")} title="相手の変更を自分へ取り込んでいます">←</span>
+      {renderSide('相手 (theirs)', sides.theirs, 'theirs')}
+    </div>
+  );
+}
+
 export function ConflictResolver() {
   const { open, file, logFile, sticky, close } = useConflictResolver();
   const repoRoot = useGit((s) => s.repoRoot);
-  const inProgress = useGit((s) => s.mergeState.inProgress);
+  const mergeState = useGit((s) => s.mergeState);
+  const inProgress = mergeState.inProgress;
+  // 進行中フラグが残らない stash 復元 (pop) の競合では、控えておいた退避を相手側とする
+  const pendingStash = usePendingStash((s) => s.pending);
+  const stash = !inProgress && pendingStash?.repo === repoRoot ? pendingStash : null;
+  const [sides, setSides] = useState<ConflictSides | null>(null);
+
+  // リベースは競合のたびに適用中のコミットが変わるので、状態の再取得ごとに引き直す
+  useEffect(() => {
+    if (!open || !repoRoot) {
+      setSides(null);
+      return;
+    }
+    let stale = false;
+    api
+      .gitConflictSides(repoRoot, stash?.hash)
+      .then((r) => {
+        if (stale) return;
+        // 退避はハッシュより stash@{n} の方が分かりやすい
+        setSides(stash && r.theirs ? { ...r, theirs: { ...r.theirs, name: stash.ref } } : r);
+      })
+      .catch(() => {
+        if (!stale) setSides(null);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [open, repoRoot, mergeState, stash]);
 
   // 進行状態が解消されたらツールを自動的に閉じる (§2.7)。
   // 'pending' (sticky) で開いた場合は続行の概念がなく、解決後に案内や後始末
@@ -772,7 +846,13 @@ export function ConflictResolver() {
   return (
     <div className={cx("conflict-overlay")}>
       <div className={cx("conflict-window")}>
-        {file ? <MergeTool file={file} /> : logFile ? <ConflictLogView file={logFile} /> : <ConflictList />}
+        {file ? (
+          <MergeTool file={file} sides={sides} />
+        ) : logFile ? (
+          <ConflictLogView file={logFile} sides={sides} />
+        ) : (
+          <ConflictList sides={sides} />
+        )}
       </div>
     </div>
   );

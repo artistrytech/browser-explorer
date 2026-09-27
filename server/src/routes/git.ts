@@ -884,6 +884,84 @@ gitRouter.get('/conflict/versions', async (req, res) => {
 });
 
 /**
+ * 競合の「自分 (ours)」「相手 (theirs)」が具体的にどのブランチ・コミットかを返す。
+ * - merge: 自分 = 現在のブランチ / 相手 = MERGE_MSG に記録された取り込み元 (無ければ MERGE_HEAD から推定)
+ * - rebase: 自分 = リベース先 (onto) / 相手 = リベース中のブランチの、いま適用しているコミット (REBASE_HEAD)
+ * - cherry-pick: 自分 = 現在のブランチ / 相手 = CHERRY_PICK_HEAD
+ * - 進行中フラグが残らない競合 (stash 復元など) は、クライアントが theirs に参照を渡せる
+ */
+gitRouter.get('/conflict/sides', async (req, res) => {
+  const g = git(req.query.repo);
+  const gitDir = (await g.revparse(['--absolute-git-dir'])).trim();
+  const readGitFile = (name: string) =>
+    fs.readFile(path.join(gitDir, name), 'utf8').then((s) => s.trim(), () => '');
+  const resolveRef = (ref: string) =>
+    g.revparse(['--verify', '--quiet', `${ref}^{commit}`]).then((h) => h.trim() || null, () => null);
+  const subjectOf = (hash: string) =>
+    g.raw(['log', '-1', '--format=%s', hash]).then((s) => s.trim() || null, () => null);
+  /** コミットを指すブランチ名 (ローカル優先 → リモート → name-rev の相対表記) */
+  const describe = async (hash: string): Promise<string | null> => {
+    const out = await g
+      .raw(['for-each-ref', `--points-at=${hash}`, '--format=%(refname)', 'refs/heads', 'refs/remotes'])
+      .catch(() => '');
+    const refs = out.split('\n').map((l) => l.trim()).filter((l) => l && !l.endsWith('/HEAD'));
+    const local = refs.find((r) => r.startsWith('refs/heads/'));
+    if (local) return local.slice('refs/heads/'.length);
+    if (refs[0]) return refs[0].slice('refs/remotes/'.length);
+    const rev = await g
+      .raw(['name-rev', '--name-only', '--no-undefined', '--exclude=refs/stash', hash])
+      .then((s) => s.trim(), () => '');
+    return rev.replace(/^remotes\//, '') || null;
+  };
+  const side = async (hash: string | null, name: string | null, note: string | null = null) => ({
+    name: name ?? (hash ? await describe(hash) : null),
+    hash,
+    subject: hash ? await subjectOf(hash) : null,
+    note,
+  });
+  // 現在のブランチ (detached なら null)
+  const current = await g.raw(['symbolic-ref', '--short', '-q', 'HEAD']).then((s) => s.trim() || null, () => null);
+  const headHash = await resolveRef('HEAD');
+  const { inProgress } = await getMergeState(g);
+  // オプションと解釈される値は受け付けない
+  const theirsParam =
+    typeof req.query.theirs === 'string' && !req.query.theirs.startsWith('-') ? req.query.theirs : '';
+
+  if (inProgress === 'rebase') {
+    const dir = existsSync(path.join(gitDir, 'rebase-merge')) ? 'rebase-merge' : 'rebase-apply';
+    const headName = await readGitFile(`${dir}/head-name`);
+    const ontoHash = (await readGitFile(`${dir}/onto`)) || null;
+    const branch = headName.startsWith('refs/heads/') ? headName.slice('refs/heads/'.length) : null;
+    const stopped = await resolveRef('REBASE_HEAD');
+    res.json({
+      operation: inProgress,
+      ours: await side(ontoHash ?? headHash, null, 'リベース先'),
+      theirs: await side(stopped, branch ?? '(detached HEAD)', 'リベース中のブランチ'),
+    });
+    return;
+  }
+
+  let theirs: Awaited<ReturnType<typeof side>> | null = null;
+  if (inProgress === 'merge') {
+    const mergeHead = await resolveRef('MERGE_HEAD');
+    // 例: "Merge branch 'feature' into main" / "Merge remote-tracking branch 'origin/x'"
+    //     "Merge branch 'main' of https://example.com/repo" (pull)
+    const msg = (await readGitFile('MERGE_MSG')).split('\n')[0] ?? '';
+    const m = msg.match(/^Merge (?:remote-tracking )?(?:branch|tag|commit) '([^']+)'(?: of (\S+))?/);
+    theirs = await side(mergeHead, m ? (m[2] ? `${m[1]} (${m[2]})` : m[1]) : null);
+  } else if (inProgress === 'cherry-pick') {
+    theirs = await side(await resolveRef('CHERRY_PICK_HEAD'), null);
+  } else if (theirsParam) {
+    theirs = await side(await resolveRef(theirsParam), null);
+  }
+  res.json({
+    operation: inProgress,
+    ours: await side(headHash, current ?? '(detached HEAD)'),
+    theirs,
+  });
+});
+
+/**
  * 競合ファイルのログを左右 (自分 = HEAD / 相手 = MERGE_HEAD 等) で比較するためのログ。
  * 相手側の参照は進行中の操作から自動判定する。進行中フラグが残らない競合 (stash 復元など) は
  * クライアントが theirs に参照 (stash のハッシュ等) を渡せる。

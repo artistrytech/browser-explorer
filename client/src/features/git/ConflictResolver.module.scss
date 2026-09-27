@@ -98,6 +98,65 @@
   background: var(--bg-alt);
 }
 
+/* ヘッダ 2 行目: 自分 / 相手の具体的なブランチ名 */
+.conflict-head:has(+ .conflict-sides) {
+  border-bottom: none;
+  padding-bottom: 4px;
+}
+
+.conflict-sides {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 12px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+  font-size: 12px;
+}
+
+.sides-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sides-tag {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 11px;
+}
+
+.sides-tag.mine {
+  background: var(--accent);
+}
+
+.sides-tag.theirs {
+  background: #8a5cc2;
+}
+
+.sides-name {
+  font-family: var(--font-mono);
+}
+
+.sides-subject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-dim);
+}
+
+.sides-arrow {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  cursor: help;
+}
+
 .dialog-close {
   border: none;
   background: transparent;

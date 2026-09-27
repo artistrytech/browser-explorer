@@ -130,6 +130,23 @@ export interface ConflictVersions {
   binary: boolean;
 }
 
+/** 競合の片側 (自分 / 相手) が具体的にどのブランチ・コミットか */
+export interface ConflictSide {
+  /** ブランチ名など (特定できなければ null) */
+  name: string | null;
+  hash: string | null;
+  subject: string | null;
+  /** 補足 (リベース時の「リベース先」など) */
+  note: string | null;
+}
+
+export interface ConflictSides {
+  operation: MergeState['inProgress'];
+  ours: ConflictSide;
+  /** 相手側が特定できない場合は null */
+  theirs: ConflictSide | null;
+}
+
 /** 競合ファイルのログ比較 (片側)。unique = 分岐点 (merge-base) 以降にこの側だけで入ったコミット */
 export interface ConflictLogSide {
   ref: string;
