@@ -148,6 +148,17 @@ function ConflictList({ sides }: { sides: ConflictSides | null }) {
       if (ok) void run(() => api.gitConflictTake(repoRoot, files.map((f) => f.path), side), '解決しました');
     });
 
+  /** ファイル単位で片側を採用 (コンテキストメニュー)。削除側を採用するとファイルは削除される */
+  const takeOne = (path: string, side: 'ours' | 'theirs') =>
+    void run(() => api.gitConflictTake(repoRoot, [path], side), `${path} を解決しました`);
+
+  /** メニュー表示名。ブランチ名が分かれば添える */
+  const takeLabel = (side: 'ours' | 'theirs', deleted: boolean) => {
+    const who = side === 'ours' ? '自分' : '相手';
+    const name = (side === 'ours' ? sides?.ours : sides?.theirs)?.name;
+    return `${deleted ? `削除する (${who}を採用)` : `${who}を採用`}${name ? ` — ${name}` : ''}`;
+  };
+
   /**
    * 'pending' の取り消し: 進行中の操作がないので --abort は使えない。
    * git reset --merge で、適用された変更と解決結果を捨てて HEAD の状態に戻す
@@ -219,6 +230,19 @@ function ConflictList({ sides }: { sides: ConflictSides | null }) {
             onContextMenu={(e) => {
               e.preventDefault();
               useContextMenu.getState().open(e.clientX, e.clientY, [
+                { label: '競合を解消', action: () => openFile(f.path) },
+                { separator: true },
+                {
+                  label: takeLabel('ours', f.kind === 'deleted by us'),
+                  disabled: busy,
+                  action: () => takeOne(f.path, 'ours'),
+                },
+                {
+                  label: takeLabel('theirs', f.kind === 'deleted by them'),
+                  disabled: busy,
+                  action: () => takeOne(f.path, 'theirs'),
+                },
+                { separator: true },
                 { label: 'ログを表示', action: () => openLog(f.path) },
               ]);
             }}
