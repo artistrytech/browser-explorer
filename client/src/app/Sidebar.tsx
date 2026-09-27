@@ -114,71 +114,83 @@ export function Sidebar() {
 
   return (
     <div className={cx("sidebar")}>
-      <div className={cx("side-section")}>
+      <div className={cx(`side-section limited${collapsed.has('quick') ? ' collapsed' : ''}`)}>
         {heading('quick', 'クイックアクセス')}
-        {!collapsed.has('quick') && home && item('home', 'Home', '🏠', home)}
-        {!collapsed.has('quick') && favorites.map((f) => (
-          // ピン項目: ホバーで ✕ を表示。解除は確認ダイアログ必須 (002.md §7.3)
-          <div key={f.path} className={cx("side-item-wrap")}>
-            <button
-              className={cx(`side-item${path === f.path ? ' active' : ''}`)}
-              onClick={(e) => go(e, f.path)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                openMenu(e.clientX, e.clientY, [
-                  { label: 'ピン止めを解除', action: () => void unpinFolder(f.path, f.label) },
-                ]);
-              }}
-              title={`${f.path}\n(Ctrl+クリックで別タブ)`}
-            >
-              <span className={cx("side-icon")}>★</span>
-              <span className={cx("side-label")}>{f.label}</span>
-            </button>
-            <button
-              className={cx("side-unpin")}
-              title="ピン止めを解除"
-              onClick={(e) => {
-                e.stopPropagation();
-                void unpinFolder(f.path, f.label);
-              }}
-            >
-              ✕
-            </button>
+        {!collapsed.has('quick') && (
+          <div className={cx("side-body")}>
+            {home && item('home', 'Home', '🏠', home)}
+            {favorites.map((f) => (
+              // ピン項目: ホバーで ✕ を表示。解除は確認ダイアログ必須 (002.md §7.3)
+              <div key={f.path} className={cx("side-item-wrap")}>
+                <button
+                  className={cx(`side-item${path === f.path ? ' active' : ''}`)}
+                  onClick={(e) => go(e, f.path)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    openMenu(e.clientX, e.clientY, [
+                      { label: 'ピン止めを解除', action: () => void unpinFolder(f.path, f.label) },
+                    ]);
+                  }}
+                  title={`${f.path}\n(Ctrl+クリックで別タブ)`}
+                >
+                  <span className={cx("side-icon")}>★</span>
+                  <span className={cx("side-label")}>{f.label}</span>
+                </button>
+                <button
+                  className={cx("side-unpin")}
+                  title="ピン止めを解除"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void unpinFolder(f.path, f.label);
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
 
-      <div className={cx("side-section")}>
-        {heading('places', '場所')}
-        {!collapsed.has('places') && <FolderTree volumes={volumes} onOpen={(e, p) => go(e, p)} />}
-      </div>
-
-      <div className={cx("side-section")}>
+      <div className={cx(`side-section limited${collapsed.has('repos') ? ' collapsed' : ''}`)}>
         {heading('repos', 'リポジトリ')}
-        {!collapsed.has('repos') && repositories.map((r) => (
-          <button
-            key={r}
-            className={cx(`side-item${repoRoot === r ? ' active' : ''}`)}
-            title={`${r}\n(Ctrl+クリックで別タブ)`}
-            onClick={(e) => go(e, r, true)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              openMenu(e.clientX, e.clientY, [
-                {
-                  label: '一覧から削除',
-                  action: () => setRepositories(repositories.filter((p) => p !== r)),
-                },
-              ]);
-            }}
-          >
-            <span className={cx("side-icon")}>●</span>
-            <span className={cx("side-label")}>
-              {baseName(r)}
-              {repoRoot === r && status?.branch ? ` (${status.branch})` : ''}
-            </span>
-          </button>
-        ))}
-        {!collapsed.has('repos') && repositories.length === 0 && <div className={cx("side-empty")}>(未登録)</div>}
+        {!collapsed.has('repos') && (
+          <div className={cx("side-body")}>
+            {repositories.map((r) => (
+              <button
+                key={r}
+                className={cx(`side-item${repoRoot === r ? ' active' : ''}`)}
+                title={`${r}\n(Ctrl+クリックで別タブ)`}
+                onClick={(e) => go(e, r, true)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  openMenu(e.clientX, e.clientY, [
+                    {
+                      label: '一覧から削除',
+                      action: () => setRepositories(repositories.filter((p) => p !== r)),
+                    },
+                  ]);
+                }}
+              >
+                <span className={cx("side-icon")}>●</span>
+                <span className={cx("side-label")}>
+                  {baseName(r)}
+                  {repoRoot === r && status?.branch ? ` (${status.branch})` : ''}
+                </span>
+              </button>
+            ))}
+            {repositories.length === 0 && <div className={cx("side-empty")}>(未登録)</div>}
+          </div>
+        )}
+      </div>
+
+      <div className={cx(`side-section fill${collapsed.has('places') ? ' collapsed' : ''}`)}>
+        {heading('places', '場所')}
+        {!collapsed.has('places') && (
+          <div className={cx("side-body")}>
+            <FolderTree volumes={volumes} onOpen={(e, p) => go(e, p)} />
+          </div>
+        )}
       </div>
     </div>
   );

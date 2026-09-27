@@ -163,7 +163,7 @@ export function FolderTree({
   };
 
   return (
-    <div ref={rootRef} role="tree" className={cx('tree-scroll')}>
+    <div ref={rootRef} role="tree">
       {volumes.map((v) => renderNode(v.path, v.name, '💽', 0))}
     </div>
   );

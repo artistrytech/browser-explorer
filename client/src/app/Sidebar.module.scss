@@ -1,15 +1,46 @@
+/*
+ * サイドバー自体はスクロールさせず、各セクションの中身 (.side-body) だけをスクロールさせる (二重スクロール防止)。
+ * クイックアクセス / リポジトリ (.limited) はサイドバーの高さの 25% まで、
+ * 場所 (.fill) はその残りの高さを使う。上限は % 指定なのでサイドバーの高さに追従する。
+ */
 .sidebar {
   height: 100%;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--bg-alt);
   padding: 6px 0;
 }
 
 .side-section {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-height: 0;
   margin-bottom: 12px;
 }
 
+.side-section.limited {
+  max-height: 25%;
+}
+
+.side-section.fill {
+  flex: 1 1 0;
+  margin-bottom: 0;
+}
+
+.side-section.collapsed {
+  flex: none;
+}
+
+.side-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .side-heading {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -74,12 +105,6 @@
 
 .tree-twisty.leaf {
   visibility: hidden;
-}
-
-/* 「場所」のツリーは高さに上限を設け、超えた分はツリー内でスクロールする */
-.tree-scroll {
-  max-height: 45vh;
-  overflow-y: auto;
 }
 
 .tree-note {
