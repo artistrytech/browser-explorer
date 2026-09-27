@@ -155,6 +155,15 @@ function statusLabel(f: GitFileStatus, staged: boolean): string {
   return map[c] ?? c;
 }
 
+/** 作業ツリー / ステージの行の文字色クラス (種別ごとに色分け) */
+function statusClass(f: GitFileStatus, staged: boolean): string {
+  const c = staged ? f.index : f.workingDir;
+  const map: Record<string, string> = {
+    M: 'wf-mod', T: 'wf-mod', A: 'wf-add', C: 'wf-add', D: 'wf-del', R: 'wf-ren', U: 'wf-conflict', '?': 'wf-untracked',
+  };
+  return map[c] ?? '';
+}
+
 /** tab は最上位タブ (コミット/ログ/ブランチ) から与えられる */
 export function GitPanel({ tab }: { tab: GitTab }) {
   const { repoRoot, status, loading, refreshStatus, logFilter } = useGit();
@@ -1178,7 +1187,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             (defaultTool >= 0 ? `\nダブルクリックで ${diffTools[defaultTool].label}` : '')
           }
         >
-          <span className={cx("git-file-status")}>{statusLabel(f, stagedSide)}</span> {f.path}
+          <span className={cx(`git-file-status ${statusClass(f, stagedSide)}`)}>{statusLabel(f, stagedSide)}</span> {f.path}
         </span>
         {stagedSide ? (
           <button

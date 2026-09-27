@@ -193,9 +193,23 @@
 .git-file-status {
   display: inline-block;
   min-width: 42px;
-  color: var(--accent);
+  color: var(--text-dim);
   font-size: 11px;
 }
+
+/* 種別ごとのステータス名の文字色 (パスは既定色のまま) */
+/* 変更 (青) と削除 (赤) は色相を離し、削除は取り消し線でも区別する */
+.git-file-status.wf-mod { color: var(--accent); }
+
+.git-file-status.wf-add { color: var(--add); }
+
+.git-file-status.wf-del { color: var(--del); text-decoration: line-through; }
+
+.git-file-status.wf-ren { color: #8b5cf6; }
+
+.git-file-status.wf-conflict { color: #e08a00; font-weight: 600; }
+
+.git-file-status.wf-untracked { color: var(--text-dim); font-style: italic; }
 
 .git-file-row {
   cursor: pointer;
