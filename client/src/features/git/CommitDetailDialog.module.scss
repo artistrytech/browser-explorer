@@ -41,6 +41,15 @@
   margin-top: 16px;
 }
 
+/* 主ボタンに添えるチェックボックス。ボタン群から離して左寄せにする */
+.sd-action-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  cursor: pointer;
+}
+
 .btn {
   border: 1px solid var(--border);
   background: var(--bg-alt);

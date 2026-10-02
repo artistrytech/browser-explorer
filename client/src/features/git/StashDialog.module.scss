@@ -122,11 +122,42 @@
   width: 120px;
 }
 
-.stash-section-title {
-  font-weight: 600;
-  margin-top: 8px;
-  padding-bottom: 4px;
+.stash-tabs {
+  display: flex;
+  gap: 2px;
   border-bottom: 1px solid var(--border);
+  margin-top: 10px;
+}
+
+.stash-tab {
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 5px 14px;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  font-size: 13px;
+  /* 下線に重ねて「選択タブだけ枠がつながる」見た目にする */
+  margin-bottom: -1px;
+}
+
+.stash-tab:hover:not(.on) {
+  background: var(--bg-hover);
+}
+
+.stash-tab.on {
+  border-color: var(--border);
+  border-bottom: 1px solid var(--bg);
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* タブを切り替えても実行ボタンの位置が動かないよう、本文の高さを揃える */
+.stash-body {
+  min-height: 300px;
+  margin-top: 12px;
 }
 
 .stash-list {

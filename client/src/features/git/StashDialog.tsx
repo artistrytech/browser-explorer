@@ -13,10 +13,17 @@ import { useDialogKeys } from '../../lib/dialogKeys';
 const cx = createCssModuleClassNames(styles);
 
 /**
- * Stash ダイアログ:
- * - 現在の変更の退避 (git stash push、メッセージ任意)
- * - 退避一覧から選択して復元 (復元成功後に削除するかを選択: pop / apply)
+ * Stash ダイアログ (「退避」「復元」の 2 タブ):
+ * - 退避: 現在の変更の退避 (git stash push、メッセージ任意)
+ * - 復元: 退避一覧から選択して復元 (復元成功後に削除するかを選択: pop / apply)
  */
+
+type StashTab = 'push' | 'restore';
+
+const TABS: { key: StashTab; label: string }[] = [
+  { key: 'push', label: '退避' },
+  { key: 'restore', label: '復元' },
+];
 
 interface StashEntry {
   ref: string; // stash@{n}
@@ -51,6 +58,7 @@ export function StashDialog() {
   const { open, close } = useStashDialog();
   const repoRoot = useGit((s) => s.repoRoot);
   const status = useGit((s) => s.status);
+  const [tab, setTab] = useState<StashTab>('push');
   const [list, setList] = useState<StashEntry[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [dropAfter, setDropAfter] = useState(true);
@@ -58,6 +66,12 @@ export function StashDialog() {
   const [loading, setLoading] = useState(false);
 
   const hasChanges = (status?.files.length ?? 0) > 0;
+
+  // 開いたときのタブ: 退避できる変更があれば「退避」、無ければ「復元」
+  useEffect(() => {
+    if (!open) return;
+    setTab((useGit.getState().status?.files.length ?? 0) > 0 ? 'push' : 'restore');
+  }, [open]);
 
   // 開くたびに一覧を取得 (実行結果ダイアログとは別に、静かに取得する)
   useEffect(() => {
@@ -90,17 +104,19 @@ export function StashDialog() {
   }, [open, repoRoot]);
 
   const doStash = () => {
-    if (!repoRoot) return;
+    if (!repoRoot || !hasChanges) return;
     const msg = message.trim();
     close();
     void runGitCommands(repoRoot, [msg ? ['stash', 'push', '-m', msg] : ['stash', 'push']], 'Stash');
   };
 
-  /** 復元 (pop/apply)。詳細ダイアログからは対象の ref を明示的に受け取る */
-  const doRestore = (ref: string | null = selected) => {
+  /**
+   * 復元 (pop/apply)。詳細ダイアログからは対象の ref と、
+   * 詳細ダイアログ側のチェックボックスで選んだ削除有無を明示的に受け取る
+   */
+  const doRestore = (ref: string | null = selected, drop: boolean = dropAfter) => {
     if (!ref || !repoRoot) return;
     const entry = list.find((s) => s.ref === ref);
-    const drop = dropAfter;
     close();
     // 新しい復元を始めるので、前回の「解決後に削除する退避」の控えは破棄する
     usePendingStash.getState().setPendingStash(null);
@@ -122,9 +138,11 @@ export function StashDialog() {
     });
   };
 
+  // Enter = 表示中タブの実行ボタン
+  const canRun = tab === 'push' ? hasChanges : !!selected && !loading;
   const dialogRef = useDialogKeys({
     enabled: open,
-    onEnter: selected && !loading ? () => doRestore() : null,
+    onEnter: canRun ? (tab === 'push' ? doStash : () => doRestore()) : null,
     onEscape: close,
   });
 
@@ -141,8 +159,10 @@ export function StashDialog() {
       date: s.date,
       rows: [{ label: '元ブランチ', value: stashBranch(s.message) ?? '' }],
       actionLabel: '復元',
+      // 削除するかは詳細ダイアログ内で決めてもらう (初期値は一覧側のチェック状態)
+      actionCheck: { label: '復元に成功したら一覧から削除する (pop)', checked: dropAfter },
     }).then((r) => {
-      if (r === 'action') doRestore(s.ref);
+      if (r) doRestore(s.ref, r.checked);
     });
   };
 
@@ -150,26 +170,38 @@ export function StashDialog() {
     <div ref={dialogRef} className={cx("dialog-backdrop")}>
       <div className={cx("dialog push-dialog")}>
         <div className={cx("dialog-title")}>Stash</div>
-        <div className={cx("clone-form")}>
-          <div className={cx("stash-section-title")}>現在の変更を退避</div>
-          <label className={cx("clone-row")}>
-            <span className={cx("clone-label wide")}>メッセージ:</span>
-            <input
-              className={cx("clone-input")}
-              value={message}
-              placeholder="(任意)"
-              onChange={(e) => setMessage(e.target.value)}
-            />
-          </label>
-          <div className={cx("clone-row")}>
-            <span className={cx("status-spacer")} />
-            <button className={cx("btn")} disabled={!hasChanges} title={hasChanges ? '' : '退避する変更がありません'} onClick={doStash}>
-              退避 (stash push)
-            </button>
-          </div>
 
-          <div className={cx("stash-section-title")}>退避一覧から復元</div>
-          {loading ? (
+        <div className={cx("stash-tabs")} role="tablist">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              role="tab"
+              aria-selected={tab === t.key}
+              className={cx(`stash-tab${tab === t.key ? ' on' : ''}`)}
+              onClick={() => setTab(t.key)}
+            >
+              {t.label}
+              {t.key === 'restore' && !loading && list.length > 0 && ` (${list.length})`}
+            </button>
+          ))}
+        </div>
+
+        <div className={cx("clone-form stash-body")}>
+          {tab === 'push' ? (
+            <>
+              <label className={cx("clone-row")}>
+                <span className={cx("clone-label wide")}>メッセージ:</span>
+                <input
+                  className={cx("clone-input")}
+                  value={message}
+                  placeholder="(任意)"
+                  autoFocus
+                  onChange={(e) => setMessage(e.target.value)}
+                />
+              </label>
+              {!hasChanges && <div className={cx("empty-hint")}>退避する変更がありません</div>}
+            </>
+          ) : loading ? (
             <div className={cx("empty-hint")}>読み込み中…</div>
           ) : list.length === 0 ? (
             <div className={cx("empty-hint")}>退避された変更はありません</div>
@@ -210,9 +242,15 @@ export function StashDialog() {
           <button className={cx("btn")} onClick={close}>
             キャンセル
           </button>
-          <button className={cx("btn primary")} disabled={!selected || loading} onClick={() => doRestore()}>
-            復元
-          </button>
+          {tab === 'push' ? (
+            <button className={cx("btn primary")} disabled={!canRun} onClick={doStash}>
+              退避
+            </button>
+          ) : (
+            <button className={cx("btn primary")} disabled={!canRun} onClick={() => doRestore()}>
+              復元
+            </button>
+          )}
         </div>
       </div>
     </div>

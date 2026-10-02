@@ -32,8 +32,16 @@ export interface CommitDetailOptions {
   date?: string;
   /** 情報欄に追加する行 (値が空の行は出さない) */
   rows?: { label: string; value: string }[];
-  /** 主ボタンのラベル。押すと Promise が 'action' で解決する (省略時は「閉じる」のみ) */
+  /** 主ボタンのラベル。押すと Promise が結果オブジェクトで解決する (省略時は「閉じる」のみ) */
   actionLabel?: string;
+  /** 主ボタンの横に出すチェックボックス (主ボタンがあるときのみ)。状態は結果の checked で返す */
+  actionCheck?: { label: string; checked: boolean };
+}
+
+/** 主ボタンで閉じたときの結果 (閉じるだけなら null) */
+export interface CommitDetailResult {
+  /** actionCheck のチェック状態 (actionCheck 未指定なら false) */
+  checked: boolean;
 }
 
 /** 差分ファイルのステータス表示 (A/M/D/T/R/C) */
@@ -52,12 +60,12 @@ interface Store {
   /** 表示対象 (コミットハッシュ / stash@{n} などの rev) */
   target: string;
   options: CommitDetailOptions;
-  resolve: ((v: 'action' | null) => void) | null;
+  resolve: ((v: CommitDetailResult | null) => void) | null;
   show: (
     repo: string,
     target: string,
     options: CommitDetailOptions,
-    resolve: (v: 'action' | null) => void,
+    resolve: (v: CommitDetailResult | null) => void,
   ) => void;
   close: () => void;
 }
@@ -72,12 +80,12 @@ const useStore = create<Store>((set) => ({
   close: () => set({ open: false, target: '', resolve: null }),
 }));
 
-/** 詳細を開く。主ボタン (actionLabel) が押されたら 'action'、閉じたら null で解決する */
+/** 詳細を開く。主ボタン (actionLabel) が押されたら結果オブジェクト、閉じたら null で解決する */
 export function openCommitDetail(
   repo: string,
   target: string,
   options: CommitDetailOptions = {},
-): Promise<'action' | null> {
+): Promise<CommitDetailResult | null> {
   return new Promise((resolve) => useStore.getState().show(repo, target, options, resolve));
 }
 
@@ -87,10 +95,12 @@ export function CommitDetailDialog() {
   const [loading, setLoading] = useState(false);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  const [checked, setChecked] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const finish = (v: 'action' | null) => {
-    resolve?.(v);
+  /** action = 主ボタンで閉じたか (false なら「閉じる」扱いで null を返す) */
+  const finish = (action: boolean) => {
+    resolve?.(action ? { checked } : null);
     close();
   };
 
@@ -119,6 +129,11 @@ export function CommitDetailDialog() {
     };
   }, [open, repo, target]);
 
+  // チェックボックスは開くたびに呼び出し元の初期値へ戻す
+  useEffect(() => {
+    if (open) setChecked(options.actionCheck?.checked ?? false);
+  }, [open, options]);
+
   // 一覧が出たらフォーカスを移し、そのまま ↑↓ で行を選べるようにする
   useEffect(() => {
     if (open && detail) listRef.current?.focus();
@@ -127,8 +142,8 @@ export function CommitDetailDialog() {
   // Enter = 主ボタン (無ければ閉じる) / Escape = 閉じる
   const dialogRef = useDialogKeys({
     enabled: open,
-    onEnter: () => finish(options.actionLabel ? 'action' : null),
-    onEscape: () => finish(null),
+    onEnter: () => finish(!!options.actionLabel),
+    onEscape: () => finish(false),
   });
 
   if (!open) return null;
@@ -179,7 +194,7 @@ export function CommitDetailDialog() {
   };
 
   return (
-    <div ref={dialogRef} className={cx("dialog-backdrop nested")} onMouseDown={() => finish(null)}>
+    <div ref={dialogRef} className={cx("dialog-backdrop nested")} onMouseDown={() => finish(false)}>
       <div className={cx("dialog commit-detail-dialog")} onMouseDown={(e) => e.stopPropagation()}>
         <div className={cx("dialog-title")}>{options.title ?? `コミットの詳細 — ${target}`}</div>
 
@@ -287,11 +302,17 @@ export function CommitDetailDialog() {
         </div>
 
         <div className={cx("dialog-buttons")}>
-          <button className={cx("btn")} onClick={() => finish(null)}>
+          {options.actionLabel && options.actionCheck && (
+            <label className={cx("sd-action-check")}>
+              <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+              <span>{options.actionCheck.label}</span>
+            </label>
+          )}
+          <button className={cx("btn")} onClick={() => finish(false)}>
             閉じる
           </button>
           {options.actionLabel && (
-            <button className={cx("btn primary")} onClick={() => finish('action')}>
+            <button className={cx("btn primary")} onClick={() => finish(true)}>
               {options.actionLabel}
             </button>
           )}
