@@ -292,12 +292,24 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     if (repoRoot) saveGitView(repoRoot, { filesFilter: v });
   };
 
+  /** コミット欄 (入力欄・amend・ボタン) のどこかにフォーカスがあるか */
+  const [commitFocused, setCommitFocused] = useState(false);
+  // タブ/リポジトリ切替でコミット欄が作り直されると blur が届かないので戻しておく
+  useEffect(() => setCommitFocused(false), [tab, repoRoot]);
+
+  /**
+   * コミット欄を全体表示するか。メッセージが空でフォーカスも無ければ入力欄だけのコンパクト表示にする。
+   * amend 中はメッセージ空欄でも (--no-edit で) コミットできるので、チェックを外せるよう全体表示のまま
+   */
+  const commitExpanded = message.length > 0 || commitFocused || amend;
+
   useEffect(() => {
     const el = commitMessageRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  }, [message, tab]);
+    // border-box なので枠線分を足す (足りないと max-height 未満でもスクロールバーが出る)
+    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+  }, [message, tab, commitExpanded]);
 
   // 外部から積まれた下書き (cherry-pick --no-commit 後の MERGE_MSG など) を入力欄へ載せる
   const commitDraft = useCommitDraft((s) => s.draft);
@@ -1432,98 +1444,133 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         </PanelGroup>
       ) : (
         <div className={cx("git-body")}>
-          <div className={cx(`git-left${tab === 'branches' ? ' branch-host' : ''}`)}>
+          <div className={cx(`git-left${tab === 'branches' ? ' branch-host' : ' changes-host'}`)}>
             {tab === 'changes' && (
               <>
-                <div className={cx("git-section-title")}>
-                  ステージ済み ({staged.length})
-                  <span className={cx("git-section-actions")}>
-                    {selectedStaged.length > 0 && (
-                      <button
-                        className={cx("status-btn")}
-                        title="選択したファイルをステージ解除"
-                        onClick={() => void run(() => api.gitUnstage(repoRoot, selectedStaged))}
-                      >
-                        選択を解除 ({selectedStaged.length})
-                      </button>
-                    )}
-                    {staged.length > 0 && (
-                      <button
-                        className={cx("status-btn")}
-                        onClick={() => void run(() => api.gitUnstage(repoRoot, staged.map((f) => f.path)))}
-                      >
-                        すべて解除
-                      </button>
-                    )}
-                  </span>
+                {/* 変更一覧だけがスクロールし、コミット欄は下部に固定表示 */}
+                <div className={cx("changes-list")}>
+                  <div className={cx("git-section-title")}>
+                    ステージ済み ({staged.length})
+                    <span className={cx("git-section-actions")}>
+                      {selectedStaged.length > 0 && (
+                        <button
+                          className={cx("status-btn")}
+                          title="選択したファイルをステージ解除"
+                          onClick={() => void run(() => api.gitUnstage(repoRoot, selectedStaged))}
+                        >
+                          選択を解除 ({selectedStaged.length})
+                        </button>
+                      )}
+                      {staged.length > 0 && (
+                        <button
+                          className={cx("status-btn")}
+                          onClick={() => void run(() => api.gitUnstage(repoRoot, staged.map((f) => f.path)))}
+                        >
+                          すべて解除
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  {staged.map((f) => fileRow(f, true))}
+                  <div className={cx("git-section-title")}>
+                    変更 ({unstaged.length})
+                    <span className={cx("git-section-actions")}>
+                      {selectedUnstaged.length > 0 && (
+                        <button
+                          className={cx("status-btn")}
+                          title="選択したファイルをステージ"
+                          onClick={() => void run(() => api.gitStage(repoRoot, selectedUnstaged))}
+                        >
+                          選択をステージ ({selectedUnstaged.length})
+                        </button>
+                      )}
+                      {unstaged.length > 0 && (
+                        <button
+                          className={cx("status-btn")}
+                          onClick={() => void run(() => api.gitStage(repoRoot, unstaged.map((f) => f.path)))}
+                        >
+                          すべてステージ
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  {unstaged.map((f) => fileRow(f, false))}
                 </div>
-                {staged.map((f) => fileRow(f, true))}
-                <div className={cx("git-section-title")}>
-                  変更 ({unstaged.length})
-                  <span className={cx("git-section-actions")}>
-                    {selectedUnstaged.length > 0 && (
-                      <button
-                        className={cx("status-btn")}
-                        title="選択したファイルをステージ"
-                        onClick={() => void run(() => api.gitStage(repoRoot, selectedUnstaged))}
-                      >
-                        選択をステージ ({selectedUnstaged.length})
-                      </button>
-                    )}
-                    {unstaged.length > 0 && (
-                      <button
-                        className={cx("status-btn")}
-                        onClick={() => void run(() => api.gitStage(repoRoot, unstaged.map((f) => f.path)))}
-                      >
-                        すべてステージ
-                      </button>
-                    )}
-                  </span>
-                </div>
-                {unstaged.map((f) => fileRow(f, false))}
 
-                <div className={cx("commit-box")}>
-                  <div className={cx("commit-message-head")}>
-                    <span className={cx("git-section-title-text")}>コミットメッセージ</span>
-                    <button
-                      className={cx("status-btn")}
-                      title="過去のコミットメッセージから選ぶ"
-                      onClick={pickCommitMessage}
-                    >
-                      履歴から選ぶ
-                    </button>
+                <div
+                  className={cx(`commit-box${commitExpanded ? '' : ' compact'}`)}
+                  onFocus={() => setCommitFocused(true)}
+                  onBlur={(e) => {
+                    // コミット欄の中でフォーカスが移るだけ (Tab で amend へ等) なら全体表示のまま
+                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setCommitFocused(false);
+                  }}
+                  onMouseDown={(e) => {
+                    // 入力欄以外 (amend・ボタン) のクリックではフォーカスを移さない。移すと mousedown の時点で
+                    // 表示が切り替わり (入力欄の blur で縮む / コンパクト時の「履歴」が focus で消える)、クリックが空振りする
+                    if (e.target !== commitMessageRef.current) e.preventDefault();
+                  }}
+                >
+                  {commitExpanded && (
+                    <div className={cx("commit-message-head")}>
+                      <span className={cx("git-section-title-text")}>コミットメッセージ</span>
+                      <button
+                        className={cx("status-btn")}
+                        title="過去のコミットメッセージから選ぶ"
+                        onClick={pickCommitMessage}
+                      >
+                        履歴から選ぶ
+                      </button>
+                    </div>
+                  )}
+                  {/* 入力中に表示が切り替わってもフォーカスが外れないよう、textarea の位置は常に同じにする */}
+                  <div className={cx("commit-message-row")}>
+                    <textarea
+                      ref={commitMessageRef}
+                      className={cx("commit-message")}
+                      rows={1}
+                      placeholder="コミットメッセージ (Ctrl+Enter でコミット)"
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      onKeyDown={(e) => {
+                        // Ctrl+Enter (mac は ⌘+Enter) でコミット実行
+                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                          e.preventDefault();
+                          commitByShortcut();
+                        }
+                      }}
+                    />
+                    {/* コンパクト表示でも空欄から履歴を選べるよう、ボタンだけ入力欄の横に残す */}
+                    {!commitExpanded && (
+                      <button
+                        className={cx("status-btn")}
+                        title="過去のコミットメッセージから選ぶ"
+                        onClick={pickCommitMessage}
+                      >
+                        履歴
+                      </button>
+                    )}
                   </div>
-                  <textarea
-                    ref={commitMessageRef}
-                    className={cx("commit-message")}
-                    placeholder="コミットメッセージ (Ctrl+Enter でコミット)"
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    onKeyDown={(e) => {
-                      // Ctrl+Enter (mac は ⌘+Enter) でコミット実行
-                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                        e.preventDefault();
-                        commitByShortcut();
-                      }
-                    }}
-                  />
-                  <label className={cx("amend-label")}>
-                    <input type="checkbox" checked={amend} onChange={(e) => setAmend(e.target.checked)} />
-                    amend (直前のコミットを修正)
-                  </label>
-                  <div>
-                    <button className={cx("btn primary")} disabled={!canCommit} onClick={doCommit}>
-                      Commit
-                    </button>{' '}
-                    <button
-                      className={cx("btn")}
-                      disabled={!canCommitAll}
-                      title="未追跡を含むすべての変更をステージしてコミットする"
-                      onClick={doCommitAll}
-                    >
-                      Commit All
-                    </button>
-                  </div>
+                  {commitExpanded && (
+                    <>
+                      <label className={cx("amend-label")}>
+                        <input type="checkbox" checked={amend} onChange={(e) => setAmend(e.target.checked)} />
+                        amend (直前のコミットを修正)
+                      </label>
+                      <div>
+                        <button className={cx("btn primary")} disabled={!canCommit} onClick={doCommit}>
+                          Commit
+                        </button>{' '}
+                        <button
+                          className={cx("btn")}
+                          disabled={!canCommitAll}
+                          title="未追跡を含むすべての変更をステージしてコミットする"
+                          onClick={doCommitAll}
+                        >
+                          Commit All
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </>
             )}
