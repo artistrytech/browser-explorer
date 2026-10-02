@@ -9,6 +9,41 @@ export interface FsEntry {
   linkTarget?: string;
 }
 
+export type TransferOp = 'move' | 'copy';
+/** 衝突時の扱い: 上書き (既存はゴミ箱へ) / 両方残す (連番) / スキップ */
+export type TransferConflictMode = 'overwrite' | 'rename' | 'skip';
+
+/** コピー / 移動の事前確認の対象 1 件 */
+export interface TransferCheckItem {
+  src: string;
+  name: string;
+  /** コピー先での (連番を付ける前の) パス */
+  dest: string;
+  /** 対象が見つからない (確認の直前に消えた等) */
+  missing?: true;
+  type?: 'dir' | 'file' | 'symlink';
+  size?: number;
+  mtime?: number;
+  /** コピー先が対象の親フォルダ (移動は不可、コピーは自分自身と衝突) */
+  sameDir?: boolean;
+  /** コピー先が対象自身またはその配下 (移動・コピーとも不可) */
+  intoSelf?: boolean;
+  /** コピー先にある同名の項目 */
+  conflict?: { type: 'dir' | 'file' | 'symlink'; size: number; mtime: number } | null;
+}
+
+export interface TransferCheck {
+  destDir: string;
+  items: TransferCheckItem[];
+}
+
+export interface TransferResult {
+  src: string;
+  status: 'done' | 'skipped' | 'error';
+  dest?: string;
+  message?: string;
+}
+
 export interface VolumeInfo {
   name: string;
   path: string;

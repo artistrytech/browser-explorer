@@ -26,10 +26,12 @@ import {
 } from '../../lib/fileOps';
 import { toolMatches, osMenuItems, pruneMenuItems, type CfgMenuItem } from '../../lib/openMenu';
 import { formatSize, formatDate, kindLabel, fileIcon, baseName } from '../../lib/paths';
+import { sortEntries } from '../../lib/entrySort';
 import { pinFolder, unpinFolder } from '../../lib/quickaccessOps';
 import { saveFocus, loadFocus, saveEnteredChild } from '../../lib/focusMemory';
 import { openCloneDialog } from '../git/CloneDialog';
 import { isMarkdownPath, openMarkdownPreview } from '../preview/MarkdownTab';
+import { openDualPane } from '../transfer/DualPaneDialog';
 import { openConflictResolver } from '../../stores/conflict';
 import { api } from '../../api/client';
 import { toastError, useToast } from '../../stores/toast';
@@ -129,24 +131,10 @@ export function FileList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries, repoRoot, path]);
 
-  const displayed = useMemo(() => {
-    const base = searchResults ?? entries;
-    const filtered = settings.showHidden ? base : base.filter((e) => !e.hidden);
-    const dir = settings.sortAsc ? 1 : -1;
-    const key = settings.sortKey;
-    return [...filtered].sort((a, b) => {
-      // フォルダを常に先に
-      const aDir = a.type === 'dir' ? 0 : 1;
-      const bDir = b.type === 'dir' ? 0 : 1;
-      if (aDir !== bDir) return aDir - bDir;
-      let cmp = 0;
-      if (key === 'name') cmp = a.name.localeCompare(b.name, 'ja');
-      else if (key === 'type') cmp = kindLabel(a).localeCompare(kindLabel(b), 'ja');
-      else if (key === 'size') cmp = a.size - b.size;
-      else cmp = a.mtime - b.mtime;
-      return cmp * dir || a.name.localeCompare(b.name, 'ja');
-    });
-  }, [entries, searchResults, settings.showHidden, settings.sortKey, settings.sortAsc]);
+  const displayed = useMemo(
+    () => sortEntries(searchResults ?? entries, settings.sortKey, settings.sortAsc, settings.showHidden),
+    [entries, searchResults, settings.showHidden, settings.sortKey, settings.sortAsc],
+  );
 
   const selectedSet = useMemo(() => new Set(selection), [selection]);
 
@@ -462,6 +450,8 @@ export function FileList() {
         ? [
             // フォルダ: 対象フォルダ自体を別ウィンドウ (ブラウザの別タブ) で開く
             { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(entry.path) },
+            // 表示中のフォルダ (左) とこのフォルダ (右) を並べて整理する
+            { id: 'openDualPane', label: '2 画面で整理…', action: () => openDualPane({ right: entry.path }) },
             { separator: true },
             ...osItems(entry.path),
           ]
@@ -473,6 +463,7 @@ export function FileList() {
               : []),
             // ファイル: 同じフォルダを別ウィンドウで開いて対象にフォーカス
             { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(path, entry.name) },
+            { id: 'openDualPane', label: '2 画面で整理…', action: () => openDualPane() },
             { separator: true },
             // ファイルも OS 側で開ける (親フォルダを開き、そのファイルを選択した状態にする)
             ...osItems(entry.path),
@@ -542,6 +533,7 @@ export function FileList() {
     const openGroup: CfgMenuItem[] = [
       // フォーカス無し: 表示中のフォルダを別ウィンドウで開く
       { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(path) },
+      { id: 'openDualPane', label: '2 画面で整理…', action: () => openDualPane() },
       { separator: true },
       ...osItems(path),
       ...tools.take('開く'),

@@ -37,6 +37,17 @@ interface EditorStore {
   setBom: (path: string, bom: boolean) => void;
   setCursor: (line: number, col: number) => void;
   handleExternalChange: (path: string) => void;
+  /** ファイル/フォルダの移動に合わせて、移動元 (またはその配下) を開いているタブを移動先へ付け替える */
+  relocate: (moves: { from: string; to: string }[]) => void;
+}
+
+/** p が from 自身またはその配下なら、from の部分を to に置き換えたパスを返す (それ以外は null) */
+export function relocatedPath(p: string, from: string, to: string): string | null {
+  // Windows のドライブパスは大文字小文字を区別しない
+  const fold = (v: string) => (/^[A-Za-z]:/.test(v) ? v.toLowerCase() : v);
+  if (fold(p) === fold(from)) return to;
+  const prefix = from.endsWith('/') ? from : `${from}/`;
+  return fold(p).startsWith(fold(prefix)) ? `${to.replace(/\/+$/, '')}/${p.slice(prefix.length)}` : null;
 }
 
 /**
@@ -234,5 +245,24 @@ export const useEditor = create<EditorStore>((set, get) => ({
         }
       })
       .catch(() => {});
+  },
+
+  relocate: (moves) => {
+    const move = (p: string): string => {
+      for (const m of moves) {
+        const next = relocatedPath(p, m.from, m.to);
+        if (next) return next;
+      }
+      return p;
+    };
+    const { tabs, activePath } = get();
+    if (!tabs.some((t) => move(t.path) !== t.path)) return;
+    set({
+      tabs: tabs.map((t) => {
+        const next = move(t.path);
+        return next === t.path ? t : { ...t, path: next, name: baseName(next) };
+      }),
+      activePath: activePath ? move(activePath) : activePath,
+    });
   },
 }));

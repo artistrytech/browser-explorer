@@ -25,6 +25,10 @@ import type {
   Review,
   ReviewComment,
   ReviewDetail,
+  TransferCheck,
+  TransferConflictMode,
+  TransferOp,
+  TransferResult,
   VolumeInfo,
 } from '../types';
 import { getSessionId } from '../lib/session';
@@ -151,6 +155,12 @@ export const api = {
     post<{ ok: true; moved: string[] }>('/api/fs/move', { src, destDir }),
   copy: (src: string[], destDir: string) =>
     post<{ ok: true; copied: string[] }>('/api/fs/copy', { src, destDir }),
+  /** コピー / 移動の事前確認 (対象ごとの情報と、コピー先での衝突) */
+  transferCheck: (src: string[], destDir: string) =>
+    post<TransferCheck>('/api/fs/transfer/check', { src, destDir }),
+  /** 確認付きのコピー / 移動。項目ごとの結果を返す (途中で失敗しても残りを続ける) */
+  transfer: (op: TransferOp, destDir: string, items: { src: string; onConflict?: TransferConflictMode }[]) =>
+    post<{ results: TransferResult[] }>('/api/fs/transfer', { op, destDir, items }),
   delete: (paths: string[], permanent = false) =>
     del<{ ok: true }>('/api/fs/delete', { paths, permanent }),
   search: (dir: string, query: string) =>

@@ -32,6 +32,8 @@ import { MarkdownTab, usePreviewTab, closePreviewTab, previewPathFromUrl } from 
 import { AppLogTab } from './features/applog/AppLogTab';
 import { ReviewCreateDialog } from './features/review/ReviewCreateDialog';
 import { ReviewExportDialog } from './features/review/ReviewExportDialog';
+import { DualPaneDialog } from './features/transfer/DualPaneDialog';
+import { TransferConfirmDialog } from './features/transfer/TransferConfirmDialog';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
 import { ToastHost } from './components/ToastHost';
@@ -431,6 +433,9 @@ export default function App() {
       <RevertDialog />
       <ReviewCreateDialog />
       <ReviewExportDialog />
+      <DualPaneDialog />
+      {/* コピー / 移動の確認は「2 画面で整理」ダイアログの上に重ねる */}
+      <TransferConfirmDialog />
       {/* 実行結果ダイアログは他ダイアログより手前に出すため最後にマウント */}
       <GitCommandDialog />
     </div>

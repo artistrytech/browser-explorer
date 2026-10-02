@@ -21,6 +21,7 @@ const MENU_ITEMS: { key: string; label: string }[] = [
   { key: 'openEditor', label: '  エディタで開く' },
   { key: 'openPreview', label: '  プレビューで開く (Markdown)' },
   { key: 'openNewWindow', label: '  別ウィンドウで開く' },
+  { key: 'openDualPane', label: '  2 画面で整理…' },
   { key: 'osFileManager', label: '  Explorer / Finder で開く' },
   { key: 'osTerminal', label: '  コマンドプロンプト / ターミナルで開く' },
   { key: 'pin', label: 'クイックアクセスにピン止め / 解除' },

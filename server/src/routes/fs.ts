@@ -194,6 +194,165 @@ fsRouter.post('/copy', async (req, res) => {
   res.json({ ok: true, copied });
 });
 
+// --- 確認付きのコピー / 移動 (2 画面で整理ダイアログ用) ---
+
+type TransferOp = 'move' | 'copy';
+/** 衝突時の扱い: 上書き (既存はゴミ箱へ) / 両方残す (連番) / スキップ */
+type OnConflict = 'overwrite' | 'rename' | 'skip';
+
+/** Windows はパスの大文字小文字を区別しない */
+function samePath(a: string, b: string): boolean {
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+/** p が root 自身またはその配下か (いずれも norm 済みの絶対パス) */
+function isSameOrUnder(p: string, root: string): boolean {
+  if (samePath(p, root)) return true;
+  const prefix = root.endsWith('/') ? root : `${root}/`;
+  return process.platform === 'win32'
+    ? p.toLowerCase().startsWith(prefix.toLowerCase())
+    : p.startsWith(prefix);
+}
+
+function entryType(st: { isDirectory(): boolean; isSymbolicLink(): boolean }): 'dir' | 'file' | 'symlink' {
+  return st.isSymbolicLink() ? 'symlink' : st.isDirectory() ? 'dir' : 'file';
+}
+
+/** ファイル操作のエラーを利用者向けの文言にする */
+function transferErrorMessage(e: unknown): string {
+  const code = (e as NodeJS.ErrnoException)?.code;
+  if (code === 'ENOENT') return '見つかりません (移動・削除された可能性があります)';
+  if (code === 'EACCES' || code === 'EPERM') return 'アクセスが拒否されました';
+  if (code === 'EBUSY') return '使用中のため操作できません';
+  if (code === 'ENOSPC') return 'ディスクの空き容量が不足しています';
+  return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * 実行前の確認: 対象ごとの情報と、コピー先での衝突 (同名の既存項目) を返す。
+ * - sameDir: コピー先が対象の親フォルダ (移動は不可、コピーは自分自身と衝突する)
+ * - intoSelf: コピー先が対象自身またはその配下 (移動・コピーとも不可)
+ */
+fsRouter.post('/transfer/check', async (req, res) => {
+  const { src, destDir: rawDest } = req.body as { src: string[]; destDir: string };
+  const destDir = reqPath(rawDest);
+  if (!Array.isArray(src) || src.length === 0) {
+    res.status(400).json({ error: 'bad_request', message: 'src is required' });
+    return;
+  }
+  const destSt = await fs.stat(destDir);
+  if (!destSt.isDirectory()) {
+    res.status(400).json({ error: 'not_dir', message: 'コピー先がフォルダではありません' });
+    return;
+  }
+  const items = await Promise.all(
+    src.map(async (raw) => {
+      const s = reqPath(raw);
+      const name = path.basename(s);
+      const dest = norm(path.join(destDir, name));
+      const st = await fs.lstat(s).catch(() => null);
+      if (!st) return { src: s, name, dest, missing: true };
+      const sameDir = samePath(norm(path.dirname(s)), destDir);
+      const intoSelf = isSameOrUnder(destDir, s);
+      const existing = sameDir ? st : await fs.lstat(dest).catch(() => null);
+      return {
+        src: s,
+        name,
+        dest,
+        type: entryType(st),
+        size: st.isDirectory() ? 0 : st.size,
+        mtime: st.mtimeMs,
+        sameDir,
+        intoSelf,
+        conflict: existing
+          ? {
+              type: entryType(existing),
+              size: existing.isDirectory() ? 0 : existing.size,
+              mtime: existing.mtimeMs,
+            }
+          : null,
+      };
+    }),
+  );
+  res.json({ destDir, items });
+});
+
+/**
+ * コピー / 移動の実行。項目ごとに衝突時の扱いを指定でき、途中で失敗しても残りを続けて
+ * 項目ごとの結果を返す (status は done / skipped / error)。
+ * 事前確認の後に状況が変わって新たに衝突した場合は onConflict 未指定扱い = 両方残す (安全側)。
+ */
+fsRouter.post('/transfer', async (req, res) => {
+  const { op, destDir: rawDest, items } = req.body as {
+    op: TransferOp;
+    destDir: string;
+    items: { src: string; onConflict?: OnConflict }[];
+  };
+  if (op !== 'move' && op !== 'copy') {
+    res.status(400).json({ error: 'bad_request', message: 'op must be move or copy' });
+    return;
+  }
+  const destDir = reqPath(rawDest);
+  const results: { src: string; status: 'done' | 'skipped' | 'error'; dest?: string; message?: string }[] = [];
+  for (const item of items ?? []) {
+    const s = reqPath(item.src);
+    try {
+      const st = await fs.lstat(s);
+      const sameDir = samePath(norm(path.dirname(s)), destDir);
+      if (isSameOrUnder(destDir, s)) {
+        results.push({ src: s, status: 'error', message: '自分自身またはその配下へは移動・コピーできません' });
+        continue;
+      }
+      if (op === 'move' && sameDir) {
+        results.push({ src: s, status: 'skipped', message: '同じフォルダへの移動のため何もしません' });
+        continue;
+      }
+      let dest = path.join(destDir, path.basename(s));
+      const existing = sameDir ? st : await fs.lstat(dest).catch(() => null);
+      if (existing) {
+        const onConflict = item.onConflict ?? 'rename';
+        if (onConflict === 'skip') {
+          results.push({ src: s, status: 'skipped', message: '同名の項目があるためスキップしました' });
+          continue;
+        }
+        if (onConflict === 'overwrite') {
+          if (sameDir) {
+            results.push({ src: s, status: 'error', message: '自分自身は上書きできません' });
+            continue;
+          }
+          if (existing.isDirectory() !== st.isDirectory()) {
+            results.push({ src: s, status: 'error', message: 'ファイルとフォルダの間では上書きできません' });
+            continue;
+          }
+          // 上書き先が移動元を含むフォルダだと、ゴミ箱へ送ると移動元ごと消えてしまう
+          if (isSameOrUnder(s, norm(dest))) {
+            results.push({ src: s, status: 'error', message: '移動元を含むフォルダは上書きできません' });
+            continue;
+          }
+          // 上書きされる側は完全には消さずゴミ箱へ送る
+          await trash([path.normalize(dest)]);
+        } else {
+          dest = await uniqueDest(destDir, path.basename(s));
+        }
+      }
+      if (op === 'copy') {
+        await fs.cp(s, dest, { recursive: true });
+      } else {
+        await fs.rename(s, dest).catch(async (e: NodeJS.ErrnoException) => {
+          if (e.code !== 'EXDEV') throw e;
+          // 別ドライブ間はコピー + 削除
+          await fs.cp(s, dest, { recursive: true });
+          await fs.rm(s, { recursive: true });
+        });
+      }
+      results.push({ src: s, status: 'done', dest: norm(dest) });
+    } catch (e) {
+      results.push({ src: s, status: 'error', message: transferErrorMessage(e) });
+    }
+  }
+  res.json({ results });
+});
+
 fsRouter.delete('/delete', async (req, res) => {
   const { paths, permanent } = req.body as { paths: string[]; permanent?: boolean };
   if (!Array.isArray(paths) || paths.length === 0) {
