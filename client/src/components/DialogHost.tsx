@@ -58,6 +58,7 @@ export function DialogHost() {
             ref={inputRef}
             className={cx("dialog-input")}
             value={value}
+            placeholder={current.placeholder}
             onChange={(e) => setValue(e.target.value)}
           />
         )}

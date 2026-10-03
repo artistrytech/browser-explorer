@@ -35,6 +35,8 @@ export interface Settings {
   sidebarWidth: number;
   /** Markdown プレビューの拡大率 (%)。PREVIEW_ZOOM_MIN〜MAX */
   previewZoom: number;
+  /** 左パネルのリポジトリ表示名 (パス → 名前)。未設定ならフォルダ名を表示する */
+  repoLabels: Record<string, string>;
 }
 
 export const PREVIEW_ZOOM_MIN = 50;
@@ -61,6 +63,7 @@ const DEFAULT_SETTINGS: Settings = {
   defaultEol: 'LF',
   sidebarWidth: 18,
   previewZoom: 100,
+  repoLabels: {},
 };
 
 interface SettingsStore {
@@ -76,15 +79,22 @@ interface SettingsStore {
   removeFavorite: (path: string) => Promise<void>;
   isPinned: (path: string) => boolean;
   setRepositories: (repos: string[]) => void;
+  /** リポジトリの表示名を設定する。空文字なら解除してフォルダ名表示に戻す */
+  setRepoLabel: (path: string, label: string) => void;
   addRepository: (path: string) => void;
   addRecent: (path: string, kind: 'file' | 'dir') => void;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let pending: Record<string, unknown> = {};
+/** 保存はまとめて遅延送信する。待機中に別キーの保存が来ても落とさないよう合成する */
 function persist(partial: Record<string, unknown>): void {
+  pending = { ...pending, ...partial };
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    api.putState(partial).catch(() => {});
+    const body = pending;
+    pending = {};
+    api.putState(body).catch(() => {});
   }, 400);
 }
 
@@ -159,6 +169,13 @@ export const useSettings = create<SettingsStore>((set, get) => ({
   setRepositories: (repositories) => {
     set({ repositories });
     persist({ repositories });
+  },
+
+  setRepoLabel: (path, label) => {
+    const repoLabels = { ...get().settings.repoLabels };
+    if (label) repoLabels[path] = label;
+    else delete repoLabels[path];
+    get().update({ repoLabels });
   },
 
   addRepository: (path) => {

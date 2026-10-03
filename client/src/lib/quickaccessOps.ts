@@ -1,6 +1,7 @@
 import { useSettings } from '../stores/settings';
 import { useToast } from '../stores/toast';
-import { confirmDialog } from '../stores/dialog';
+import { confirmDialog, promptDialog } from '../stores/dialog';
+import { baseName } from './paths';
 
 /** フォルダをクイックアクセスにピン止め (002.md §7.2) */
 export async function pinFolder(path: string, label: string): Promise<void> {
@@ -31,7 +32,24 @@ export async function unregisterRepository(path: string, label: string): Promise
     `「${label}」をリポジトリ一覧から外しますか?\n\n※ 一覧から外すだけで、リポジトリ本体は削除されません。`,
   );
   if (!ok) return;
-  const { repositories, setRepositories } = useSettings.getState();
+  const { repositories, setRepositories, setRepoLabel } = useSettings.getState();
   setRepositories(repositories.filter((p) => p !== path));
+  setRepoLabel(path, '');
   useToast.getState().show('success', 'リポジトリの登録を解除しました');
+}
+
+/**
+ * 左パネルに表示するリポジトリ名を変更する。表示名だけの変更で、フォルダ名やリポジトリには影響しない。
+ * 空欄で確定するとフォルダ名の表示に戻す。
+ */
+export async function renameRepository(path: string): Promise<void> {
+  const { settings, setRepoLabel } = useSettings.getState();
+  const folder = baseName(path);
+  const input = await promptDialog('表示名の変更', settings.repoLabels[path] ?? folder, {
+    message: `左パネルに表示する名前を入力してください。\n空欄にするとフォルダ名 (${folder}) に戻ります。\n\n※ 表示名を変えるだけで、フォルダ名やリポジトリには影響しません。`,
+    placeholder: folder,
+  });
+  if (input === null) return;
+  const label = input.trim();
+  setRepoLabel(path, label === folder ? '' : label);
 }

@@ -161,7 +161,8 @@
   min-width: 0;
 }
 
-.side-unpin {
+.side-unpin,
+.side-rename {
   position: absolute;
   right: 4px;
   top: 50%;
@@ -177,11 +178,39 @@
 }
 
 .side-item-wrap:hover .side-unpin,
-.side-item-wrap:focus-within .side-unpin {
+.side-item-wrap:focus-within .side-unpin,
+.side-item-wrap:hover .side-rename,
+.side-item-wrap:focus-within .side-rename {
   display: block;
 }
 
 .side-unpin:hover {
   background: var(--bg-selected);
   color: var(--danger);
+}
+
+/* 表示名の変更 (✎)。✕ の左隣に並べ、出ている間はラベルが重ならないよう右に余白を取る */
+.side-rename {
+  right: 24px;
+}
+
+.pencil-icon {
+  display: block;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.side-rename:hover {
+  background: var(--bg-selected);
+  color: var(--text);
+}
+
+.side-item-wrap.two-actions:hover .side-item,
+.side-item-wrap.two-actions:focus-within .side-item {
+  padding-right: 48px;
 }

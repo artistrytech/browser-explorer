@@ -13,6 +13,7 @@ export interface DialogRequest {
   defaultValue?: string;
   danger?: boolean;
   selectStem?: boolean; // prompt 時、拡張子を除く部分だけ選択
+  placeholder?: string; // prompt 時、入力欄が空のときに出す薄字
   /** confirm 時、OK と一緒に返すオプション (force など) のチェックボックス */
   checkbox?: { label: string; checked?: boolean };
   resolve: (value: string | boolean | null | ConfirmResult) => void;
@@ -70,7 +71,7 @@ export function confirmDialogWithOption(
 export function promptDialog(
   title: string,
   defaultValue = '',
-  opts: { message?: string; selectStem?: boolean } = {},
+  opts: { message?: string; selectStem?: boolean; placeholder?: string } = {},
 ): Promise<string | null> {
   return new Promise((resolve) => {
     useDialog.getState().open({
@@ -79,6 +80,7 @@ export function promptDialog(
       message: opts.message,
       defaultValue,
       selectStem: opts.selectStem,
+      placeholder: opts.placeholder,
       resolve: (v) => resolve(typeof v === 'string' ? v : null),
     });
   });
