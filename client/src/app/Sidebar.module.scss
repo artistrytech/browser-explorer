@@ -161,6 +161,27 @@
   min-width: 0;
 }
 
+/* 並び替えのドロップ位置。行の背景 (選択中 / ホバー) に隠れないよう疑似要素で上端 / 下端に線を引く */
+.side-item-wrap.drop-before::before,
+.side-item-wrap.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.side-item-wrap.drop-before::before {
+  top: -1px;
+}
+
+.side-item-wrap.drop-after::after {
+  bottom: -1px;
+}
+
 .side-unpin,
 .side-rename {
   position: absolute;
