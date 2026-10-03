@@ -240,7 +240,12 @@ export function ReviewDetail({ id }: { id: number }) {
           {review.title}
         </span>
         <span className={cx('rv-branches')}>
-          <code>{review.headBranch}</code> → <code>{review.baseBranch}</code>
+          {/* 名前が既定 (head → base) のままならタイトルと重複するのでブランチ名は省く */}
+          {review.title !== `${review.headBranch} → ${review.baseBranch}` && (
+            <>
+              <code>{review.headBranch}</code> → <code>{review.baseBranch}</code>
+            </>
+          )}
           <span className={cx('rv-hashes')}>
             {review.baseCommit.slice(0, 7)} … {review.headCommit.slice(0, 7)}
           </span>
