@@ -7,7 +7,7 @@ import { useReview } from '../stores/review';
 import { pushReviewView, switchView, useUi, type MainView } from '../stores/ui';
 import { useContextMenu } from '../components/ContextMenu';
 import { baseName } from '../lib/paths';
-import { unpinFolder } from '../lib/quickaccessOps';
+import { unpinFolder, unregisterRepository } from '../lib/quickaccessOps';
 import { loadCollapsedSections, saveCollapsedSections } from '../lib/sidebarMemory';
 import { Chevron, FolderTree } from './FolderTree';
 import type { VolumeInfo } from '../types';
@@ -21,7 +21,7 @@ const REPO_KEEP_VIEWS: readonly MainView[] = ['files', 'commit', 'log', 'branche
 
 export function Sidebar() {
   const { path, navigate } = useExplorer();
-  const { favorites, repositories, setRepositories } = useSettings();
+  const { favorites, repositories } = useSettings();
   const repoRoot = useGit((s) => s.repoRoot);
   const status = useGit((s) => s.status);
   const openMenu = useContextMenu((s) => s.open);
@@ -157,27 +157,39 @@ export function Sidebar() {
         {!collapsed.has('repos') && (
           <div className={cx("side-body")}>
             {repositories.map((r) => (
-              <button
-                key={r}
-                className={cx(`side-item${repoRoot === r ? ' active' : ''}`)}
-                title={`${r}\n(Ctrl+クリックで別タブ)`}
-                onClick={(e) => go(e, r, true)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  openMenu(e.clientX, e.clientY, [
-                    {
-                      label: '一覧から削除',
-                      action: () => setRepositories(repositories.filter((p) => p !== r)),
-                    },
-                  ]);
-                }}
-              >
-                <span className={cx("side-icon")}>●</span>
-                <span className={cx("side-label")}>
-                  {baseName(r)}
-                  {repoRoot === r && status?.branch ? ` (${status.branch})` : ''}
-                </span>
-              </button>
+              // クイックアクセスと同様、ホバーで ✕ を表示。解除は確認ダイアログを挟む
+              <div key={r} className={cx("side-item-wrap")}>
+                <button
+                  className={cx(`side-item${repoRoot === r ? ' active' : ''}`)}
+                  title={`${r}\n(Ctrl+クリックで別タブ)`}
+                  onClick={(e) => go(e, r, true)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    openMenu(e.clientX, e.clientY, [
+                      {
+                        label: '一覧から削除',
+                        action: () => void unregisterRepository(r, baseName(r)),
+                      },
+                    ]);
+                  }}
+                >
+                  <span className={cx("side-icon")}>●</span>
+                  <span className={cx("side-label")}>
+                    {baseName(r)}
+                    {repoRoot === r && status?.branch ? ` (${status.branch})` : ''}
+                  </span>
+                </button>
+                <button
+                  className={cx("side-unpin")}
+                  title="一覧から削除"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void unregisterRepository(r, baseName(r));
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
             ))}
             {repositories.length === 0 && <div className={cx("side-empty")}>(未登録)</div>}
           </div>

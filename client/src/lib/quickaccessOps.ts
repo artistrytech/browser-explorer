@@ -20,3 +20,18 @@ export async function unpinFolder(path: string, label: string): Promise<void> {
   await useSettings.getState().removeFavorite(path);
   useToast.getState().show('success', 'ピン止めを解除しました');
 }
+
+/**
+ * サイドバーの「リポジトリ」一覧から登録を解除する。ピン止め解除と同様に確認ダイアログを挟み、
+ * リポジトリ本体には影響しない旨を明記する。
+ */
+export async function unregisterRepository(path: string, label: string): Promise<void> {
+  const ok = await confirmDialog(
+    'リポジトリの登録解除',
+    `「${label}」をリポジトリ一覧から外しますか?\n\n※ 一覧から外すだけで、リポジトリ本体は削除されません。`,
+  );
+  if (!ok) return;
+  const { repositories, setRepositories } = useSettings.getState();
+  setRepositories(repositories.filter((p) => p !== path));
+  useToast.getState().show('success', 'リポジトリの登録を解除しました');
+}
