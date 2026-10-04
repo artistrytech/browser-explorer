@@ -4,6 +4,8 @@ import { useGit } from '../../stores/git';
 import { useRebase } from '../../stores/rebase';
 import { confirmDialog } from '../../stores/dialog';
 import { openConflictResolver } from '../../stores/conflict';
+import { useSettings } from '../../stores/settings';
+import { defaultBackupBranchName } from '../../lib/backupBranch';
 import styles from './Rebase.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -40,6 +42,7 @@ export function RebaseDialog() {
   const start = useRebase((s) => s.start);
   const busy = useRebase((s) => s.busy);
   const [deleteBackup, setDeleteBackup] = useState(false);
+  const backupPattern = useSettings((s) => s.settings.backupBranchPattern);
 
   useEffect(() => {
     if (open) setDeleteBackup(false);
@@ -47,9 +50,12 @@ export function RebaseDialog() {
 
   if (!open || !repoRoot) return null;
 
+  /** 開始前に作るバックアップの名前 (ブランチタブの「バックアップ作成」と同じ既定名) */
+  const backupName = defaultBackupBranchName(backupPattern, baseBranch);
+
   const doStart = () => {
     close();
-    void start(repoRoot, onto, deleteBackup);
+    void start(repoRoot, onto, deleteBackup, backupName);
   };
 
   return (
@@ -61,7 +67,8 @@ export function RebaseDialog() {
             現在のブランチ <b>{baseBranch}</b> を <b>{onto}</b> の上に移動します。
           </p>
           <p className={cx('rebase-note')}>
-            実行前に現在のブランチのバックアップ (<code>backup/rebase/…</code>) を作成します。
+            実行前に現在のブランチのバックアップ <code>{backupName}</code> を作成します
+            (同名のブランチがあれば末尾に -2 などを付けます)。
             競合が発生した場合は解消後に続行してください。リベース中は他の操作がブロックされます。
           </p>
           <label className={cx('rebase-check')}>

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { api } from '../api/client';
 import { useToast, toastError } from './toast';
 import type { Favorite, RecentItem, SortKey, ViewMode } from '../types';
+import { DEFAULT_BACKUP_BRANCH_PATTERN } from '../lib/backupBranch';
 
 /** 修飾キー基準。auto = OS に合わせる (Mac は ⌘、それ以外は Ctrl) */
 export type ModKey = 'auto' | 'ctrl' | 'meta';
@@ -37,6 +38,8 @@ export interface Settings {
   previewZoom: number;
   /** 左パネルのリポジトリ表示名 (パス → 名前)。未設定ならフォルダ名を表示する */
   repoLabels: Record<string, string>;
+  /** バックアップブランチの名前パターン (正規表現。yyyy / mm / dd は日付)。lib/backupBranch.ts */
+  backupBranchPattern: string;
 }
 
 export const PREVIEW_ZOOM_MIN = 50;
@@ -64,6 +67,7 @@ const DEFAULT_SETTINGS: Settings = {
   sidebarWidth: 18,
   previewZoom: 100,
   repoLabels: {},
+  backupBranchPattern: DEFAULT_BACKUP_BRANCH_PATTERN,
 };
 
 interface SettingsStore {

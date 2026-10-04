@@ -1332,19 +1332,33 @@ async function branchExists(repo: string, name: string): Promise<boolean> {
   return (await runGitCapture(repo, ['show-ref', '--verify', '--quiet', `refs/heads/${name}`])).ok;
 }
 
-/** リベース用バックアップ名に使えるよう、ブランチ名を平坦化する (D/F 競合と不正文字を回避) */
-function sanitizeRefName(name: string): string {
-  return name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '') || 'branch';
+/**
+ * 旧方式のリベース用バックアップの接頭辞 (backup/rebase/<ts>-<name>)。
+ * 今はブランチタブの「バックアップ」と同じ名前パターンで作るが、既存のものもツールメニューで削除できるよう残す
+ */
+const LEGACY_REBASE_BACKUP_PREFIX = 'backup/rebase/';
+
+/** 既存のローカルブランチと重ならない名前にする (同名があれば -2, -3 … を付ける) */
+async function uniqueBranchName(repo: string, name: string): Promise<string> {
+  if (!(await branchExists(repo, name))) return name;
+  for (let n = 2; ; n++) {
+    const candidate = `${name}-${n}`;
+    if (!(await branchExists(repo, candidate))) return candidate;
+  }
 }
 
-/** バックアップブランチ名の接頭辞 (ツールメニューでの列挙・削除対象) */
-const REBASE_BACKUP_PREFIX = 'backup/rebase/';
-
-/** YYYYMMDD-HHmmss (ローカル時刻) */
-function backupTimestamp(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+/**
+ * バックアップブランチの判定。旧方式の接頭辞か、クライアントから渡された名前パターン
+ * (設定の backupBranchPattern を日付込みで正規表現にしたもの) に一致するか
+ */
+function isBackupBranchName(name: string, pattern: unknown): boolean {
+  if (name.startsWith(LEGACY_REBASE_BACKUP_PREFIX)) return true;
+  if (typeof pattern !== 'string' || pattern.length === 0) return false;
+  try {
+    return new RegExp(pattern).test(name);
+  } catch {
+    return false;
+  }
 }
 
 /** 成功時の後始末: セッションを消し、任意でバックアップを削除する */
@@ -1371,11 +1385,20 @@ gitRouter.get('/rebase/session', async (req, res) => {
   res.json({ session: getRebaseSession(repo), mergeState: await getMergeState(g) });
 });
 
-/** リベース開始: バックアップ作成 → セッション記録 → git rebase <onto> */
+/**
+ * リベース開始: バックアップ作成 → セッション記録 → git rebase <onto>。
+ * バックアップ名はクライアントが設定の名前パターンから組み立てて渡す (同名があれば -2 などを付ける)
+ */
 gitRouter.post('/rebase/start', async (req, res) => {
-  const { repo, onto, deleteBackupOnSuccess } = (req.body ?? {}) as Record<string, unknown>;
+  const { repo, onto, deleteBackupOnSuccess, backupBranch: requestedBackup } = (req.body ?? {}) as Record<
+    string,
+    unknown
+  >;
   if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
   if (typeof onto !== 'string' || onto.length === 0 || /[\r\n\0]/.test(onto)) badRequest('onto is required');
+  if (typeof requestedBackup !== 'string' || requestedBackup.trim().length === 0 || /[\r\n\0]/.test(requestedBackup)) {
+    badRequest('backupBranch is required');
+  }
   if (getRebaseSession(repo)) badRequest('このリポジトリではリベースが既に進行中です');
 
   const g = git(repo);
@@ -1391,7 +1414,7 @@ gitRouter.post('/rebase/start', async (req, res) => {
   }
 
   const baseBranch = st.current;
-  const backupBranch = `${REBASE_BACKUP_PREFIX}${backupTimestamp()}-${sanitizeRefName(baseBranch)}`;
+  const backupBranch = await uniqueBranchName(repo, requestedBackup.trim());
 
   const backup = await runGitCapture(repo, ['branch', backupBranch, baseBranch]);
   if (!backup.ok) {
@@ -1485,8 +1508,9 @@ gitRouter.post('/rebase/abort', async (req, res) => {
   const { inProgress } = await getMergeState(g);
   if (inProgress) {
     // 途中経過 (適用済みコミット) を新しいバックアップへ退避 (ベストエフォート)
-    wipBranch = `${REBASE_BACKUP_PREFIX}${backupTimestamp()}-${sanitizeRefName(session.baseBranch)}-wip`;
-    const wip = await runGitCapture(repo, ['branch', '--force', wipBranch, 'HEAD']);
+    // 元のバックアップ名に -wip を付ける (同じ名前パターンに収まり、ブランチタブでも並んで見える)
+    wipBranch = await uniqueBranchName(repo, `${session.backupBranch}-wip`);
+    const wip = await runGitCapture(repo, ['branch', wipBranch, 'HEAD']);
     if (!wip.ok) {
       wipBranch = null;
       warnings.push('途中経過の退避に失敗しました (続行して中止します)');
@@ -1519,32 +1543,36 @@ gitRouter.post('/rebase/session/clear', async (req, res) => {
   res.json({ ok: true });
 });
 
-/** リベース用バックアップブランチ (backup/rebase/*) の一覧 */
+/**
+ * バックアップブランチの一覧 (ツールメニューでの削除対象)。
+ * pattern (正規表現) に一致するローカルブランチと、旧方式の backup/rebase/* を返す
+ */
 gitRouter.get('/rebase/backups', async (req, res) => {
   const repo = String(req.query.repo ?? '');
   if (!repo) badRequest('repo is required');
+  const pattern = req.query.pattern;
   const out = await runGitCapture(repo, [
     'for-each-ref',
     '--sort=-committerdate',
     `--format=%(refname:short)%00%(objectname:short)%00%(committerdate:short)%00%(contents:subject)`,
-    `refs/heads/${REBASE_BACKUP_PREFIX}`,
+    'refs/heads/',
   ]);
   const backups = out.ok
     ? out.output
         .split('\n')
         .map((line) => line.split('\0'))
-        .filter((f) => f[0])
+        .filter((f) => f[0] && isBackupBranchName(f[0], pattern))
         .map(([name, hash, date, subject]) => ({ name, hash, date, subject: subject ?? '' }))
     : [];
   res.json({ backups });
 });
 
-/** リベース用バックアップブランチの削除 (backup/rebase/ 配下のみ) */
+/** バックアップブランチの削除 (一覧と同じ判定でバックアップとみなせるものだけ) */
 gitRouter.post('/rebase/backups/delete', async (req, res) => {
-  const { repo, name } = (req.body ?? {}) as Record<string, unknown>;
+  const { repo, name, pattern } = (req.body ?? {}) as Record<string, unknown>;
   if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
-  if (typeof name !== 'string' || !name.startsWith(REBASE_BACKUP_PREFIX) || /[\r\n\0]/.test(name)) {
-    badRequest('削除できるのは backup/rebase/ 配下のブランチのみです');
+  if (typeof name !== 'string' || !isBackupBranchName(name, pattern) || /[\r\n\0]/.test(name)) {
+    badRequest('削除できるのはバックアップブランチのみです');
   }
   const del = await runGitCapture(repo, ['branch', '-D', name]);
   if (!del.ok) badRequest(del.output || 'ブランチの削除に失敗しました');

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { api } from '../../api/client';
-import { loadGitView, saveGitView } from '../../lib/gitViewMemory';
+import { loadGitView, saveGitView, type BranchListTab } from '../../lib/gitViewMemory';
+import { backupBranchRegex } from '../../lib/backupBranch';
+import { useSettings } from '../../stores/settings';
 import {
   loadLogLayout,
   saveLogLayout,
@@ -26,7 +28,12 @@ import { runGitCommands } from './GitCommandDialog';
 import { GitToolbar, GitMergeBanner } from './GitToolbar';
 import { openSyncDialog } from './SyncDialog';
 import { openCommitMessagePicker } from './CommitMessageDialog';
-import { openCreateBranchDialog, openRemoteCheckoutDialog, openRenameBranchDialog } from './BranchDialog';
+import {
+  openBackupBranchDialog,
+  openCreateBranchDialog,
+  openRemoteCheckoutDialog,
+  openRenameBranchDialog,
+} from './BranchDialog';
 import { openRebaseDialog } from './Rebase';
 import { openCommitDiff } from './DiffTab';
 import { CommitFileDiff, commitFileLabel } from './CommitFileDiff';
@@ -195,6 +202,10 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const [keepBranches, setKeepBranches] = useState<Set<string>>(new Set());
   /** ブランチ一覧の選択 (フォーカス) 行。BranchTreeNode.key。sessionStorage に保持 */
   const [selectedBranchKey, setSelectedBranchKeyState] = useState<string | null>(null);
+  /** ブランチ一覧の内部タブ (ローカル / リモート / バックアップ)。sessionStorage に保持 */
+  const [branchListTab, setBranchListTabState] = useState<BranchListTab>('local');
+  /** バックアップとみなすローカルブランチの名前パターン (設定) */
+  const backupPattern = useSettings((s) => s.settings.backupBranchPattern);
   const branchListRef = useRef<HTMLDivElement>(null);
   const commitMessageRef = useRef<HTMLTextAreaElement>(null);
   /** コミットタブ 変更一覧の選択 (フォーカス)。キーは `S:`(ステージ側)/`W:`(作業ツリー側)+path */
@@ -269,6 +280,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     setFocusedFileState(saved?.focusedFile ?? null);
     setCollapsedBranchGroups(new Set(saved?.collapsedBranchGroups ?? []));
     setSelectedBranchKeyState(saved?.selectedBranchKey ?? null);
+    setBranchListTabState(saved?.branchListTab ?? 'local');
     if (saved?.hash) {
       api.gitCommitFiles(repoRoot, saved.hash).then(setCommitDetail).catch(() => {
         saveGitView(repoRoot, { hash: null, focusedFile: null }); // 消えたコミット (reset 等) は破棄
@@ -698,6 +710,10 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             action: () => openCreateBranchDialog(b.name),
           },
           {
+            label: 'バックアップを作成…',
+            action: () => openBackupBranchDialog(b.name),
+          },
+          {
             label: 'マージ',
             disabled: b.current,
             action: () =>
@@ -734,20 +750,35 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     });
   };
 
-  const localBranches = (branches ?? []).filter((b) => !isRemoteBranch(b));
+  // ローカルブランチのうち、名前が設定のパターンに一致するものはバックアップとして別タブに分ける
+  const backupRe = backupBranchRegex(backupPattern);
+  const isBackupBranch = (b: GitBranch) => !isRemoteBranch(b) && !!backupRe?.test(b.name);
+  const localBranches = (branches ?? []).filter((b) => !isRemoteBranch(b) && !isBackupBranch(b));
   const remoteBranches = (branches ?? []).filter((b) => isRemoteBranch(b));
-  const localBranchTree = buildBranchTree(localBranches, 'local');
-  const remoteBranchTree = buildBranchTree(remoteBranches, 'remote');
-  /** 表示順の行 (キーボード移動用)。ローカル → リモートの順で並ぶ */
-  const branchRows = visibleBranchRows([localBranchTree, remoteBranchTree], collapsedBranchGroups);
-  const allBranchRows = visibleBranchRows([localBranchTree, remoteBranchTree], new Set());
+  const backupBranches = (branches ?? []).filter(isBackupBranch);
+  const branchTabs: { id: BranchListTab; label: string; branches: GitBranch[] }[] = [
+    { id: 'local', label: 'ローカル', branches: localBranches },
+    { id: 'remote', label: 'リモート', branches: remoteBranches },
+    { id: 'backup', label: 'バックアップ', branches: backupBranches },
+  ];
+  /** 表示中のタブのブランチ。キーの接頭辞をタブ id にして、折りたたみ・選択をタブごとに区別する */
+  const shownBranches = branchTabs.find((t) => t.id === branchListTab)?.branches ?? [];
+  const shownBranchTree = buildBranchTree(shownBranches, branchListTab);
+  /** 表示順の行 (キーボード移動用)。表示中のタブの中だけを移動する */
+  const branchRows = visibleBranchRows([shownBranchTree], collapsedBranchGroups);
+  const allBranchRows = visibleBranchRows([shownBranchTree], new Set());
   const selectableBranchRows = branchRows.filter((r) => r.node.branch);
   const selectedBranch = allBranchRows.find((r) => r.node.key === selectedBranchKey)?.node.branch ?? null;
 
   // --- ローカルブランチの一括削除 ---
 
-  /** 削除対象にできるローカルブランチ (カレントブランチと「常に除外」は削除不可) */
-  const bulkDeletable = localBranches.filter((b) => !b.current && !keepBranches.has(b.name));
+  /**
+   * 削除対象にできるブランチ。表示中のタブがローカル / バックアップのときだけ
+   * (カレントブランチと「常に除外」は削除不可)
+   */
+  const bulkDeletable = (branchListTab === 'remote' ? [] : shownBranches).filter(
+    (b) => !b.current && !keepBranches.has(b.name),
+  );
   const bulkTargetBranches = bulkDeletable.filter((b) => bulkTargets.has(b.name));
 
   /** モード開始。既定ブランチにマージ済みのものは最初からチェックしておく (常に除外は対象外) */
@@ -786,6 +817,14 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     setBulkMode(false);
     setBulkTargets(new Set());
     setBulkForce(new Set());
+  };
+
+  /** 内部タブの切替。一括削除の対象は表示中のタブのブランチなので、切り替えたらモードを抜ける */
+  const changeBranchListTab = (id: BranchListTab) => {
+    if (id === branchListTab) return;
+    exitBulkMode();
+    setBranchListTabState(id);
+    saveGitView(repoRoot, { branchListTab: id });
   };
 
   /** 対象チェックの切替。外したら強制チェックも一緒に外す */
@@ -874,18 +913,18 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     }
   };
 
-  const renderBranchSection = (title: string, count: number, tree: BranchTreeNode[]) => (
-    <div className={cx("branch-section")}>
-      <div className={cx("branch-section-title")}>
-        {title} ({count})
+  const renderBranchTree = (tree: BranchTreeNode[]) =>
+    tree.length > 0 ? (
+      tree.map((node) => renderBranchNode(node))
+    ) : (
+      <div className={cx("branch-empty")}>
+        {branchListTab === 'backup'
+          ? backupRe
+            ? `バックアップブランチはありません (名前のパターン: ${backupPattern.trim()})`
+            : 'バックアップの名前パターンが未設定か不正です (設定 › 一般)'
+          : 'ブランチはありません'}
       </div>
-      {tree.length > 0 ? (
-        tree.map((node) => renderBranchNode(node))
-      ) : (
-        <div className={cx("branch-empty")}>ブランチはありません</div>
-      )}
-    </div>
-  );
+    );
 
   const renderBranchNode = (node: BranchTreeNode, depth = 0): React.ReactNode => {
     const indent = 4 + depth * 16;
@@ -1589,6 +1628,14 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   >
                     名前変更
                   </button>
+                  <button
+                    className={cx("btn")}
+                    disabled={bulkMode}
+                    title={`現在のブランチ (${currentBranch ?? 'HEAD'}) のバックアップブランチを作成する (切り替えはしない)`}
+                    onClick={() => openBackupBranchDialog(currentBranch ?? '')}
+                  >
+                    バックアップ作成
+                  </button>
                   {bulkMode ? (
                     <>
                       <button
@@ -1606,16 +1653,34 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                     <button
                       className={cx("btn")}
                       disabled={bulkDeletable.length === 0}
-                      title="ローカルブランチをチェックしてまとめて削除する"
+                      title={
+                        branchListTab === 'remote'
+                          ? '一括削除はローカル / バックアップのタブで使えます'
+                          : '表示中のタブのブランチをチェックしてまとめて削除する'
+                      }
                       onClick={startBulkMode}
                     >
                       🗑 一括削除
                     </button>
                   )}
                 </div>
+                <div className={cx("branch-tabs")} role="tablist">
+                  {branchTabs.map((t) => (
+                    <button
+                      key={t.id}
+                      role="tab"
+                      aria-selected={branchListTab === t.id}
+                      className={cx(`branch-tab${branchListTab === t.id ? ' active' : ''}`)}
+                      onClick={() => changeBranchListTab(t.id)}
+                    >
+                      {t.label}
+                      {branches !== null && <span className={cx("branch-tab-count")}>{t.branches.length}</span>}
+                    </button>
+                  ))}
+                </div>
                 {bulkMode && (
                   <div className={cx("branch-bulk-hint")}>
-                    削除するローカルブランチをチェックしてください
+                    削除するブランチをチェックしてください
                     (既定ブランチにマージ済みのものは自動でチェック済み)。
                     「常に除外」にしたブランチは以後チェックされません (この設定はブラウザに保存されます)。
                     一括削除中は他のブランチ操作はできません。
@@ -1630,10 +1695,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   {branches === null ? (
                     <div className={cx("empty-hint")}>読み込み中…</div>
                   ) : (
-                    <>
-                      {renderBranchSection('ローカルブランチ', localBranches.length, localBranchTree)}
-                      {renderBranchSection('リモートブランチ', remoteBranches.length, remoteBranchTree)}
-                    </>
+                    <div className={cx("branch-section")}>{renderBranchTree(shownBranchTree)}</div>
                   )}
                 </div>
               </div>

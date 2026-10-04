@@ -18,7 +18,13 @@ interface RebaseStore {
   busy: boolean;
   /** セッションをサーバから取得 (併せて Git status も最新化) */
   refresh: (repo: string) => Promise<void>;
-  start: (repo: string, onto: string, deleteBackupOnSuccess: boolean) => Promise<RebaseActionResult | null>;
+  /** backupBranch は開始前に作るバックアップの名前 (同名があればサーバ側で -2 などを付ける) */
+  start: (
+    repo: string,
+    onto: string,
+    deleteBackupOnSuccess: boolean,
+    backupBranch: string,
+  ) => Promise<RebaseActionResult | null>;
   continueRebase: (repo: string) => Promise<RebaseActionResult | null>;
   abort: (repo: string) => Promise<RebaseActionResult | null>;
   /** git 実状態とズレたセッションを終了しロック解除 (バックアップは残す) */
@@ -49,10 +55,10 @@ export const useRebase = create<RebaseStore>((set, get) => ({
     }
   },
 
-  start: async (repo, onto, deleteBackupOnSuccess) => {
+  start: async (repo, onto, deleteBackupOnSuccess, backupBranch) => {
     set({ busy: true, lastOutput: '' });
     try {
-      const result = await api.gitRebaseStart(repo, onto, deleteBackupOnSuccess);
+      const result = await api.gitRebaseStart(repo, onto, deleteBackupOnSuccess, backupBranch);
       set({ session: result.session ?? null, lastOutput: result.output ?? '' });
       notify(result);
       if (result.phase === 'backup') useToast.getState().show('error', `バックアップの作成に失敗しました:\n${result.output ?? ''}`);

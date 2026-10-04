@@ -545,16 +545,50 @@
   margin-top: 6px;
 }
 
-.branch-section + .branch-section {
-  margin-top: 14px;
+/* 一覧の内部タブ (ローカル / リモート / バックアップ)。ツールバー直下に固定表示 */
+.branch-tabs {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--border);
 }
 
-.branch-section-title {
-  padding: 6px 4px 4px;
+.branch-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: -1px;
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: transparent;
   color: var(--text-dim);
   font-size: 12px;
+  cursor: pointer;
+}
+
+.branch-tab:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.branch-tab.active {
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--text);
   font-weight: 600;
-  border-bottom: 1px solid var(--border);
+}
+
+.branch-tab-count {
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--bg-alt);
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: normal;
+  line-height: 15px;
 }
 
 .branch-empty {

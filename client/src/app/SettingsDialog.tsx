@@ -9,6 +9,7 @@ import styles from './SettingsDialog.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
 import { useDialogKeys } from '../lib/dialogKeys';
 import { openAppLog } from '../stores/applog';
+import { backupBranchRegex, DEFAULT_BACKUP_BRANCH_PATTERN } from '../lib/backupBranch';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -496,6 +497,31 @@ export function SettingsDialog() {
                   ))}
                 </select>,
               )}
+              {row(
+                'バックアップブランチの名前',
+                <input
+                  type="text"
+                  className={cx("settings-pattern")}
+                  value={settings.backupBranchPattern}
+                  placeholder={DEFAULT_BACKUP_BRANCH_PATTERN}
+                  spellCheck={false}
+                  onChange={(e) => update({ backupBranchPattern: e.target.value })}
+                />,
+              )}
+              <p className={cx("settings-hint")}>
+                ブランチタブで、名前がこのパターンに一致するローカルブランチを「バックアップ」に分けて表示します。
+                正規表現として扱い、<code>yyyy</code> / <code>mm</code> / <code>dd</code> は日付です。
+                バックアップ作成時の既定名は、日付を埋めて最初の <code>.*</code> を現在のブランチ名の末尾 (スラッシュ区切りの最後)
+                に置き換えたものになります。
+                {!backupBranchRegex(settings.backupBranchPattern) && (
+                  <span className={cx("settings-warn")}>
+                    {' '}
+                    {settings.backupBranchPattern.trim()
+                      ? '正規表現として不正なため、バックアップの判定は行われません。'
+                      : '空欄のため、バックアップの判定は行われません。'}
+                  </span>
+                )}
+              </p>
               {draft &&
                 row(
                   'コミット変更ファイルの表示上限',

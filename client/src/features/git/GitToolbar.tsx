@@ -11,6 +11,7 @@ import { openSyncDialog } from './SyncDialog';
 import { openStashDialog } from './StashDialog';
 import { openAuthDialog } from './AuthDialog';
 import { openDiscardAllDialog } from './DiscardAllDialog';
+import { backupBranchRegex } from '../../lib/backupBranch';
 import type { RebaseBackup } from '../../types';
 import styles from './GitPanel.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -31,7 +32,7 @@ export function GitToolbar({
   busy?: boolean;
   /** ブランチに影響する操作を止める (ブランチの一括削除モード中など) */
   lockBranchOps?: boolean;
-  /** リベース用バックアップを削除した後に呼ぶ (ブランチ一覧の再読込など) */
+  /** バックアップブランチを削除した後に呼ぶ (ブランチ一覧の再読込など) */
   onBackupDeleted?: () => void;
   /** 右端に並べる追加ボタン */
   children?: ReactNode;
@@ -40,14 +41,19 @@ export function GitToolbar({
   const status = useGit((s) => s.status);
   const repositories = useSettings((s) => s.repositories);
   const addRepository = useSettings((s) => s.addRepository);
+  const backupPattern = useSettings((s) => s.settings.backupBranchPattern);
   const show = useToast((s) => s.show);
   const openMenu = useContextMenu((s) => s.open);
 
   if (!repoRoot) return null;
 
-  /** 「ツール」メニュー: 変更の一括破棄 / リベース用バックアップ (backup/rebase/*) の削除 */
+  /**
+   * 「ツール」メニュー: 変更の一括破棄 / バックアップブランチの削除。
+   * バックアップは設定の名前パターンに一致するもの (+ 旧方式の backup/rebase/*)
+   */
   const openToolsMenu = (e: React.MouseEvent) => {
     const { clientX: x, clientY: y } = e;
+    const pattern = backupBranchRegex(backupPattern)?.source ?? '';
     const deleteItem = (bk: RebaseBackup): MenuItem => ({
       label: `🗑 ${bk.name}`,
       danger: true,
@@ -59,7 +65,7 @@ export function GitToolbar({
         ).then((ok) => {
           if (!ok) return;
           void api
-            .gitRebaseBackupDelete(repoRoot, bk.name)
+            .gitRebaseBackupDelete(repoRoot, bk.name, pattern)
             .then(() => {
               show('success', 'バックアップブランチを削除しました');
               onBackupDeleted?.();
@@ -75,12 +81,12 @@ export function GitToolbar({
       },
       { separator: true },
       {
-        label: 'リベースのバックアップを削除',
+        label: 'バックアップブランチを削除',
         submenu: backupItems,
       },
     ];
     void api
-      .gitRebaseBackups(repoRoot)
+      .gitRebaseBackups(repoRoot, pattern)
       .then(({ backups }) => {
         const backupItems =
           backups.length > 0
@@ -119,7 +125,7 @@ export function GitToolbar({
       </button>
       <button
         className={cx("status-btn")}
-        title="リベース用バックアップの管理など"
+        title="バックアップブランチの削除など"
         disabled={lockBranchOps}
         onClick={openToolsMenu}
       >

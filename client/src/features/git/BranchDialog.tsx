@@ -7,10 +7,12 @@ import { runGitCommands } from './GitCommandDialog';
 import styles from './BranchDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 import { useDialogKeys } from '../../lib/dialogKeys';
+import { useSettings } from '../../stores/settings';
+import { backupBranchRegex, defaultBackupBranchName } from '../../lib/backupBranch';
 
 const cx = createCssModuleClassNames(styles);
 
-type BranchDialogMode = 'create' | 'remoteCheckout' | 'rename';
+type BranchDialogMode = 'create' | 'remoteCheckout' | 'rename' | 'backup';
 
 interface BranchDialogStore {
   open: boolean;
@@ -22,6 +24,8 @@ interface BranchDialogStore {
   showCreate: (baseBranch?: string) => void;
   showRemoteCheckout: (remoteBranch: string) => void;
   showRename: (branchName: string) => void;
+  /** バックアップ作成。baseBranch 空なら現在の HEAD (detached) から作る */
+  showBackup: (baseBranch: string) => void;
   close: () => void;
 }
 
@@ -34,6 +38,7 @@ export const useBranchDialog = create<BranchDialogStore>((set) => ({
   showCreate: (baseBranch = '') => set({ open: true, mode: 'create', remoteBranch: '', branchName: '', baseBranch }),
   showRemoteCheckout: (remoteBranch) => set({ open: true, mode: 'remoteCheckout', remoteBranch, branchName: '', baseBranch: '' }),
   showRename: (branchName) => set({ open: true, mode: 'rename', remoteBranch: '', branchName, baseBranch: '' }),
+  showBackup: (baseBranch) => set({ open: true, mode: 'backup', remoteBranch: '', branchName: '', baseBranch }),
   close: () => set({ open: false }),
 }));
 
@@ -48,6 +53,11 @@ export function openRemoteCheckoutDialog(remoteBranch: string): void {
 
 export function openRenameBranchDialog(branchName: string): void {
   useBranchDialog.getState().showRename(branchName);
+}
+
+/** ローカルブランチ (空なら現在の HEAD) のバックアップを作る。既定名は設定のパターンから組み立てる */
+export function openBackupBranchDialog(baseBranch: string): void {
+  useBranchDialog.getState().showBackup(baseBranch);
 }
 
 function remoteRef(name: string): string {
@@ -69,6 +79,7 @@ export function BranchDialog() {
   const [branchNamesLoaded, setBranchNamesLoaded] = useState(false);
   const [switchAfterCreate, setSwitchAfterCreate] = useState(true);
   const [trackRemote, setTrackRemote] = useState(true);
+  const backupPattern = useSettings((s) => s.settings.backupBranchPattern);
 
   useEffect(() => {
     if (!open) return;
@@ -77,6 +88,8 @@ export function BranchDialog() {
       setTrackRemote(true);
     } else if (mode === 'rename') {
       setName(branchName);
+    } else if (mode === 'backup') {
+      setName(defaultBackupBranchName(useSettings.getState().settings.backupBranchPattern, baseBranch || 'HEAD'));
     } else {
       setName('');
       // 別ブランチを指定して開いたときは「切り替えずに作る」のが狙いなので既定を OFF にする
@@ -107,7 +120,9 @@ export function BranchDialog() {
   }, [open, repoRoot]);
 
   const trimmedName = name.trim();
-  const isCreate = mode === 'create';
+  const isBackup = mode === 'backup';
+  // バックアップも「切り替えずに作るブランチ作成」なので、名前の検証などは作成と共通
+  const isCreate = mode === 'create' || isBackup;
   const isRename = mode === 'rename';
   const conflictingBranchName =
     isCreate || isRename
@@ -120,15 +135,18 @@ export function BranchDialog() {
   /** 作成の起点。ブランチ一覧から指定されていればそれ、無ければ現在の HEAD */
   const createBaseRef = baseBranch ? remoteRef(baseBranch) : '';
   const createBaseLabel = createBaseRef || currentBranch || 'HEAD';
+  /** バックアップのパターンに一致しない名前は、作ってもローカルブランチ側に並ぶ (作成は止めない) */
+  const backupRe = isBackup ? backupBranchRegex(backupPattern) : null;
+  const backupMismatch = isBackup && !!trimmedName && !!backupRe && !backupRe.test(trimmedName);
   const canSubmit = branchNamesReady && !!trimmedName && !validationError && (!isRename || trimmedName !== branchName);
 
   const doCreate = () => {
     if (!canSubmit || !repoRoot) return;
     close();
-    const args = switchAfterCreate ? ['checkout', '-b', trimmedName] : ['branch', trimmedName];
+    const args = switchAfterCreate && !isBackup ? ['checkout', '-b', trimmedName] : ['branch', trimmedName];
     // ベースの指定があれば起点として渡す (無指定なら現在の HEAD から作られる)
     if (createBaseRef) args.push(createBaseRef);
-    void runGitCommands(repoRoot, [args], 'ブランチ作成');
+    void runGitCommands(repoRoot, [args], isBackup ? 'バックアップブランチ作成' : 'ブランチ作成');
   };
 
   const doRemoteCheckout = () => {
@@ -157,12 +175,12 @@ export function BranchDialog() {
     <div ref={dialogRef} className={cx("dialog-backdrop")}>
       <div className={cx("dialog branch-dialog")}>
         <div className={cx("dialog-title")}>
-          {isCreate ? '新しいブランチ' : isRename ? 'ブランチ名変更' : 'リモートブランチをチェックアウト'}
+          {isBackup ? 'バックアップブランチを作成' : isCreate ? '新しいブランチ' : isRename ? 'ブランチ名変更' : 'リモートブランチをチェックアウト'}
         </div>
         <div className={cx("branch-form")}>
           {isCreate ? (
             <div className={cx("branch-row")}>
-              <span className={cx("branch-label")}>ベースブランチ:</span>
+              <span className={cx("branch-label")}>{isBackup ? 'バックアップ元:' : 'ベースブランチ:'}</span>
               <b className={cx("branch-value")} title={createBaseLabel}>
                 {createBaseLabel}
               </b>
@@ -183,7 +201,7 @@ export function BranchDialog() {
             </div>
           )}
           <label className={cx("branch-row")}>
-            <span className={cx("branch-label")}>{isRename ? '新しいブランチ名:' : 'ローカルブランチ名:'}</span>
+            <span className={cx("branch-label")}>{isRename ? '新しいブランチ名:' : isBackup ? 'バックアップ名:' : 'ローカルブランチ名:'}</span>
             <input
               className={cx("branch-input")}
               autoFocus
@@ -196,7 +214,13 @@ export function BranchDialog() {
               {validationError}
             </div>
           )}
-          {isRename ? null : isCreate ? (
+          {backupMismatch && (
+            <div className={cx("branch-warn")}>
+              この名前はバックアップのパターン ({backupPattern.trim()}) に一致しないため、
+              ブランチ一覧ではローカルブランチ側に表示されます。
+            </div>
+          )}
+          {isRename || isBackup ? null : isCreate ? (
             <label className={cx("branch-row")}>
               <span className={cx("branch-label")} />
               <input

@@ -304,12 +304,24 @@
 }
 
 .settings-row select,
-.settings-row input[type='number'] {
+.settings-row input[type='number'],
+.settings-row input[type='text'] {
   padding: 4px 6px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg);
   color: inherit;
+}
+
+/* バックアップブランチの名前パターン (正規表現) */
+.settings-pattern {
+  flex: 0 1 260px;
+  min-width: 0;
+  font-family: var(--font-mono, monospace);
+}
+
+.settings-warn {
+  color: var(--danger);
 }
 
 /* 数値入力の横に補助ボタンを並べる (アプリログの保存期間 → アプリログを開く) */

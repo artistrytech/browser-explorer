@@ -128,7 +128,7 @@ export interface RebaseSession {
   createdAt: string;
 }
 
-/** リベース用バックアップブランチ 1 件 (ツールメニューでの削除対象) */
+/** バックアップブランチ 1 件 (ツールメニューでの削除対象) */
 export interface RebaseBackup {
   name: string;
   hash: string;

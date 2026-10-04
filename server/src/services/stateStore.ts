@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS rebase_sessions (
   repo TEXT PRIMARY KEY,
   onto TEXT NOT NULL,                          -- リベース先 (この上に移動する)
   base_branch TEXT NOT NULL,                   -- 書き換えられる側 (開始時の現在ブランチ)
-  backup_branch TEXT NOT NULL,                 -- backup/rebase/<ts>-<name>
+  backup_branch TEXT NOT NULL,                 -- 設定の名前パターン (既定 backup/yyyy/mm/dd-<name>)
   delete_backup_on_success INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
@@ -237,7 +237,7 @@ export interface RebaseSession {
   onto: string;
   /** 書き換えられる側 (開始時の現在ブランチ) */
   baseBranch: string;
-  /** 退避用バックアップブランチ名 (backup/rebase/<ts>-<name>) */
+  /** 退避用バックアップブランチ名 (設定の名前パターン。既定 backup/yyyy/mm/dd-<name>) */
   backupBranch: string;
   /** リベース成功後にバックアップブランチを削除するか */
   deleteBackupOnSuccess: boolean;

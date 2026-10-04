@@ -5,6 +5,9 @@
 
 const PREFIX = 'git:view:';
 
+/** ブランチタブ内の一覧の切替 (ローカル / リモート / バックアップ) */
+export type BranchListTab = 'local' | 'remote' | 'backup';
+
 export interface GitViewRecord {
   /** 選択中コミットのハッシュ */
   hash: string | null;
@@ -22,6 +25,8 @@ export interface GitViewRecord {
   collapsedBranchGroups: string[];
   /** ブランチ一覧で選択 (フォーカス) 中の行のキー */
   selectedBranchKey: string | null;
+  /** ブランチ一覧で表示中の内部タブ */
+  branchListTab: BranchListTab;
   ts: number;
 }
 
@@ -46,6 +51,7 @@ export function saveGitView(repo: string, partial: Partial<Omit<GitViewRecord, '
       focusedFile: null,
       collapsedBranchGroups: [],
       selectedBranchKey: null,
+      branchListTab: 'local',
     };
     sessionStorage.setItem(PREFIX + repo, JSON.stringify({ ...prev, ...partial, ts: Date.now() }));
   } catch {
