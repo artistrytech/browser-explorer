@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { api } from '../../api/client';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
+import { SyncBadge } from '../../components/SyncBadge';
 import { useGit } from '../../stores/git';
 import { useSettings } from '../../stores/settings';
 import { useToast, toastError } from '../../stores/toast';
@@ -101,7 +102,7 @@ export function GitToolbar({
     <div className={cx("git-header")}>
       <span className={cx("git-repo-name")} title={repoRoot}>
         🌿 {status?.branch ?? '?'}
-        {status?.tracking ? ` ↑${status.ahead}↓${status.behind}` : ''}
+        {status?.tracking && <SyncBadge ahead={status.ahead} behind={status.behind} />}
       </span>
       {/* リモートとのやり取り (Push/Pull/Fetch/一括同期) は「同期」ダイアログにまとめ、
           そこでタブを選んで実行する。Stash と同じく即時実行はしない */}

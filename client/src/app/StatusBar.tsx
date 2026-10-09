@@ -6,6 +6,7 @@ import { useSettings } from '../stores/settings';
 import type { Eol } from '../types';
 import styles from './StatusBar.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
+import { SyncBadge } from '../components/SyncBadge';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -29,7 +30,7 @@ export function StatusBar() {
       {status?.branch && (
         <span title={status.tracking ?? ''}>
           🌿 {status.branch}
-          {status.tracking ? ` ↑${status.ahead}↓${status.behind}` : ''}
+          {status.tracking && <SyncBadge ahead={status.ahead} behind={status.behind} />}
         </span>
       )}
       <span className={cx("status-spacer")} />

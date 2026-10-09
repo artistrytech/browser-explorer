@@ -14,6 +14,7 @@ import { loadBranchKeep, saveBranchKeep } from '../../lib/branchKeepMemory';
 import { saveEnteredChild } from '../../lib/focusMemory';
 import { fileOpenMenuItems, pruneMenuItems } from '../../lib/openMenu';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
+import { SyncBadge } from '../../components/SyncBadge';
 import { useGit, GitTab } from '../../stores/git';
 import { useUi, defaultDiffToolIndex } from '../../stores/ui';
 import { useExplorer } from '../../stores/explorer';
@@ -123,11 +124,6 @@ function visibleBranchRows(
   };
   for (const tree of trees) walk(tree, 0);
   return out;
-}
-
-function branchSyncLabel(branch: GitBranch): string {
-  if (branch.ahead === undefined || branch.behind === undefined) return '';
-  return ` ↑${branch.ahead}↓${branch.behind}`;
 }
 
 /** コミットの引数を組み立てる (amend + メッセージ空欄は --no-edit) */
@@ -983,8 +979,10 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           <span className={cx(`branch-name${b.current ? ' branch-current' : ''}`)} title={b.name}>
             {b.current ? '● ' : '  '}
             {node.label}
-            {branchSyncLabel(b)}
           </span>
+          {b.ahead !== undefined && b.behind !== undefined && (
+            <SyncBadge ahead={b.ahead} behind={b.behind} className={cx('branch-sync')} />
+          )}
           {bulkRow && b.merged && !kept && (
             <span className={cx("branch-merged")} title="既定ブランチにマージ済み">
               マージ済

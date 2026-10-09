@@ -6,6 +6,7 @@ import { runGitCommands } from './GitCommandDialog';
 import styles from './SyncDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 import { useDialogKeys } from '../../lib/dialogKeys';
+import { SyncBadge } from '../../components/SyncBadge';
 import type { GitBranch } from '../../types';
 
 const cx = createCssModuleClassNames(styles);
@@ -421,8 +422,7 @@ export function SyncDialog() {
                             {row.branch.upstream ? `← ${row.branch.upstream}` : ''}
                           </span>
                           <span className={cx('sync-counts')}>
-                            {ahead > 0 ? `↑${ahead}` : ''}
-                            {behind > 0 ? `↓${behind}` : ''}
+                            {row.branch.upstream && <SyncBadge ahead={ahead} behind={behind} />}
                           </span>
                           <span className={cx(`sync-state st-${row.state}`)}>{stateLabel(row)}</span>
                         </label>

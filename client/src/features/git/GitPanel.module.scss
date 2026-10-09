@@ -724,3 +724,8 @@
   font-size: 11px;
   white-space: nowrap;
 }
+
+/* ブランチ名が省略表示になってもリモートとの差分は隠さない */
+.branch-sync {
+  flex: 0 0 auto;
+}
