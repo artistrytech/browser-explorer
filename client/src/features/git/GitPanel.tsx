@@ -306,7 +306,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   useEffect(() => setCommitFocused(false), [tab, repoRoot]);
 
   /**
-   * コミット欄を全体表示するか。メッセージが空でフォーカスも無ければ入力欄だけのコンパクト表示にする。
+   * コミット欄を全体表示するか。メッセージが空でフォーカスも無ければ入力欄より下 (amend・ボタン) を畳む。
    * amend 中はメッセージ空欄でも (--no-edit で) コミットできるので、チェックを外せるよう全体表示のまま
    */
   const commitExpanded = message.length > 0 || commitFocused || amend;
@@ -553,6 +553,20 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     void openCommitMessagePicker(repoRoot).then((m) => {
       if (m !== null) setMessage(m);
     });
+  };
+
+  /** 現在のリポジトリの直近のコミットメッセージ (履歴の先頭) を入力欄に設定する */
+  const applyLastCommitMessage = async () => {
+    try {
+      const { messages } = await api.gitCommitMessages(repoRoot);
+      if (messages.length === 0) {
+        show('info', '保存されたコミットメッセージはありません');
+        return;
+      }
+      setMessage(messages[0]);
+    } catch (e) {
+      toastError(e);
+    }
   };
 
   // 差分ファイル一覧: パス部分一致フィルタ → 表示上限 (config.json の commitFilesLimit)
@@ -1535,7 +1549,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                 </div>
 
                 <div
-                  className={cx(`commit-box${commitExpanded ? '' : ' compact'}`)}
+                  className={cx("commit-box")}
                   onFocus={() => setCommitFocused(true)}
                   onBlur={(e) => {
                     // コミット欄の中でフォーカスが移るだけ (Tab で amend へ等) なら全体表示のまま
@@ -1543,13 +1557,21 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   }}
                   onMouseDown={(e) => {
                     // 入力欄以外 (amend・ボタン) のクリックではフォーカスを移さない。移すと mousedown の時点で
-                    // 表示が切り替わり (入力欄の blur で縮む / コンパクト時の「履歴」が focus で消える)、クリックが空振りする
+                    // 表示が切り替わり (入力欄の blur で amend・ボタンが消える)、クリックが空振りする
                     if (e.target !== commitMessageRef.current) e.preventDefault();
                   }}
                 >
-                  {commitExpanded && (
-                    <div className={cx("commit-message-head")}>
-                      <span className={cx("git-section-title-text")}>コミットメッセージ</span>
+                  {/* 見出しは折りたたまない (入力中に表示が切り替わっても textarea の位置が変わらない) */}
+                  <div className={cx("commit-message-head")}>
+                    <span className={cx("git-section-title-text")}>コミットメッセージ</span>
+                    <span className={cx("commit-message-actions")}>
+                      <button
+                        className={cx("status-btn")}
+                        title="直近のコミットメッセージを入力欄に反映する"
+                        onClick={() => void applyLastCommitMessage()}
+                      >
+                        前回のメッセージ
+                      </button>
                       <button
                         className={cx("status-btn")}
                         title="過去のコミットメッセージから選ぶ"
@@ -1557,9 +1579,8 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                       >
                         履歴から選ぶ
                       </button>
-                    </div>
-                  )}
-                  {/* 入力中に表示が切り替わってもフォーカスが外れないよう、textarea の位置は常に同じにする */}
+                    </span>
+                  </div>
                   <div className={cx("commit-message-row")}>
                     <textarea
                       ref={commitMessageRef}
@@ -1576,16 +1597,6 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                         }
                       }}
                     />
-                    {/* コンパクト表示でも空欄から履歴を選べるよう、ボタンだけ入力欄の横に残す */}
-                    {!commitExpanded && (
-                      <button
-                        className={cx("status-btn")}
-                        title="過去のコミットメッセージから選ぶ"
-                        onClick={pickCommitMessage}
-                      >
-                        履歴
-                      </button>
-                    )}
                   </div>
                   {commitExpanded && (
                     <>
