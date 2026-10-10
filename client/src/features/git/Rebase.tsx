@@ -50,7 +50,7 @@ export function RebaseDialog() {
 
   if (!open || !repoRoot) return null;
 
-  /** 開始前に作るバックアップの名前 (ブランチタブの「バックアップ作成」と同じ既定名) */
+  /** 開始前に作るバックアップの名前 (ブランチタブの「バックアップ」と同じ既定名) */
   const backupName = defaultBackupBranchName(backupPattern, baseBranch);
 
   const doStart = () => {

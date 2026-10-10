@@ -79,6 +79,8 @@ export function BranchDialog() {
   const [branchNamesLoaded, setBranchNamesLoaded] = useState(false);
   const [switchAfterCreate, setSwitchAfterCreate] = useState(true);
   const [trackRemote, setTrackRemote] = useState(true);
+  /** バックアップを別ブランチとして作らず、元のブランチをリネームする */
+  const [backupByRename, setBackupByRename] = useState(false);
   const backupPattern = useSettings((s) => s.settings.backupBranchPattern);
 
   useEffect(() => {
@@ -90,6 +92,7 @@ export function BranchDialog() {
       setName(branchName);
     } else if (mode === 'backup') {
       setName(defaultBackupBranchName(useSettings.getState().settings.backupBranchPattern, baseBranch || 'HEAD'));
+      setBackupByRename(false);
     } else {
       setName('');
       // 別ブランチを指定して開いたときは「切り替えずに作る」のが狙いなので既定を OFF にする
@@ -139,10 +142,17 @@ export function BranchDialog() {
   const backupRe = isBackup ? backupBranchRegex(backupPattern) : null;
   const backupMismatch = isBackup && !!trimmedName && !!backupRe && !backupRe.test(trimmedName);
   const canSubmit = branchNamesReady && !!trimmedName && !validationError && (!isRename || trimmedName !== branchName);
+  /** リネームは元のブランチがあるときだけ (detached HEAD では別ブランチとして作るしかない) */
+  const canBackupByRename = isBackup && !!baseBranch;
+  const renameForBackup = canBackupByRename && backupByRename;
 
   const doCreate = () => {
     if (!canSubmit || !repoRoot) return;
     close();
+    if (renameForBackup) {
+      void runGitCommands(repoRoot, [['branch', '-m', baseBranch, trimmedName]], 'バックアップ (リネーム)');
+      return;
+    }
     const args = switchAfterCreate && !isBackup ? ['checkout', '-b', trimmedName] : ['branch', trimmedName];
     // ベースの指定があれば起点として渡す (無指定なら現在の HEAD から作られる)
     if (createBaseRef) args.push(createBaseRef);
@@ -175,7 +185,7 @@ export function BranchDialog() {
     <div ref={dialogRef} className={cx("dialog-backdrop")}>
       <div className={cx("dialog branch-dialog")}>
         <div className={cx("dialog-title")}>
-          {isBackup ? 'バックアップブランチを作成' : isCreate ? '新しいブランチ' : isRename ? 'ブランチ名変更' : 'リモートブランチをチェックアウト'}
+          {isBackup ? 'バックアップ' : isCreate ? '新しいブランチ' : isRename ? 'ブランチ名変更' : 'リモートブランチをチェックアウト'}
         </div>
         <div className={cx("branch-form")}>
           {isCreate ? (
@@ -220,7 +230,27 @@ export function BranchDialog() {
               ブランチ一覧ではローカルブランチ側に表示されます。
             </div>
           )}
-          {isRename || isBackup ? null : isCreate ? (
+          {isBackup ? (
+            <>
+              <label className={cx("branch-row")}>
+                <span className={cx("branch-label")} />
+                <input
+                  type="checkbox"
+                  checked={renameForBackup}
+                  disabled={!canBackupByRename}
+                  onChange={(e) => setBackupByRename(e.target.checked)}
+                />
+                <span>別ブランチを作成せず、元のブランチをリネームする</span>
+              </label>
+              <div className={cx("branch-warn")}>
+                {renameForBackup
+                  ? `${createBaseLabel} はこの名前に変更され、元の名前のブランチは無くなります。`
+                  : canBackupByRename
+                    ? `${createBaseLabel} はそのまま残り、同じコミットを指す別ブランチを作成します (切り替えはしない)。`
+                    : 'detached HEAD のため、別ブランチとして作成します。'}
+              </div>
+            </>
+          ) : isRename ? null : isCreate ? (
             <label className={cx("branch-row")}>
               <span className={cx("branch-label")} />
               <input
@@ -247,7 +277,7 @@ export function BranchDialog() {
             キャンセル
           </button>
           <button className={cx("btn primary")} disabled={!canSubmit} onClick={submit}>
-            {isCreate ? '作成' : isRename ? '変更' : 'チェックアウト'}
+            {renameForBackup ? 'リネーム' : isCreate ? '作成' : isRename ? '変更' : 'チェックアウト'}
           </button>
         </div>
       </div>

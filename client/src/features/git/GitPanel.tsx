@@ -689,7 +689,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             action: () => openCreateBranchDialog(b.name),
           },
           {
-            label: 'バックアップを作成…',
+            label: 'バックアップ…',
             action: () => openBackupBranchDialog(b.name),
           },
           {
@@ -1609,10 +1609,10 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   <button
                     className={cx("btn")}
                     disabled={bulkMode}
-                    title={`現在のブランチ (${currentBranch ?? 'HEAD'}) のバックアップブランチを作成する (切り替えはしない)`}
+                    title={`現在のブランチ (${currentBranch ?? 'HEAD'}) をバックアップする (別ブランチを作成するか、リネームするかを選べる)`}
                     onClick={() => openBackupBranchDialog(currentBranch ?? '')}
                   >
-                    バックアップ作成
+                    バックアップ
                   </button>
                   {bulkMode ? (
                     <>
