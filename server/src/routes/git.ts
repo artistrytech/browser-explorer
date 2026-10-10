@@ -1277,6 +1277,104 @@ gitRouter.post('/auth/test', (req, res) => {
   child.on('close', (code) => reply(code === 0));
 });
 
+// --- リモートの設定 (同期ダイアログの「リモート」タブ) ---
+
+/**
+ * リモート名として受け付けるか。
+ * git の参照名の規則より狭めに取り、オプションと誤認される先頭 "-" や ".." / 末尾 ".lock" は弾く
+ */
+function validRemoteName(name: string): boolean {
+  return (
+    /^[A-Za-z0-9][A-Za-z0-9._\-/]*$/.test(name) &&
+    !name.includes('..') &&
+    !name.includes('//') &&
+    !name.endsWith('/') &&
+    !name.endsWith('.') &&
+    !name.endsWith('.lock')
+  );
+}
+
+/** URL (またはローカルパス) として受け付けるか。改行や先頭 "-" (オプション扱い) は弾く */
+function validRemoteUrl(url: string): boolean {
+  return url.length > 0 && !url.startsWith('-') && !/[\0\r\n]/.test(url);
+}
+
+/** リモート一覧。push 用 URL を別に設定していなければ pushUrl は fetchUrl と同じ */
+gitRouter.get('/remotes', async (req, res) => {
+  const remotes = await git(req.query.repo).getRemotes(true);
+  res.json({
+    remotes: remotes.map((r) => ({
+      name: r.name,
+      fetchUrl: r.refs.fetch,
+      pushUrl: r.refs.push || r.refs.fetch,
+    })),
+  });
+});
+
+/**
+ * リモートの追加 / 変更 / 削除。
+ * - add:    git remote add <name> <url> (+ push URL が別なら set-url --push)
+ * - update: 名前が変わっていれば rename してから URL を設定し直す
+ *           (rename は追跡ブランチと各ブランチの upstream 設定も書き換える)
+ * - remove: git remote remove <name> (追跡ブランチと upstream 設定も消える)
+ * push URL を空にすると remote.<name>.pushurl を消し、fetch と同じ URL に戻す
+ */
+gitRouter.post('/remote', async (req, res) => {
+  const { repo, action, name, newName, url, pushUrl } = (req.body ?? {}) as Record<string, unknown>;
+  const g = git(repo);
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const cur = str(name);
+  if (!validRemoteName(cur)) badRequest('リモート名が不正です');
+
+  const existing = await g.getRemotes(true);
+  const find = (n: string) => existing.find((r) => r.name === n);
+
+  if (action === 'remove') {
+    if (!find(cur)) badRequest(`リモート ${cur} がありません`);
+    await g.raw(['remote', 'remove', cur]);
+    res.json({ ok: true });
+    return;
+  }
+
+  if (action !== 'add' && action !== 'update') badRequest('action が不正です');
+  const fetchUrl = str(url);
+  const push = str(pushUrl);
+  if (!validRemoteUrl(fetchUrl)) badRequest('URL が不正です');
+  if (push && !validRemoteUrl(push)) badRequest('Push URL が不正です');
+
+  /**
+   * push URL を設定し直す (空欄 / fetch と同じなら専用の設定を消すだけ)。
+   * 複数の pushurl があると set-url --push が対象を決められないので、いったん全部消してから入れる
+   */
+  const applyPushUrl = async (target: string, hadPushUrl: boolean) => {
+    if (hadPushUrl) await g.raw(['config', '--unset-all', `remote.${target}.pushurl`]);
+    if (push && push !== fetchUrl) await g.raw(['remote', 'set-url', '--push', target, push]);
+  };
+
+  if (action === 'add') {
+    if (find(cur)) badRequest(`リモート ${cur} は既にあります`);
+    await g.raw(['remote', 'add', cur, fetchUrl]);
+    await applyPushUrl(cur, false);
+    res.json({ ok: true });
+    return;
+  }
+
+  const before = find(cur);
+  if (!before) badRequest(`リモート ${cur} がありません`);
+  const next = str(newName) || cur;
+  if (next !== cur) {
+    if (!validRemoteName(next)) badRequest('新しいリモート名が不正です');
+    if (find(next)) badRequest(`リモート ${next} は既にあります`);
+    await g.raw(['remote', 'rename', cur, next]);
+  }
+  if (before.refs.fetch !== fetchUrl) await g.raw(['remote', 'set-url', next, fetchUrl]);
+  // getRemotes は pushurl 未設定でも push に fetch の URL を入れて返すので、設定の有無は config で見る
+  const hadPushUrl =
+    (await g.raw(['config', '--get-all', `remote.${next}.pushurl`]).catch(() => '')).trim().length > 0;
+  await applyPushUrl(next, hadPushUrl);
+  res.json({ ok: true });
+});
+
 gitRouter.post('/merge/continue', async (req, res) => {
   const repo = req.body.repo as string;
   const g = git(repo);

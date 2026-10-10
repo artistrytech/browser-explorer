@@ -102,6 +102,13 @@ export interface GitBranch {
   upstreamRef?: string;
 }
 
+/** リモート (git remote)。push 用 URL を別に設定していなければ pushUrl は fetchUrl と同じ */
+export interface GitRemote {
+  name: string;
+  fetchUrl: string;
+  pushUrl: string;
+}
+
 /** グラフ用ログの 1 コミット (002.md §5.2) */
 export interface GitGraphCommit {
   hash: string;

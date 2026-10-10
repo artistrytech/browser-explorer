@@ -12,6 +12,7 @@ import type {
   GitBranch,
   GitCommit,
   GitGraphCommit,
+  GitRemote,
   GitStatus,
   LogEntry,
   LogLevel,
@@ -315,6 +316,17 @@ export const api = {
     }),
   gitAuthTest: (repo: string, remote: string) =>
     post<{ ok: boolean; command: string; output: string }>('/api/git/auth/test', { repo, remote }),
+
+  // --- リモートの設定 (同期ダイアログの「リモート」タブ) ---
+  gitRemotes: (repo: string) => get<{ remotes: GitRemote[] }>(`/api/git/remotes?repo=${q(repo)}`),
+  /** pushUrl は空欄で fetch と同じ URL に戻す。update で newName を変えると rename する */
+  gitRemote: (
+    repo: string,
+    body:
+      | { action: 'add'; name: string; url: string; pushUrl?: string }
+      | { action: 'update'; name: string; newName: string; url: string; pushUrl?: string }
+      | { action: 'remove'; name: string },
+  ) => post<{ ok: true }>('/api/git/remote', { repo, ...body }),
 
   gitExec: (repo: string, args: string[]) =>
     post<{ ok: boolean; code: number; command: string; output: string }>('/api/git/exec', {

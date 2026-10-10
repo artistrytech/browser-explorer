@@ -7,7 +7,9 @@ import styles from './SyncDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 import { useDialogKeys } from '../../lib/dialogKeys';
 import { SyncBadge } from '../../components/SyncBadge';
-import type { GitBranch } from '../../types';
+import { toastError } from '../../stores/toast';
+import { SyncRemoteTab } from './SyncRemoteTab';
+import type { GitBranch, GitRemote } from '../../types';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -18,6 +20,7 @@ const cx = createCssModuleClassNames(styles);
  * - Fetch: リモートの状態だけ取得する
  * - 一括:  早送りできるローカルブランチを、チェックアウトせずまとめて更新する
  *          (`git fetch <remote> <remoteRef>:refs/heads/<local>`)
+ * - リモート: git remote の追加 / 変更 / 削除 (SyncRemoteTab。操作はその場で反映し「実行」は使わない)
  *
  * 「一括」は git の制約がそのまま UI になっている:
  * - チェックアウト中のブランチへは refspec 付き fetch が拒否されるので、
@@ -26,17 +29,18 @@ const cx = createCssModuleClassNames(styles);
  *   チェック不可にして理由を出すだけに留める (手動マージ/リベースに任せる)
  */
 
-type SyncTab = 'push' | 'pull' | 'fetch' | 'bulk';
+type SyncTab = 'push' | 'pull' | 'fetch' | 'bulk' | 'remote';
 
 const TABS: { key: SyncTab; label: string }[] = [
   { key: 'push', label: 'Push' },
   { key: 'pull', label: 'Pull' },
   { key: 'fetch', label: 'Fetch' },
   { key: 'bulk', label: '一括' },
+  { key: 'remote', label: 'リモート' },
 ];
 
-/** 実行結果ダイアログのタイトル */
-const RUN_TITLE: Record<SyncTab, string> = {
+/** 実行結果ダイアログのタイトル (リモートタブは「実行」を使わない) */
+const RUN_TITLE: Record<Exclude<SyncTab, 'remote'>, string> = {
   push: 'Push',
   pull: 'Pull',
   fetch: 'Fetch',
@@ -121,6 +125,19 @@ export function SyncDialog() {
   // --- Fetch タブ (Prune は既定で ON: 不要になった追跡ブランチを残さない) ---
   const [prune, setPrune] = useState(true);
 
+  // --- リモートタブ (一覧は Push タブのリモート候補にも使う。null は読み込み中) ---
+  const [remotes, setRemotes] = useState<GitRemote[] | null>(null);
+  const loadRemotes = useCallback(async () => {
+    if (!repoRoot) return;
+    try {
+      const r = await api.gitRemotes(repoRoot);
+      setRemotes(r.remotes);
+    } catch (e) {
+      setRemotes([]);
+      toastError(e);
+    }
+  }, [repoRoot]);
+
   // --- 一括タブ ---
   const [phase, setPhase] = useState<'idle' | 'fetching' | 'ready' | 'failed'>('idle');
   const [fetchError, setFetchError] = useState('');
@@ -199,7 +216,13 @@ export function SyncDialog() {
     setFetchError('');
     setRows([]);
     setTargets(new Set());
+    setRemotes(null);
   }, [open]);
+
+  // リモート一覧はローカルの設定を読むだけなので、どのタブでも開いたときに取得する
+  useEffect(() => {
+    if (open) void loadRemotes();
+  }, [open, loadRemotes]);
 
   // 一括タブを開いたときだけ fetch する (Push/Pull/Fetch を使うだけなら通信しない)
   useEffect(() => {
@@ -258,14 +281,15 @@ export function SyncDialog() {
         ? [['pull']]
         : tab === 'fetch'
           ? [['fetch', ...(prune ? ['--prune'] : [])]]
-          : phase === 'ready'
+          : tab === 'bulk' && phase === 'ready'
             ? buildBulkCommands()
             : [];
 
+  // リモートタブは Enter をフォームの送信に回すため、ここでは実行できない扱いにする
   const canRun = commands.length > 0;
 
   const doRun = () => {
-    if (!repoRoot || !canRun) return;
+    if (!repoRoot || !canRun || tab === 'remote') return;
     closeDialog();
     void runGitCommands(repoRoot, commands, RUN_TITLE[tab], {
       // 一括は 1 件失敗しても残りを続け、結果をまとめて見せる
@@ -313,8 +337,12 @@ export function SyncDialog() {
                 <input
                   className={cx('sync-input small')}
                   value={remote}
+                  list="sync-remote-names"
                   onChange={(e) => setRemote(e.target.value)}
                 />
+                <datalist id="sync-remote-names">
+                  {remotes?.map((r) => <option key={r.name} value={r.name} />)}
+                </datalist>
               </label>
               <label className={cx('sync-row')}>
                 <span className={cx('sync-label')}>リモートブランチ:</span>
@@ -440,15 +468,32 @@ export function SyncDialog() {
               )}
             </div>
           )}
+
+          {tab === 'remote' && (
+            <SyncRemoteTab
+              repoRoot={repoRoot}
+              remotes={remotes}
+              reload={loadRemotes}
+              onRenamed={(from, to) => setRemote((cur) => (cur === from ? to : cur))}
+            />
+          )}
         </div>
 
         <div className={cx('dialog-buttons')}>
-          <button className={cx('btn')} onClick={closeDialog}>
-            キャンセル
-          </button>
-          <button className={cx('btn primary')} disabled={!canRun} onClick={doRun}>
-            実行
-          </button>
+          {tab === 'remote' ? (
+            <button className={cx('btn')} onClick={closeDialog}>
+              閉じる
+            </button>
+          ) : (
+            <>
+              <button className={cx('btn')} onClick={closeDialog}>
+                キャンセル
+              </button>
+              <button className={cx('btn primary')} disabled={!canRun} onClick={doRun}>
+                実行
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
