@@ -29,6 +29,7 @@ import { formatSize, formatDate, kindLabel, fileIcon, baseName } from '../../lib
 import { sortEntries } from '../../lib/entrySort';
 import { pinFolder, unpinFolder } from '../../lib/quickaccessOps';
 import { saveFocus, loadFocus, saveEnteredChild } from '../../lib/focusMemory';
+import { excludeUntracked } from '../../lib/gitExclude';
 import { openCloneDialog } from '../git/CloneDialog';
 import { isMarkdownPath, openMarkdownPreview } from '../preview/MarkdownTab';
 import { openDualPane } from '../transfer/DualPaneDialog';
@@ -422,7 +423,27 @@ export function FileList() {
     return items;
   };
 
-  const entryMenu = (e: React.MouseEvent, entry: FsEntry) => {
+  /**
+   * 未追跡のエントリ (1 件選択時) を .git/info/exclude に追加する項目。
+   * 追跡済み / 無視済みのエントリや複数選択では出さない
+   */
+  const gitExcludeItems = (entry: FsEntry, single: boolean): CfgMenuItem[] => {
+    const rel = relOf(entry.path);
+    if (!repoRoot || !single || !rel) return [];
+    const untracked =
+      useGit.getState().overlay[entry.path] === 'untracked' || dirOverlay[entry.path] === 'untracked';
+    if (!untracked) return [];
+    return [
+      { separator: true },
+      {
+        id: 'gitExclude',
+        label: '未追跡ファイルを除外する',
+        action: () => void excludeUntracked(repoRoot, rel, entry.type === 'dir'),
+      },
+    ];
+  };
+
+  const entryMenu =(e: React.MouseEvent, entry: FsEntry) => {
     e.preventDefault();
     // コンテナの backgroundMenu へバブリングさせない (背景メニューで上書きされるのを防ぐ)
     e.stopPropagation();
@@ -482,6 +503,7 @@ export function FileList() {
     const gitGroup: CfgMenuItem[] = [
       ...gitContextItems(entry.path, !isDir, isDir),
       ...gitRepoItems(sel),
+      ...gitExcludeItems(entry, single),
       ...tools.take('Git'),
     ];
 

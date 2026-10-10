@@ -12,6 +12,7 @@ import {
 } from '../../lib/logLayoutMemory';
 import { loadBranchKeep, saveBranchKeep } from '../../lib/branchKeepMemory';
 import { saveEnteredChild } from '../../lib/focusMemory';
+import { excludeUntracked } from '../../lib/gitExclude';
 import { fileOpenMenuItems, pruneMenuItems } from '../../lib/openMenu';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import { SyncBadge } from '../../components/SyncBadge';
@@ -19,7 +20,7 @@ import { useGit, GitTab } from '../../stores/git';
 import { useUi, defaultDiffToolIndex } from '../../stores/ui';
 import { useExplorer } from '../../stores/explorer';
 import { useToast, toastError } from '../../stores/toast';
-import { confirmDialog, confirmDialogWithOption, promptDialog } from '../../stores/dialog';
+import { confirmDialog, confirmDialogWithOption } from '../../stores/dialog';
 import { useCommitDraft } from '../../stores/commitDraft';
 import { WorkingDiff, type FocusFile } from './WorkingDiff';
 import { GitGraph } from './GitGraph';
@@ -140,14 +141,6 @@ function isDeletedFile(f: GitFileStatus, staged: boolean): boolean {
 /** 未追跡ファイル (git 管理外) か */
 function isUntrackedFile(f: GitFileStatus): boolean {
   return f.index === '?' || f.workingDir === '?';
-}
-
-/**
- * 除外パターンの既定値: リポジトリルートからのパス完全一致。
- * 先頭 '/' でルート起点に固定し、gitignore のメタ文字と末尾スペースはエスケープする。
- */
-function defaultExcludePattern(relPath: string): string {
-  return '/' + relPath.replace(/[\\*?[\]]/g, (c) => `\\${c}`).replace(/ +$/, (s) => '\\ '.repeat(s.length));
 }
 
 function statusLabel(f: GitFileStatus, staged: boolean): string {
@@ -522,30 +515,6 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const commitByShortcut = () => {
     if (staged.length === 0 && !amend) doCommitAll();
     else doCommit();
-  };
-
-  /**
-   * 未追跡ファイルを .git/info/exclude に追加する (.gitignore と違いコミットされない)。
-   * 追加するパターンはダイアログで編集でき、既定はパス完全一致。
-   */
-  const excludeUntracked = async (relPath: string) => {
-    const input = await promptDialog('未追跡ファイルを除外する', defaultExcludePattern(relPath), {
-      message:
-        `${relPath} を .git/info/exclude に追加します\n` +
-        '(このリポジトリのローカル設定で、コミットも共有もされません)。\n' +
-        'パターンは編集できます (既定はパス完全一致)。',
-    });
-    if (input === null) return;
-    const pattern = input.trim();
-    if (!pattern) return;
-    try {
-      const { added } = await api.gitExclude(repoRoot, pattern);
-      show('success', added ? `除外に追加しました: ${pattern}` : `既に除外されています: ${pattern}`);
-      await refreshStatus();
-      void useExplorer.getState().refresh();
-    } catch (e) {
-      toastError(e);
-    }
   };
 
   /** 過去のコミットメッセージから選んで入力欄に設定する */
@@ -1118,7 +1087,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
       {
         label: '未追跡ファイルを除外する',
         disabled: !isUntrackedFile(f),
-        action: () => void excludeUntracked(f.path),
+        action: () => void excludeUntracked(repoRoot, f.path),
       },
     );
     // パス絞り込みログ (ファイルタブの「Gitログ」と同じ)。Ctrl+クリック (mac は ⌘) は別タブ

@@ -41,6 +41,7 @@ const MENU_ITEMS: { key: string; label: string }[] = [
   { key: 'gitStage', label: '  ステージ' },
   { key: 'gitUnstage', label: '  ステージ解除' },
   { key: 'gitDiscard', label: '  変更を破棄' },
+  { key: 'gitExclude', label: '  未追跡ファイルを除外する' },
   { key: 'properties', label: 'プロパティ' },
   { key: 'newFolder', label: '新規フォルダ (空白右クリック)' },
   { key: 'newFile', label: '新規ファイル (空白右クリック)' },
