@@ -13,6 +13,7 @@ import {
 import { loadBranchKeep, saveBranchKeep } from '../../lib/branchKeepMemory';
 import { saveEnteredChild } from '../../lib/focusMemory';
 import { excludeUntracked } from '../../lib/gitExclude';
+import { copyText } from '../../lib/clipboard';
 import { fileOpenMenuItems, pruneMenuItems } from '../../lib/openMenu';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import { SyncBadge } from '../../components/SyncBadge';
@@ -614,18 +615,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
 
   const copyBranchName = async (name: string) => {
     try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(name);
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = name;
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-      }
+      await copyText(name);
       show('success', 'ブランチ名をコピーしました');
     } catch (e) {
       toastError(e);

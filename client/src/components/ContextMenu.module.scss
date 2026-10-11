@@ -24,6 +24,14 @@
   background: var(--bg-hover);
 }
 
+.menu-detail {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
 .menu-group {
   position: relative;
 }

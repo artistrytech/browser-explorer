@@ -7,6 +7,10 @@ const cx = createCssModuleClassNames(styles);
 
 export interface MenuItem {
   label?: string;
+  /** ラベルの下に小さく薄字で添える補足 (コピーされるパスなど) */
+  detail?: string;
+  /** マウスオーバー時のツールチップ (detail を省略表示したときの全文など) */
+  title?: string;
   /** クリックイベントを受け取れる (Ctrl+クリック等の修飾キー判定用) */
   action?: (e: React.MouseEvent) => void;
   disabled?: boolean;
@@ -87,12 +91,14 @@ function MenuList({ items, close }: { items: MenuItem[]; close: () => void }) {
             key={i}
             className={cx(`menu-item${item.danger ? ' danger' : ''}`)}
             disabled={item.disabled}
+            title={item.title}
             onClick={(e) => {
               close();
               item.action?.(e);
             }}
           >
             {item.label}
+            {item.detail && <span className={cx("menu-detail")}>{item.detail}</span>}
           </button>
         ),
       )}
