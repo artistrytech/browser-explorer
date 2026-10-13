@@ -10,6 +10,7 @@ import {
   hunkLineNumbers,
   isChangeLine,
   isBinaryDiff,
+  contentOnlyHeader,
   type FileDiff,
 } from '../../lib/diffPatch';
 import { DiffLineText, useDiffHighlight, type DiffSources } from '../../lib/diffHighlight';
@@ -23,6 +24,8 @@ export interface FocusFile {
   path: string;
   /** 'staged' はステージ側 (HEAD↔index)、'unstaged' は作業ツリー側 (index↔worktree) */
   side: 'staged' | 'unstaged';
+  /** ステージ済みで名前変更されたファイルの変更前パス (それ以外は null) */
+  oldPath: string | null;
   /** 未追跡ファイル (部分ステージ不可・全体を追加行として表示) */
   untracked: boolean;
 }
@@ -65,7 +68,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
   const load = () => {
     setLoading(true);
     api
-      .gitDiff(repo, file.path, file.side === 'staged', file.untracked)
+      .gitDiff(repo, file.path, file.side === 'staged', file.untracked, file.oldPath)
       .then((r) => {
         setParsed(parseFileDiff(r.diff));
         setSelLines(new Set());
@@ -76,7 +79,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
   };
 
   // ファイルが変わったら読み込み。onApplied による status 変化とは独立に自前で再取得する
-  useEffect(load, [repo, file.path, file.side, file.untracked]);
+  useEffect(load, [repo, file.path, file.side, file.untracked, file.oldPath]);
 
   /**
    * 色付けの状態を正しく取るためのファイル全体。
@@ -86,15 +89,13 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
   useEffect(() => {
     let stale = false;
     setSources(null);
-    const content = (rev: string, enabled = true) =>
-      enabled
-        ? api
-            .gitFileContent(repo, rev, file.path)
-            .then((r) => r.content)
-            .catch(() => null)
-        : Promise.resolve(null);
-    // 未追跡ファイルは「変更前」が無く、全体が追加行になる
-    const before = file.untracked ? Promise.resolve(null) : content(reverse ? 'HEAD' : '');
+    const content = (rev: string, p = file.path) =>
+      api
+        .gitFileContent(repo, rev, p)
+        .then((r) => r.content)
+        .catch(() => null);
+    // 未追跡ファイルは「変更前」が無く、全体が追加行になる。名前変更は HEAD 側を変更前のパスで取る
+    const before = file.untracked ? Promise.resolve(null) : content(reverse ? 'HEAD' : '', file.oldPath ?? file.path);
     const after = content(reverse ? '' : 'worktree');
     void Promise.all([before, after]).then(([old, next]) => {
       if (!stale) setSources({ old, new: next });
@@ -102,7 +103,10 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
     return () => {
       stale = true;
     };
-  }, [repo, file.path, file.side, file.untracked, reverse]);
+  }, [repo, file.path, file.side, file.untracked, file.oldPath, reverse]);
+
+  /** 部分ステージ/解除・破棄のパッチに使うヘッダ (名前変更は内容の変更だけにする) */
+  const patchHeader = parsed ? contentOnlyHeader(parsed.header) : [];
 
   const apply = async (patch: string | null, empty: string) => {
     if (!patch) {
@@ -128,7 +132,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
     if (!ok) return;
     setBusy(true);
     try {
-      await api.gitApplyPatch(repo, buildHunkPatch(parsed.header, [hunk]), true, false);
+      await api.gitApplyPatch(repo, buildHunkPatch(patchHeader, [hunk]), true, false);
       load();
       onApplied();
       void useExplorer.getState().refresh();
@@ -146,7 +150,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
    */
   const discardLines = async (hunk: FileDiff['hunks'][number], selected: Set<number>) => {
     if (!parsed) return;
-    const patch = buildLinesPatch(parsed.header, hunk, selected, true);
+    const patch = buildLinesPatch(patchHeader, hunk, selected, true);
     if (!patch) {
       toastError(new Error('対象の行が選択されていません'));
       return;
@@ -206,12 +210,14 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
     setAnchorLine(key);
   };
 
+  const title = file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
+
   return (
     <div className={cx("work-diff-file")}>
       <div className={cx("work-diff-head")}>
         <span className={cx(`wd-side wd-side-${file.side}`)}>{sideLabel}</span>
-        <span className={cx("wd-path")} title={file.path}>
-          {file.path}
+        <span className={cx("wd-path")} title={title}>
+          {title}
         </span>
       </div>
 
@@ -219,7 +225,11 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
         <div className={cx("empty-hint")}>読み込み中…</div>
       ) : !parsed || parsed.hunks.length === 0 ? (
         <div className={cx("empty-hint")}>
-          {parsed && isBinaryDiff(parsed) ? 'バイナリファイルです' : '差分はありません'}
+          {parsed && isBinaryDiff(parsed)
+            ? 'バイナリファイルです'
+            : file.oldPath
+              ? '名前の変更のみです (内容の差分はありません)'
+              : '差分はありません'}
         </div>
       ) : (
         parsed.hunks.map((hunk, hIdx) => {
@@ -242,7 +252,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
                         title={`選択した ${hunkSel.size} 行を${actionLabel}`}
                         onClick={() =>
                           void apply(
-                            buildLinesPatch(parsed.header, hunk, hunkSel, reverse),
+                            buildLinesPatch(patchHeader, hunk, hunkSel, reverse),
                             '対象の行が選択されていません',
                           )
                         }
@@ -265,7 +275,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
                       className={cx("status-btn")}
                       disabled={busy}
                       title={`この Hunk を${actionLabel}`}
-                      onClick={() => void apply(buildHunkPatch(parsed.header, [hunk]), '')}
+                      onClick={() => void apply(buildHunkPatch(patchHeader, [hunk]), '')}
                     >
                       Hunk を{actionLabel}
                     </button>

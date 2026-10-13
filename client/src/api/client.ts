@@ -237,10 +237,12 @@ export const api = {
     get<{ hash: string; author: string; date: string; message: string; patch: string }>(
       `/api/git/show?repo=${q(repo)}&hash=${q(hash)}`,
     ),
-  gitDiff: (repo: string, path?: string, staged = false, untracked = false) =>
+  /** oldPath はステージ済みで名前変更されたファイルの変更前パス (リネームとして差分を得る) */
+  gitDiff: (repo: string, path?: string, staged = false, untracked = false, oldPath?: string | null) =>
     get<{ diff: string }>(
       `/api/git/diff?repo=${q(repo)}${path ? `&path=${q(path)}` : ''}&staged=${staged}` +
-        (untracked ? '&untracked=true' : ''),
+        (untracked ? '&untracked=true' : '') +
+        (oldPath ? `&oldPath=${q(oldPath)}` : ''),
     ),
   /** Hunk・行単位の部分ステージ/解除。reverse でステージ解除、cached=false で作業ツリーへ適用 (破棄) */
   gitApplyPatch: (repo: string, patch: string, reverse: boolean, cached = true) =>

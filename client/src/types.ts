@@ -63,6 +63,8 @@ export interface ReadResult {
 
 export interface GitFileStatus {
   path: string;
+  /** 名前変更 (R) の変更前パス。それ以外は null */
+  oldPath: string | null;
   index: string;
   workingDir: string;
 }

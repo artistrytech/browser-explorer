@@ -139,6 +139,14 @@ function isDeletedFile(f: GitFileStatus, staged: boolean): boolean {
   return (staged ? f.index : f.workingDir) === 'D';
 }
 
+/**
+ * ステージ済みで名前変更 (R) されたファイルの変更前パス。それ以外は null。
+ * 差分は変更前後の両方を渡さないと「新規追加」に見えるため、ステージ側の差分取得に添える
+ */
+function stagedOldPath(f: GitFileStatus): string | null {
+  return f.index === 'R' ? f.oldPath : null;
+}
+
 /** 未追跡ファイル (git 管理外) か */
 function isUntrackedFile(f: GitFileStatus): boolean {
   return f.index === '?' || f.workingDir === '?';
@@ -455,6 +463,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     .map((r) => ({
       path: r.f.path,
       side: r.side ? 'staged' : 'unstaged',
+      oldPath: r.side ? stagedOldPath(r.f) : null,
       untracked: !r.side && (r.f.index === '?' || r.f.workingDir === '?'),
     }));
 
@@ -584,8 +593,9 @@ export function GitPanel({ tab }: { tab: GitTab }) {
 
   const openDefaultWorkingDiff = (f: GitFileStatus, stagedSide: boolean) => {
     if (defaultTool >= 0) {
+      const mode = stagedSide ? 'staged' : 'worktree';
       void api
-        .gitDiffTool(diffTools[defaultTool].id, repoRoot, f.path, stagedSide ? 'staged' : 'worktree')
+        .gitDiffTool(diffTools[defaultTool].id, repoRoot, f.path, mode, undefined, stagedSide ? stagedOldPath(f) : null)
         .catch(toastError);
       return;
     }
@@ -1088,7 +1098,9 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         action: (ev) => useGit.getState().showLogFor(f.path, true, { newTab: ev.ctrlKey || ev.metaKey }),
       },
     );
-    const tools = diffToolItems(f.path, stagedSide ? 'staged' : 'worktree');
+    const tools = stagedSide
+      ? diffToolItems(f.path, 'staged', undefined, stagedOldPath(f))
+      : diffToolItems(f.path, 'worktree');
     if (tools.length > 0) items.push({ separator: true }, ...tools);
     // 「開く」はファイルタブと同じ内容 (エディタ / 別ウィンドウ / OS 連携 / 外部ツール)。
     // 対象は右クリックした 1 ファイルのみで、削除済みファイルは開けないので出さない

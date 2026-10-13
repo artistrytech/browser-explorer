@@ -146,6 +146,8 @@ gitRouter.get('/status', async (req, res) => {
     behind: st.behind,
     files: st.files.map((f) => ({
       path: f.path.replace(/\\/g, '/'),
+      // 名前変更 (R) の変更前パス。ステージ側の差分をリネームとして得るのに使う
+      oldPath: f.from ? f.from.replace(/\\/g, '/') : null,
       index: f.index, // ステージ側の状態
       workingDir: f.working_dir, // 作業ツリー側の状態
     })),
@@ -476,11 +478,13 @@ async function diffSides(
     };
   }
   if (mode === 'staged') {
+    // ステージ済みの名前変更は、HEAD 側を変更前のパスで取得する
+    const before = oldRel ?? rel;
     const [left, right] = await Promise.all([
-      gitShowBuffer(repo, `HEAD:${rel}`),
+      gitShowBuffer(repo, `HEAD:${before}`),
       gitShowBuffer(repo, `:${rel}`),
     ]);
-    return { left, right, rightPath: null, leftTitle: `${rel} (HEAD)`, rightTitle: `${rel} (ステージ)` };
+    return { left, right, rightPath: null, leftTitle: `${before} (HEAD)`, rightTitle: `${rel} (ステージ)` };
   }
   if (mode === 'worktree') {
     // ステージ済みの内容 (未追跡なら HEAD、それも無ければ空) と作業ツリーの実ファイルを比較
@@ -517,8 +521,8 @@ gitRouter.post('/difftool', async (req, res) => {
     badRequest('mode must be commit|staged|worktree');
   }
   const rel = relPath(req.body.path);
-  // リネームされたファイルの比較元 (commit モードのみ意味を持つ)
-  const oldRel = mode === 'commit' ? oldRelPath(req.body.oldPath, rel) : null;
+  // リネームされたファイルの比較元 (commit / staged モードのみ意味を持つ)
+  const oldRel = mode === 'commit' || mode === 'staged' ? oldRelPath(req.body.oldPath, rel) : null;
   const command = t.command.trim();
   // 絶対パス指定なら実在チェック (未インストール時に無反応にならないよう 400 で返す)
   if (/[\\/]/.test(command) && !existsSync(command)) badRequest(`ツールが見つかりません: ${command}`);
@@ -557,7 +561,10 @@ gitRouter.get('/diff', async (req, res) => {
   }
   const args: string[] = [];
   if (staged) args.push('--cached');
-  if (p) args.push('--', p);
+  // ステージ済みの名前変更は、変更前後の両方で絞り込まないと「新規追加」に見えるため両方渡す
+  const old = staged && p ? oldRelPath(req.query.oldPath, relPath(p)) : null;
+  if (old) args.push('-M');
+  if (p) args.push('--', ...(old ? [old] : []), p);
   const diff = await g.diff(args);
   res.json({ diff });
 });

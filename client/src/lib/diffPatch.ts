@@ -57,6 +57,26 @@ export function isBinaryDiff(parsed: FileDiff): boolean {
   return parsed.header.some((l) => l.startsWith('Binary files ') || l === 'GIT binary patch');
 }
 
+/**
+ * 名前変更の差分ヘッダを、変更後パスだけの「修正」のヘッダに組み替える。
+ * リネームのヘッダのまま部分解除 (--reverse) すると、選んだ Hunk と一緒に名前まで元に戻るため、
+ * 部分ステージ/解除のパッチは変更後パスの内容変更として組み立てる。
+ * 名前変更でなければそのまま返す。
+ */
+export function contentOnlyHeader(header: string[]): string[] {
+  if (!header.some((l) => l.startsWith('rename from '))) return header;
+  const plus = header.find((l) => l.startsWith('+++ '));
+  if (!plus) return header;
+  const bName = plus.slice(4); // b/<path> (特殊文字を含むと "b/<path>" のようにクォートされる)
+  const aName = bName.replace(/^("?)b\//, '$1a/');
+  return header.flatMap((l) => {
+    if (l.startsWith('diff --git ')) return [`diff --git ${aName} ${bName}`];
+    if (/^(similarity index|dissimilarity index|rename from|rename to) /.test(l)) return [];
+    if (l.startsWith('--- ')) return [`--- ${aName}`];
+    return [l];
+  });
+}
+
 /** @@ -a,b +c,d @@ の開始行番号と末尾の見出し (関数名など) を取り出す */
 function parseHunkHeader(header: string): { oldStart: string; newStart: string; tail: string } {
   const m = header.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/);
