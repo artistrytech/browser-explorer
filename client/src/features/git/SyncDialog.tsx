@@ -141,6 +141,10 @@ export function SyncDialog() {
   // --- 一括タブ ---
   const [phase, setPhase] = useState<'idle' | 'fetching' | 'ready' | 'failed'>('idle');
   const [fetchError, setFetchError] = useState('');
+  /** 取得が HTTPS の認証で失敗した (サインインして再試行できる) */
+  const [fetchNeedsSignIn, setFetchNeedsSignIn] = useState(false);
+  /** GCM のサインイン画面を許可して取得中 */
+  const [signingIn, setSigningIn] = useState(false);
   const [rows, setRows] = useState<SyncRow[]>([]);
   const [targets, setTargets] = useState<Set<string>>(new Set());
   /**
@@ -149,20 +153,26 @@ export function SyncDialog() {
    */
   const reqId = useRef(0);
 
-  /** リモートを取得し、取得後の ahead/behind でブランチ一覧を組み直す (一括タブ) */
-  const reload = useCallback(async () => {
+  /**
+   * リモートを取得し、取得後の ahead/behind でブランチ一覧を組み直す (一括タブ)。
+   * signIn=true では GCM のサインイン画面を許可して取得する (認証で失敗した後の再試行)
+   */
+  const reload = useCallback(async (signIn = false) => {
     if (!repoRoot) return;
     const id = ++reqId.current;
     const stale = () => id !== reqId.current;
     setPhase('fetching');
     setFetchError('');
+    setFetchNeedsSignIn(false);
+    setSigningIn(signIn);
     setRows([]);
     setTargets(new Set());
     try {
-      const r = await api.gitExec(repoRoot, ['fetch', '--prune']);
+      const r = await api.gitExec(repoRoot, ['fetch', '--prune'], { interactive: signIn });
       if (stale()) return;
       if (!r.ok) {
         setFetchError(r.output || '(出力なし)');
+        setFetchNeedsSignIn(r.needsSignIn === true);
         setPhase('failed');
         return;
       }
@@ -418,9 +428,20 @@ export function SyncDialog() {
               {(phase === 'idle' || phase === 'fetching') && (
                 <div className={cx('sync-row sync-dim')}>
                   <span className={cx('spinner-ring small')} /> git fetch --prune 実行中…
+                  {signingIn && phase === 'fetching' && (
+                    <> サインイン画面 (Git Credential Manager) で認証してください。見当たらない場合はタスクバーを確認してください。</>
+                  )}
                 </div>
               )}
               {phase === 'failed' && <pre className={cx('sync-error')}>{fetchError}</pre>}
+              {phase === 'failed' && fetchNeedsSignIn && (
+                <div className={cx('sync-row sync-dim')}>
+                  リモート (HTTPS) の認証に失敗しました。
+                  <button className={cx('btn small primary')} onClick={() => void reload(true)}>
+                    サインインして再試行
+                  </button>
+                </div>
+              )}
 
               {phase === 'ready' && (
                 <>

@@ -58,6 +58,9 @@ client/          # React + Vite + Zustand + Monaco Editor
 - エンコーディング (UTF-8 / Shift_JIS / EUC-JP / UTF-16)・改行 (CRLF/LF/CR)・BOM は
   ステータスバーから切替。「再読込」で開き直し、Ctrl+S で変換保存。
 - Git はシステムの git を使用。push/pull の認証は git 側 (credential helper / SSH agent) に委譲。
+  HTTPS の認証で失敗した場合は、結果ダイアログの「サインインして再試行」で Git Credential Manager の
+  サインイン画面 (ブラウザ / コード / トークン) を開いて再実行できる。
+  クローンは新しいリポジトリで資格情報が未保存のことが多いため、最初からサインイン画面を許可して実行する。
 - 設定・ブックマーク・リポジトリ一覧は SQLite に永続化。設定画面からエクスポート / インポート可。
 - OS 連携: フォルダ/空白の右クリックに「Explorer(Finder)で開く」
   「コマンドプロンプト(ターミナル)で開く」(ホスト OS に応じて自動切替)。

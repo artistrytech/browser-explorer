@@ -16,7 +16,24 @@ export function focusExplorerWindow(dir: string): void {
   if (process.platform !== 'win32') return;
   // PowerShell の単一引用符文字列に埋め込むため、' は '' にエスケープする
   const target = dir.replace(/\\/g, '/').replace(/'/g, "''");
-  const script = buildScript(target);
+  runHidden(buildScript(target));
+}
+
+/**
+ * Windows で、指定プロセス (拡張子なしの名前) のウィンドウが現れたら前面に出す (ベストエフォート)。
+ * GCM のサインイン画面のように、このサーバから間接的に開かれる画面向け。
+ * 現れるまで最大 seconds 秒待ち、前面化できた時点で終了する。
+ * whilePid を渡すと、そのプロセス (画面を開く親) が終了した時点で待つのをやめる。
+ */
+export function focusProcessWindow(name: string, seconds: number, whilePid?: number): void {
+  if (process.platform !== 'win32') return;
+  if (!/^[\w.-]+$/.test(name)) return;
+  const pid = Number.isInteger(whilePid) ? (whilePid as number) : 0;
+  runHidden(buildProcessScript(name, Math.max(1, Math.floor(seconds)), pid));
+}
+
+/** PowerShell スクリプトを非表示で投げっぱなし実行する */
+function runHidden(script: string): void {
   try {
     const child = spawn(
       'powershell.exe',
@@ -29,7 +46,7 @@ export function focusExplorerWindow(dir: string): void {
         Buffer.from(script, 'utf16le').toString('base64'),
       ],
       // detached にすると (コンソールを持たないため) PowerShell 自体が動かないので付けない。
-      // unref で子の終了待ちはしない (最大 5 秒で自分から終わる)
+      // unref で子の終了待ちはしない (スクリプト側の期限で自分から終わる)
       { stdio: 'ignore', windowsHide: true },
     );
     child.on('error', () => {});
@@ -45,11 +62,51 @@ export function focusExplorerWindow(dir: string): void {
  * ウィンドウは起動直後には現れず、現れた直後は Explorer 自身がまだ初期化中で
  * 前面化が効かないことがある。そのため「探す → 前面化 → 実際に前面になったか確認 →
  * ダメならウィンドウを取り直して再試行」を最大 8 秒繰り返す。成功した時点で終了する。
- * C# 部分は ASCII のみ (Add-Type のソースに非 ASCII を混ぜると環境により壊れるため)。
  */
 function buildScript(target: string): string {
   return `$ErrorActionPreference = 'SilentlyContinue'
-Add-Type @'
+${ADD_TYPE}
+$target = '${target}'.TrimEnd('/').ToLower()
+$deadline = (Get-Date).AddSeconds(8)
+do {
+  $hwnd = [IntPtr]::Zero
+  foreach ($w in (New-Object -ComObject Shell.Application).Windows()) {
+    $url = $w.LocationURL
+    if (-not $url) { continue }
+    $loc = ([uri]::UnescapeDataString($url) -replace '^file:///', '' -replace '\\\\', '/').TrimEnd('/').ToLower()
+    if ($loc -eq $target) { $hwnd = [IntPtr]$w.HWND; break }
+  }
+  if ($hwnd -ne [IntPtr]::Zero) {
+    [ExplorerFocus]::Activate($hwnd)
+    Start-Sleep -Milliseconds 400
+    if ([ExplorerFocus]::IsForeground($hwnd)) { exit }
+  }
+  Start-Sleep -Milliseconds 200
+} while ((Get-Date) -lt $deadline)
+`;
+}
+
+/** 指定プロセスのメインウィンドウを探して前面化する PowerShell スクリプト (手順は buildScript と同じ) */
+function buildProcessScript(name: string, seconds: number, whilePid: number): string {
+  return `$ErrorActionPreference = 'SilentlyContinue'
+${ADD_TYPE}
+$deadline = (Get-Date).AddSeconds(${seconds})
+do {
+  if (${whilePid} -ne 0 -and -not (Get-Process -Id ${whilePid})) { exit }
+  foreach ($p in (Get-Process -Name '${name}')) {
+    $hwnd = $p.MainWindowHandle
+    if ($hwnd -eq [IntPtr]::Zero) { continue }
+    [ExplorerFocus]::Activate($hwnd)
+    Start-Sleep -Milliseconds 400
+    if ([ExplorerFocus]::IsForeground($hwnd)) { exit }
+  }
+  Start-Sleep -Milliseconds 300
+} while ((Get-Date) -lt $deadline)
+`;
+}
+
+/** 前面化に使う Win32 API。C# 部分は ASCII のみ (Add-Type のソースに非 ASCII を混ぜると環境により壊れるため) */
+const ADD_TYPE = `Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 public class ExplorerFocus {
@@ -72,23 +129,4 @@ public class ExplorerFocus {
     AttachThreadInput(me, target, false);
   }
 }
-'@
-$target = '${target}'.TrimEnd('/').ToLower()
-$deadline = (Get-Date).AddSeconds(8)
-do {
-  $hwnd = [IntPtr]::Zero
-  foreach ($w in (New-Object -ComObject Shell.Application).Windows()) {
-    $url = $w.LocationURL
-    if (-not $url) { continue }
-    $loc = ([uri]::UnescapeDataString($url) -replace '^file:///', '' -replace '\\\\', '/').TrimEnd('/').ToLower()
-    if ($loc -eq $target) { $hwnd = [IntPtr]$w.HWND; break }
-  }
-  if ($hwnd -ne [IntPtr]::Zero) {
-    [ExplorerFocus]::Activate($hwnd)
-    Start-Sleep -Milliseconds 400
-    if ([ExplorerFocus]::IsForeground($hwnd)) { exit }
-  }
-  Start-Sleep -Milliseconds 200
-} while ((Get-Date) -lt $deadline)
-`;
-}
+'@`;

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { simpleGit, SimpleGit } from 'simple-git';
-import { spawn, execFile } from 'node:child_process';
+import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -22,6 +22,7 @@ import {
 } from '../services/stateStore.js';
 import { getDiffToolById, getAppConfig } from '../services/appConfigStore.js';
 import { parseNameStatusZ, parseNumstatZ } from '../services/gitParse.js';
+import { focusProcessWindow } from '../services/windowFocus.js';
 
 export const gitRouter = Router();
 
@@ -1106,8 +1107,10 @@ function safeKeyPath(p: string): boolean {
  * - GIT_SSH_COMMAND : SSH の対話 (パスフレーズ/ホスト鍵確認) を禁止し、接続もタイムアウトさせる
  *
  * repo を渡すと、そのリポジトリに設定された SSH 鍵を使う (A 案: 鍵のパスのみ保存)。
+ * interactive=true では GCM のサインイン画面 (GUI) だけを許可する。
+ * ターミナル入力は引き続き無効なので、GCM を使わない構成では従来どおりその場で失敗する。
  */
-export function gitEnv(repo?: string): NodeJS.ProcessEnv {
+export function gitEnv(repo?: string, interactive = false): NodeJS.ProcessEnv {
   const base = 'ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15';
   let sshCommand = process.env.GIT_SSH_COMMAND ?? base;
   if (repo) {
@@ -1115,7 +1118,7 @@ export function gitEnv(repo?: string): NodeJS.ProcessEnv {
     // 指定鍵のみを使う (IdentitiesOnly=yes)。パスフレーズ付き鍵は ssh-agent 経由で解錠される
     if (safeKeyPath(sshKey)) sshCommand = `${base} -o IdentitiesOnly=yes -i "${sshKey}"`;
   }
-  return {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     GIT_EDITOR: 'true',
     GIT_PAGER: 'cat',
@@ -1126,15 +1129,19 @@ export function gitEnv(repo?: string): NodeJS.ProcessEnv {
     GCM_INTERACTIVE: 'never', // Git Credential Manager の GUI を抑止 (保存済み資格情報は使える)
     GIT_SSH_COMMAND: sshCommand,
   };
+  if (interactive) delete env.GCM_INTERACTIVE;
+  return env;
 }
 
 /**
  * 認証プロンプトを出さない git 設定 (サブコマンドの前に置く)。
  * repo に資格情報ヘルパーが設定されていれば HTTPS 認証にそれを使う。
  * 出力にパスが含まれるコマンドもあるため core.quotepath=false も併せて渡す。
+ * interactive=true では credential.interactive=false を外し、GCM のサインイン画面を許可する。
  */
-function noninteractiveArgs(repo?: string): string[] {
-  const args = [...QUOTE_PATH_ARGS, '-c', 'credential.interactive=false', '-c', 'core.askPass='];
+function noninteractiveArgs(repo?: string, interactive = false): string[] {
+  const args = [...QUOTE_PATH_ARGS, '-c', 'core.askPass='];
+  if (!interactive) args.push('-c', 'credential.interactive=false');
   if (repo) {
     const { credentialHelper } = getGitAuth(repo);
     // ヘルパー名に改行等が混じらないよう検証 (-c の値として渡す)
@@ -1145,10 +1152,21 @@ function noninteractiveArgs(repo?: string): string[] {
   return args;
 }
 
+/**
+ * HTTPS の資格情報が無い / 拒否されたことを示す出力か。
+ * GCM のサインイン画面を出して再試行すれば通る可能性があるものに限る。
+ * (Authentication failed では git が保存済みの資格情報を破棄するので、再試行時に入力を求められる)
+ */
+function needsSignIn(output: string): boolean {
+  return /could not read (Username|Password)|terminal prompts disabled|Cannot prompt because user interactivity has been disabled|unable to get password from user|Authentication failed for 'https?:/i.test(
+    output,
+  );
+}
+
 /** 出力から認証エラーを検出し、ユーザー向けの補足メッセージを返す */
 function authHint(output: string): string | null {
   const re =
-    /could not read (Username|Password)|terminal prompts disabled|Authentication failed|Permission denied \(publickey|Host key verification failed|Repository not found|no such identity|sign_and_send_pubkey/i;
+    /could not read (Username|Password)|terminal prompts disabled|Cannot prompt because user interactivity has been disabled|unable to get password from user|Authentication failed|Permission denied \(publickey|Host key verification failed|Repository not found|no such identity|sign_and_send_pubkey/i;
   if (!re.test(output)) return null;
   return (
     '(リモートの認証に失敗したため中断しました。' +
@@ -1162,13 +1180,33 @@ const EXEC_ALLOWED = new Set([
   'tag', 'stash', 'cherry-pick', 'reset', 'rebase', 'revert', 'restore', 'clean', 'add',
 ]);
 
+/** サインインして再試行するときの待ち時間 (ブラウザでの認証やトークンの入力を待つ) */
+const SIGN_IN_TIMEOUT_MS = 300_000;
+
+/** クローンの待ち時間 (大きなリポジトリやサインインの操作を含む) */
+const CLONE_TIMEOUT_MS = 600_000;
+
+/**
+ * タイムアウトした git を終了させる。
+ * サインイン中 (GCM の画面を許可して実行中) は画面が残らないよう、子プロセスごと終了させる
+ */
+function killGit(child: ChildProcess, signIn: boolean): void {
+  if (signIn && process.platform === 'win32' && child.pid) {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }).on('error', () => {});
+  } else {
+    child.kill();
+  }
+}
+
 /**
  * Git コマンド実行 (実行コマンドと出力をそのまま返す)。
  * 成否はダイアログでユーザーに確認させるため、非 0 終了でも HTTP 200 で
  * { ok:false, output } を返す。
+ * HTTPS の認証で失敗した場合は needsSignIn:true を返す。ユーザーが再試行を選ぶと
+ * interactive:true で呼ばれ、GCM のサインイン画面 (ブラウザ / コード / トークン) を許可して実行する。
  */
 gitRouter.post('/exec', (req, res) => {
-  const { repo, args } = req.body as { repo?: unknown; args?: unknown };
+  const { repo, args, interactive } = req.body as { repo?: unknown; args?: unknown; interactive?: unknown };
   if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
   if (
     !Array.isArray(args) ||
@@ -1179,13 +1217,17 @@ gitRouter.post('/exec', (req, res) => {
   }
   if (!EXEC_ALLOWED.has(args[0])) badRequest(`git ${String(args[0])} は許可されていません`);
 
+  const signIn = interactive === true;
   const command = `git ${args.join(' ')}`;
   // 引数配列で spawn (シェル補間なし)。認証プロンプトで固まらないよう対話は無効化
-  const child = spawn('git', [...noninteractiveArgs(repo), ...args], {
+  // (サインインの再試行時のみ GCM の画面を許可する)
+  const child = spawn('git', [...noninteractiveArgs(repo, signIn), ...args], {
     cwd: repo,
     windowsHide: true,
-    env: gitEnv(repo),
+    env: gitEnv(repo, signIn),
   });
+  // GCM の画面はこのサーバから開くため、そのままだと前面に出ずタスクバーで点滅するだけになる
+  if (signIn) focusProcessWindow('git-credential-manager', SIGN_IN_TIMEOUT_MS / 1000, child.pid);
   let output = '';
   const cap = (c: Buffer) => {
     output += c.toString('utf8');
@@ -1201,12 +1243,22 @@ gitRouter.post('/exec', (req, res) => {
     clearTimeout(timer);
     const hint = ok ? null : authHint(output);
     const tail = [extra, hint].filter(Boolean).join('\n');
-    res.json({ ok, code, command, output: tail ? `${output}${output ? '\n' : ''}${tail}` : output });
+    res.json({
+      ok,
+      code,
+      command,
+      output: tail ? `${output}${output ? '\n' : ''}${tail}` : output,
+      needsSignIn: !ok && needsSignIn(output),
+    });
   };
-  const timer = setTimeout(() => {
-    child.kill();
-    reply(false, -1, '(タイムアウトのため中断しました)');
-  }, 120_000);
+  // サインイン中はユーザーの操作を待つので長めに取る
+  const timer = setTimeout(
+    () => {
+      killGit(child, signIn);
+      reply(false, -1, '(タイムアウトのため中断しました)');
+    },
+    signIn ? SIGN_IN_TIMEOUT_MS : 120_000,
+  );
   child.on('error', (err) => reply(false, -1, err.message));
   child.on('close', (code) => reply(code === 0, code ?? -1));
 });
@@ -1766,14 +1818,18 @@ gitRouter.post('/init', async (req, res) => {
  * クローン (§3.4): 長時間になり得るため即座に id を返し、
  * 進捗 (git clone --progress の stderr) を WS `git:clone-progress` で中継する。
  * 認証はシステム git (credential helper / SSH agent) に委譲。
+ * interactive:true では GCM のサインイン画面を許可する。新しいリポジトリは資格情報が未保存のことが多い
+ * (credential.useHttpPath=true ではリポジトリごとに別の資格情報になる) ため、クライアントは常に true で呼ぶ。
+ * HTTPS の認証で失敗した場合は完了イベントに needsSignIn:true を付ける。
  */
 gitRouter.post('/clone', (req, res) => {
-  const { url, dir, branch, depth, recursive } = req.body as {
+  const { url, dir, branch, depth, recursive, interactive } = req.body as {
     url: string;
     dir: string;
     branch?: string;
     depth?: number;
     recursive?: boolean;
+    interactive?: boolean;
   };
   if (typeof url !== 'string' || url.length === 0) badRequest('url is required');
   if (typeof dir !== 'string' || dir.length === 0) badRequest('dir is required');
@@ -1786,11 +1842,15 @@ gitRouter.post('/clone', (req, res) => {
   if (recursive) args.push('--recurse-submodules');
   args.push(url, dir);
 
-  // 認証が必要な場合はプロンプトで待たずに失敗させる (ロックアウト防止)
-  const child = spawn('git', [...noninteractiveArgs(), ...args], {
+  // 認証が必要な場合はプロンプトで待たずに失敗させる (ロックアウト防止)。
+  // interactive 時は GCM の画面のみ許可する (ターミナル入力は無効のまま)
+  const signIn = interactive === true;
+  const child = spawn('git', [...noninteractiveArgs(undefined, signIn), ...args], {
     windowsHide: true,
-    env: gitEnv(),
+    env: gitEnv(undefined, signIn),
   });
+  // GCM の画面はこのサーバから開くため、そのままだと前面に出ずタスクバーで点滅するだけになる
+  if (signIn) focusProcessWindow('git-credential-manager', CLONE_TIMEOUT_MS / 1000, child.pid);
   let all = '';
   const emit = (line: string) => {
     if (line.trim()) broadcastEvent('git:clone-progress', { id, line: line.trim() });
@@ -1814,12 +1874,12 @@ gitRouter.post('/clone', (req, res) => {
     if (done) return;
     done = true;
     clearTimeout(timer);
-    broadcastEvent('git:clone-progress', { id, done: true, ok, error });
+    broadcastEvent('git:clone-progress', { id, done: true, ok, error, needsSignIn: !ok && needsSignIn(all) });
   };
   const timer = setTimeout(() => {
-    child.kill();
+    killGit(child, signIn);
     finish(false, 'タイムアウトのため中断しました');
-  }, 600_000);
+  }, CLONE_TIMEOUT_MS);
 
   child.on('error', (err) => finish(false, err.message));
   child.on('close', (code) => {

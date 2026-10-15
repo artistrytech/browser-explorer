@@ -336,12 +336,24 @@ export const api = {
       | { action: 'remove'; name: string },
   ) => post<{ ok: true }>('/api/git/remote', { repo, ...body }),
 
-  gitExec: (repo: string, args: string[]) =>
-    post<{ ok: boolean; code: number; command: string; output: string }>('/api/git/exec', {
-      repo,
-      args,
-    }),
-  gitClone: (body: { url: string; dir: string; branch?: string; depth?: number; recursive?: boolean }) =>
+  /**
+   * needsSignIn: HTTPS の認証で失敗した (interactive:true で再実行すると GCM のサインイン画面を出せる)。
+   * interactive: GCM のサインイン画面を許可して実行する (ユーザーが再試行を選んだときのみ)
+   */
+  gitExec: (repo: string, args: string[], opts: { interactive?: boolean } = {}) =>
+    post<{ ok: boolean; code: number; command: string; output: string; needsSignIn?: boolean }>(
+      '/api/git/exec',
+      { repo, args, ...(opts.interactive ? { interactive: true } : {}) },
+    ),
+  /** interactive: GCM のサインイン画面を許可する (新しいリポジトリは資格情報が未保存のことが多いため常に true) */
+  gitClone: (body: {
+    url: string;
+    dir: string;
+    branch?: string;
+    depth?: number;
+    recursive?: boolean;
+    interactive?: boolean;
+  }) =>
     post<{ ok: true; id: string }>('/api/git/clone', body),
 
   // --- git: 競合解消 (002.md §2) ---

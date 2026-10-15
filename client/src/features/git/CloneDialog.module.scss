@@ -134,6 +134,13 @@
   border-color: var(--danger);
 }
 
+.clone-note {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
 .clone-label.wide {
   width: 120px;
 }

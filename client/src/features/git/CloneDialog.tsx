@@ -43,6 +43,8 @@ interface ProgressMsg {
   done?: boolean;
   ok?: boolean;
   error?: string;
+  /** HTTPS の認証で失敗した (サインイン画面を閉じた等。もう一度 Clone すれば画面が開く) */
+  needsSignIn?: boolean;
 }
 
 export function CloneDialog() {
@@ -59,6 +61,7 @@ export function CloneDialog() {
   const [cloneId, setCloneId] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
+  const [signInFailed, setSignInFailed] = useState(false);
   const logRef = useRef<HTMLPreElement>(null);
   const optsRef = useRef({ dir: '', openAfter: true });
 
@@ -71,6 +74,7 @@ export function CloneDialog() {
       setCloneId(null);
       setLog([]);
       setFailed(false);
+      setSignInFailed(false);
     }
   }, [open]);
 
@@ -102,10 +106,13 @@ export function CloneDialog() {
           else void useExplorer.getState().refresh();
         } else {
           setFailed(true);
+          setSignInFailed(msg.needsSignIn === true);
           setLog((l) => [
             ...l,
             msg.error ?? 'clone に失敗しました',
-            '認証が必要な場合は、ターミナルで一度認証を通してください (アプリは資格情報を持ちません)。',
+            ...(msg.needsSignIn
+              ? ['リモート (HTTPS) の認証に失敗しました。「サインインして再試行」でサインイン画面を開き直せます。']
+              : []),
           ]);
         }
       }
@@ -119,14 +126,17 @@ export function CloneDialog() {
     if (!url.trim() || !dir.trim()) return;
     setLog([]);
     setFailed(false);
+    setSignInFailed(false);
     optsRef.current = { dir: dir.trim(), openAfter };
     try {
+      // 新しいリポジトリは資格情報が未保存のことが多いので、最初から GCM のサインイン画面を許可する
       const r = await api.gitClone({
         url: url.trim(),
         dir: dir.trim(),
         branch: useBranch ? branch.trim() : undefined,
         depth: useDepth ? depth : undefined,
         recursive,
+        interactive: true,
       });
       setCloneId(r.id);
     } catch (e) {
@@ -156,7 +166,10 @@ export function CloneDialog() {
               placeholder="https://github.com/user/repo.git"
               value={url}
               disabled={busy}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={(e) => {
+                setUrl(e.target.value);
+                setSignInFailed(false);
+              }}
             />
           </label>
           <label className={cx("clone-row")}>
@@ -209,13 +222,18 @@ export function CloneDialog() {
             {busy && log.length === 0 ? 'clone を開始しています…' : log.join('\n')}
           </pre>
         )}
+        {busy && (
+          <div className={cx("clone-note")}>
+            認証が必要な場合はサインイン画面 (Git Credential Manager) が開きます。見当たらない場合はタスクバーを確認してください。
+          </div>
+        )}
 
         <div className={cx("dialog-buttons")}>
           <button className={cx("btn")} disabled={busy} onClick={close}>
             キャンセル
           </button>
           <button className={cx("btn primary")} disabled={!canClone} onClick={() => void startClone()}>
-            {busy ? 'Clone 中…' : 'Clone'}
+            {busy ? 'Clone 中…' : signInFailed ? 'サインインして再試行' : 'Clone'}
           </button>
         </div>
       </div>
