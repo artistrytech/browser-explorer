@@ -534,15 +534,15 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     });
   };
 
-  /** 現在のリポジトリの直近のコミットメッセージ (履歴の先頭) を入力欄に設定する */
+  /** 現在のリポジトリの直前のコミット (HEAD) のメッセージを入力欄に設定する */
   const applyLastCommitMessage = async () => {
     try {
-      const { messages } = await api.gitCommitMessages(repoRoot);
-      if (messages.length === 0) {
-        show('info', '保存されたコミットメッセージはありません');
+      const [last] = (await api.gitBranchMessages(repoRoot, 1)).messages;
+      if (!last) {
+        show('info', 'コミットがまだありません');
         return;
       }
-      setMessage(messages[0]);
+      setMessage(last);
     } catch (e) {
       toastError(e);
     }
@@ -1538,7 +1538,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                     <span className={cx("commit-message-actions")}>
                       <button
                         className={cx("status-btn")}
-                        title="直近のコミットメッセージを入力欄に反映する"
+                        title="直前のコミットのメッセージを入力欄に反映する"
                         onClick={() => void applyLastCommitMessage()}
                       >
                         前回のメッセージ

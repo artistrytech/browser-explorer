@@ -666,6 +666,26 @@ gitRouter.post('/commit', async (req, res) => {
   res.json({ ok: true, commit: result.commit });
 });
 
+/**
+ * 現在のブランチ (HEAD から辿れる) のコミットメッセージ全文 (件名 + 本文)。
+ * 新しい順・重複なし・最大 limit 件 (既定 20)。先頭が直前のコミット。
+ * コミットが 1 件も無いリポジトリでは空配列を返す。
+ */
+gitRouter.get('/branch-messages', async (req, res) => {
+  const g = git(req.query.repo);
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+  const out = await g.raw(['log', `--max-count=${limit}`, '--format=%B%x00', 'HEAD']).catch(() => '');
+  const messages = [
+    ...new Set(
+      out
+        .split('\0')
+        .map((m) => m.trim())
+        .filter(Boolean),
+    ),
+  ];
+  res.json({ messages });
+});
+
 // --- コミットメッセージ履歴 (再利用候補) ---
 
 /**

@@ -278,6 +278,12 @@ export const api = {
   gitCommit: (repo: string, message: string, amend = false) =>
     post<{ ok: true; commit: string }>('/api/git/commit', { repo, message, amend }),
   /**
+   * 現在のブランチのコミットメッセージ全文 (新しい順・重複なし・最大 limit 件)。
+   * 先頭が直前のコミット。コミットが無ければ空配列
+   */
+  gitBranchMessages: (repo: string, limit = 20) =>
+    get<{ messages: string[] }>(`/api/git/branch-messages?repo=${q(repo)}&limit=${limit}`),
+  /**
    * 直近のコミットメッセージ (再利用候補。新しい順・重複なし・最大 20 件)。
    * repo を渡すとそのリポジトリの履歴のみ、省略すると全リポジトリ分
    */

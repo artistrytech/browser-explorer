@@ -11,12 +11,19 @@ const cx = createCssModuleClassNames(styles);
 /**
  * 過去のコミットメッセージから 1 件選ぶダイアログ。
  * openCommitMessagePicker(repo) で開き、選択したメッセージ (キャンセルは null) を Promise で返す。
- * 一覧はサーバ DB (commit_messages) から新しい順・重複なし・最大 20 件で取得する。
- * 取得範囲は「現在のリポジトリ / 全リポジトリ」から選べ、選択はセッション中は引き継ぐ。
+ * 一覧は新しい順・重複なし・最大 20 件。取得元は次の 3 つから選べ、選択はセッション中は引き継ぐ。
+ * - コミット履歴 (現在のブランチ): git log の HEAD から辿れるコミット
+ * - 入力履歴 (現在のリポジトリ / 全リポジトリ): このアプリでコミットしたときに記録したサーバ DB (commit_messages)
  */
 
-/** 履歴の取得範囲 */
-type Scope = 'repo' | 'all';
+/** 履歴の取得元 */
+type Scope = 'branch' | 'repo' | 'all';
+
+const SCOPES: { value: Scope; label: string }[] = [
+  { value: 'branch', label: 'コミット履歴（現在のブランチ）' },
+  { value: 'repo', label: '入力履歴（現在のリポジトリ）' },
+  { value: 'all', label: '入力履歴（全リポジトリ）' },
+];
 
 interface Store {
   open: boolean;
@@ -51,8 +58,7 @@ export function CommitMessageDialog() {
     if (!open) return;
     let stale = false;
     setLoading(true);
-    api
-      .gitCommitMessages(scope === 'repo' ? repo : undefined)
+    (scope === 'branch' ? api.gitBranchMessages(repo) : api.gitCommitMessages(scope === 'repo' ? repo : undefined))
       .then((r) => {
         if (!stale) setMessages(r.messages);
       })
@@ -81,30 +87,23 @@ export function CommitMessageDialog() {
     <div ref={dialogRef} className={cx("dialog-backdrop")} onMouseDown={() => finish(null)}>
       <div className={cx("dialog msg-history-dialog")} onMouseDown={(e) => e.stopPropagation()}>
         <div className={cx("dialog-title")}>コミットメッセージの履歴</div>
-        <div className={cx("msg-history-scope")}>
-          <label className={cx("msg-history-scope-item")}>
-            <input
-              type="radio"
-              name="commit-message-scope"
-              checked={scope === 'repo'}
-              onChange={() => setScope('repo')}
-            />
-            <span>現在のリポジトリ</span>
-          </label>
-          <label className={cx("msg-history-scope-item")}>
-            <input
-              type="radio"
-              name="commit-message-scope"
-              checked={scope === 'all'}
-              onChange={() => setScope('all')}
-            />
-            <span>全リポジトリ</span>
-          </label>
-        </div>
+        <select
+          className={cx("msg-history-scope")}
+          value={scope}
+          onChange={(e) => setScope(e.target.value as Scope)}
+        >
+          {SCOPES.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
         {loading ? (
           <div className={cx("empty-hint")}>読み込み中…</div>
         ) : messages.length === 0 ? (
-          <div className={cx("empty-hint")}>保存されたコミットメッセージはありません</div>
+          <div className={cx("empty-hint")}>
+            {scope === 'branch' ? 'コミットがまだありません' : '保存されたコミットメッセージはありません'}
+          </div>
         ) : (
           <div className={cx("msg-history-list")}>
             {messages.map((m, i) => (
