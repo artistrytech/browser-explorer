@@ -31,12 +31,13 @@ import { sortEntries } from '../../lib/entrySort';
 import { pinFolder, unpinFolder } from '../../lib/quickaccessOps';
 import { saveFocus, loadFocus, saveEnteredChild } from '../../lib/focusMemory';
 import { excludeUntracked } from '../../lib/gitExclude';
+import { downloadArchive } from '../../lib/gitArchive';
 import { openCloneDialog } from '../git/CloneDialog';
 import { isMarkdownPath, openMarkdownPreview } from '../preview/MarkdownTab';
 import { openDualPane } from '../transfer/DualPaneDialog';
 import { openConflictResolver } from '../../stores/conflict';
 import { api } from '../../api/client';
-import { toastError, useToast } from '../../stores/toast';
+import { toastError } from '../../stores/toast';
 import type { FsEntry, SortKey } from '../../types';
 import styles from './FileList.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -357,26 +358,6 @@ export function FileList() {
     ];
   };
 
-  /**
-   * アーカイブ: 対象 (repo 相対パス。空文字ならリポジトリ全体) の HEAD 時点の内容を
-   * zip でダウンロードする。作業ツリーの未コミット変更は含まれない
-   */
-  const downloadArchive = async (rel: string) => {
-    if (!repoRoot) return;
-    try {
-      const { blob, filename } = await api.gitArchive(repoRoot, rel ? [rel] : []);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-      useToast.getState().show('success', `${filename} をダウンロードしました`);
-    } catch (e) {
-      toastError(e);
-    }
-  };
-
   /** Git 系の文脈依存項目 (ログを表示 / 競合を解消 / Git Clone…) */
   const gitContextItems = (targetPath: string, isFile: boolean, isDir: boolean): CfgMenuItem[] => {
     const rel = relOf(targetPath);
@@ -389,7 +370,7 @@ export function FileList() {
         action: (e) => useGit.getState().showLogFor(rel, isFile, { newTab: e.ctrlKey || e.metaKey }),
       });
       // HEAD 時点の内容を zip でダウンロード (対象がフォルダなら配下、ファイルならそのファイル)
-      items.push({ id: 'gitArchive', label: 'アーカイブ', action: () => void downloadArchive(rel) });
+      items.push({ id: 'gitArchive', label: 'アーカイブ', action: () => void downloadArchive(repoRoot!, rel) });
       // 配下に競合あり → 競合を解消 (002.md §2)。
       // stash の復元や cherry-pick --no-commit では進行中フラグが残らないので、競合の有無で判定する
       if (isDir && mergeState.conflicted.length > 0 && conflictsUnder(rel)) {
