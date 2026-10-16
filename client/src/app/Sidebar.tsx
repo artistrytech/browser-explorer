@@ -8,8 +8,15 @@ import { pushReviewView, switchView, useUi, type MainView } from '../stores/ui';
 import { useContextMenu, type MenuItem } from '../components/ContextMenu';
 import { baseName } from '../lib/paths';
 import { renameRepository, unpinFolder, unregisterRepository } from '../lib/quickaccessOps';
-import { loadCollapsedSections, saveCollapsedSections } from '../lib/sidebarMemory';
+import {
+  loadCollapsedSections,
+  loadSidebarMode,
+  saveCollapsedSections,
+  saveSidebarMode,
+  type SidebarMode,
+} from '../lib/sidebarMemory';
 import { Chevron, FolderTree } from './FolderTree';
+import { ProjectTree } from './ProjectTree';
 import type { VolumeInfo } from '../types';
 import styles from './Sidebar.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
@@ -25,6 +32,18 @@ function PencilIcon() {
     <svg className={cx('pencil-icon')} viewBox="0 0 16 16" aria-hidden="true">
       <path d="M11.3 2a1.9 1.9 0 1 1 2.7 2.7L5 13.7 1.3 14.7l1-3.7z" />
       <line x1="9.8" y1="3.5" x2="12.5" y2="6.2" />
+    </svg>
+  );
+}
+
+/** プロジェクトツリーへの切り替えボタンの図案 (親フォルダから子が枝分かれする形) */
+function ProjectTreeIcon() {
+  return (
+    <svg className={cx('mode-toggle-icon')} viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="5" height="3.5" rx="0.8" />
+      <rect x="8.5" y="6.5" width="6" height="3.5" rx="0.8" />
+      <rect x="8.5" y="11.5" width="6" height="3.5" rx="0.8" />
+      <path d="M4 5v8.25h4.5M4 8.25h4.5" />
     </svg>
   );
 }
@@ -59,6 +78,7 @@ export function Sidebar() {
   const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
   const [home, setHome] = useState<string>('');
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsedSections);
+  const [mode, setMode] = useState<SidebarMode>(loadSidebarMode);
   /** ドラッグ中の項目と、ドロップ先の挿入位置 (元の並びでの隙間 0..length) */
   const [drag, setDrag] = useState<{ section: ReorderSection; from: number } | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
@@ -98,6 +118,15 @@ export function Sidebar() {
         switchView(view);
       }
     });
+  };
+
+  /** プロジェクトツリーはリポジトリ内でだけ出す。リポジトリ外では選択を保ったまま通常の表示にする */
+  const showProject = repoRoot !== null && mode === 'project';
+
+  const toggleMode = () => {
+    const next: SidebarMode = mode === 'project' ? 'places' : 'project';
+    setMode(next);
+    saveSidebarMode(next);
   };
 
   const toggleSection = (id: string) => {
@@ -203,8 +232,29 @@ export function Sidebar() {
     { separator: true },
   ];
 
+  const modeToggle = repoRoot !== null && (
+    <button
+      className={cx(`mode-toggle${showProject ? ' on' : ''}`)}
+      aria-pressed={showProject}
+      title={showProject ? '通常の表示に戻す' : 'プロジェクトツリーを表示'}
+      onClick={toggleMode}
+    >
+      <ProjectTreeIcon />
+    </button>
+  );
+
+  if (showProject) {
+    return (
+      <div className={cx('sidebar')}>
+        {modeToggle}
+        <ProjectTree key={repoRoot} repoRoot={repoRoot} />
+      </div>
+    );
+  }
+
   return (
     <div className={cx("sidebar")}>
+      {modeToggle}
       <div className={cx(`side-section limited${collapsed.has('quick') ? ' collapsed' : ''}`)}>
         {heading('quick', 'クイックアクセス')}
         {!collapsed.has('quick') && (

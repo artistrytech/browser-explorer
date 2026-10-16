@@ -9,6 +9,7 @@ import {
   type ColumnWidths,
 } from '../../stores/settings';
 import { useGit, OverlayCode } from '../../stores/git';
+import { GitOverlay } from '../../components/GitOverlay';
 import { useUi } from '../../stores/ui';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import {
@@ -49,28 +50,6 @@ const COLUMNS: { key: SortKey; label: string }[] = [
   { key: 'size', label: 'サイズ' },
   { key: 'mtime', label: '更新日時' },
 ];
-
-const OVERLAY_MARK: Record<OverlayCode, { mark: string; cls: string; title: string }> = {
-  normal: { mark: '✔', cls: 'ov-normal', title: '変更なし' },
-  modified: { mark: '●', cls: 'ov-modified', title: '変更あり' },
-  staged: { mark: '＋', cls: 'ov-staged', title: 'ステージ済み' },
-  untracked: { mark: '？', cls: 'ov-untracked', title: 'Git 管理外' },
-  conflicted: { mark: '⚠', cls: 'ov-conflicted', title: '競合' },
-  ignored: { mark: '－', cls: 'ov-ignored', title: '無視 (.gitignore)' },
-};
-
-function GitOverlay({ path, dirCode }: { path: string; dirCode?: OverlayCode }) {
-  const repoRoot = useGit((s) => s.repoRoot);
-  const code = useGit((s) => s.overlay[path]);
-  if (!repoRoot || !path.startsWith(repoRoot)) return null;
-  // /status 由来 (変更/ステージ/競合) を優先し、無ければフォルダ単位の判定 (無視/管理外)
-  const info = OVERLAY_MARK[code ?? dirCode ?? 'normal'];
-  return (
-    <span className={cx(`git-overlay ${info.cls}`)} title={info.title}>
-      {info.mark}
-    </span>
-  );
-}
 
 export function FileList() {
   const {
@@ -761,7 +740,7 @@ export function FileList() {
             <div key={entry.path} {...rowProps(entry)}>
               <div className={cx("big-icon")}>
                 {fileIcon(entry)}
-                <GitOverlay path={entry.path} dirCode={dirOverlay[entry.path]} />
+                <GitOverlay path={entry.path} dirCode={dirOverlay[entry.path]} big />
               </div>
               {renaming === entry.path ? renderName(entry) : <div className={cx("icon-label")}>{entry.name}</div>}
             </div>
