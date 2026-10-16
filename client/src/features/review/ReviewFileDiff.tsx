@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { useContextMenu } from '../../components/ContextMenu';
 import { confirmDialog } from '../../stores/dialog';
 import { useGit } from '../../stores/git';
 import { useReview } from '../../stores/review';
-import { toastError } from '../../stores/toast';
+import { toastError, useToast } from '../../stores/toast';
 import { useUi } from '../../stores/ui';
+import { copyText } from '../../lib/clipboard';
 import { fileOpenMenuItems, pruneMenuItems } from '../../lib/openMenu';
 import { hunkLineNumbers, parseFileDiff, type FileDiff } from '../../lib/diffPatch';
 import { DiffLineText, useDiffHighlight, type DiffSources } from '../../lib/diffHighlight';
-import type { CommitFile, ReviewComment } from '../../types';
+import type { CommitFile, Review, ReviewComment } from '../../types';
 import styles from './Review.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -85,11 +86,34 @@ function rangeLabel(c: ReviewComment): string {
 }
 
 /**
+ * 保存しないコメントの入力欄に挿入する位置 (リポジトリ相対パス + 行番号)。
+ * 変更前の行 (削除行) は変更後のファイルに無い行番号なので、その旨を添える
+ */
+function locationText(path: string, side: 'old' | 'new', range: { start: number; end: number }): string {
+  const lines = range.start === range.end ? `L${range.start}` : `L${range.start}-L${range.end}`;
+  return `${path}:${lines}${side === 'old' ? ' (変更前)' : ''}`;
+}
+
+/**
+ * 入力欄の末尾に位置を挿入した結果。
+ * 直前に挿入した位置のあとに何も書いていなければ (範囲を選び直しただけなら) 置き換え、
+ * 書いていれば空行を挟んで追記する (複数ファイル・複数箇所へのコメントを 1 つの欄にまとめられる)
+ */
+function insertLocation(draft: string, lastInserted: string | null, loc: string): string {
+  const base = lastInserted && draft.endsWith(lastInserted) ? draft.slice(0, -lastInserted.length) : draft;
+  if (base.trim() === '') return loc;
+  const sep = base.endsWith('\n\n') ? '' : base.endsWith('\n') ? '\n' : '\n\n';
+  return base + sep + loc;
+}
+
+/**
  * レビュー中の 1 ファイル分の差分 (unified)。
  * 行番号の溝をクリック / ドラッグして範囲を選び、その場でコメントを付けられる。
  */
 export function ReviewFileDiff({
   reviewId,
+  kind,
+  reloadKey = 0,
   file,
   comments,
   readOnly,
@@ -98,6 +122,13 @@ export function ReviewFileDiff({
   onRendered,
 }: {
   reviewId: number;
+  /**
+   * branch 以外 (HEAD が対象 / 未コミットの変更) は差分が自動で更新され続けるため、コメントを保存しない。
+   * 入力欄にファイルのパスと行番号を挿入し、書いた内容はコピーして使う
+   */
+  kind: Review['kind'];
+  /** 変わるたびに差分を取り直す (表示・選択・入力中のコメントは保ったまま) */
+  reloadKey?: number;
   file: CommitFile;
   /** このファイルに属するコメント */
   comments: ReviewComment[];
@@ -121,20 +152,41 @@ export function ReviewFileDiff({
   const dragging = useRef(false);
   /** mouseup (ペイン外で離した場合も含む) から参照する現在の選択 */
   const selectionRef = useRef<Selection | null>(null);
+  const ephemeral = kind !== 'branch';
+  const worktree = kind === 'worktree';
+  /** 保存しないコメント: 直前に入力欄へ挿入した位置 (範囲を選び直したときに置き換えるため) */
+  const lastInserted = useRef<string | null>(null);
+  /** 位置を挿入した直後は、キャレットを入力欄の末尾へ移す */
+  const caretToEnd = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const changeSelection = (sel: Selection | null) => {
     selectionRef.current = sel;
     setSelection(sel);
   };
 
+  /**
+   * いま表示している差分が、どのファイル (と固定したコミット) のものか。
+   * これが変わったときだけ表示を空にして読み込み直す。差分が自動で更新される種類で
+   * コミットや作業ツリーが動いただけなら、表示・選択・入力中のコメントを保ったまま差し替える
+   */
+  const identity = `${reviewId}\n${file.path}\n${file.oldPath ?? ''}${ephemeral ? '' : `\n${baseCommit}\n${headCommit}`}`;
+  const shownIdentity = useRef<string | null>(null);
+
   useEffect(() => {
     let stale = false;
-    setLoading(true);
-    setParsed(null);
-    changeSelection(null);
-    setComposing(null);
-    api
-      .reviewFilePatch(reviewId, file.path, file.oldPath)
+    const fresh = shownIdentity.current !== identity;
+    shownIdentity.current = identity;
+    if (fresh) {
+      setLoading(true);
+      setParsed(null);
+      changeSelection(null);
+      setComposing(null);
+    }
+    (worktree
+      ? api.reviewWorktreeFilePatch(repoRoot ?? '', file.path, file.oldPath)
+      : api.reviewFilePatch(reviewId, file.path, file.oldPath)
+    )
       .then((r) => {
         if (!stale) setParsed(parseFileDiff(r.diff));
       })
@@ -149,16 +201,20 @@ export function ReviewFileDiff({
     };
     // baseCommit / headCommit も依存に含める:
     // 「最新に更新」でレビューの対象コミットが変わったとき、開いたままの差分を取り直すため
+    // (reloadKey は、差分が自動で更新される種類で詳細を読み直したとき)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reviewId, file.path, file.oldPath, baseCommit, headCommit]);
+  }, [reviewId, file.path, file.oldPath, baseCommit, headCommit, reloadKey]);
 
   /**
    * 色付けの状態を正しく取るためのファイル全体 (変更前 / 変更後)。
    * 取得できなくても Hunk の行だけで色付けされるので、失敗は無視してよい。
    */
+  const sourcesIdentity = useRef<string | null>(null);
   useEffect(() => {
     let stale = false;
-    setSources(null);
+    // 同じファイルを取り直すだけなら、色付けを一旦消さない (届いたら差し替える)
+    if (sourcesIdentity.current !== identity) setSources(null);
+    sourcesIdentity.current = identity;
     const oldPath = file.oldPath ?? file.path;
     const load = (rev: string, p: string, exists: boolean) =>
       exists
@@ -177,7 +233,8 @@ export function ReviewFileDiff({
     return () => {
       stale = true;
     };
-  }, [repoRoot, baseCommit, headCommit, file.path, file.oldPath, file.status]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repoRoot, baseCommit, headCommit, file.path, file.oldPath, file.status, reloadKey]);
 
   // ドラッグ終了はペイン外で離しても拾う
   useEffect(() => {
@@ -227,6 +284,20 @@ export function ReviewFileDiff({
     changeSelection(null);
     setComposing(null);
     setDraft('');
+    lastInserted.current = null;
+  };
+
+  /** 保存しないコメント: 入力欄の内容をクリップボードへコピーして閉じる */
+  const copyDraft = async () => {
+    const text = draft.trim();
+    if (!text) return;
+    try {
+      await copyText(text);
+      useToast.getState().show('success', 'コメントをコピーしました');
+      cancelSelect();
+    } catch (e) {
+      toastError(e);
+    }
   };
 
   const saveDraft = async () => {
@@ -253,6 +324,29 @@ export function ReviewFileDiff({
   };
 
   const rows = useMemo(() => (parsed ? buildRows(parsed) : null), [parsed]);
+
+  // 保存しないコメント: 範囲を確定したら、入力欄にファイルのパスと行番号を挿入する
+  // (rows は依存に含めない: 差分を取り直しただけで挿入し直さないため)
+  useEffect(() => {
+    if (!ephemeral || !composing || !rows) return;
+    const range = selectedLines(composing, rows);
+    if (!range) return;
+    const loc = `${locationText(file.path, composing.side, range)}\n`;
+    const prevLoc = lastInserted.current;
+    setDraft((prev) => insertLocation(prev, prevLoc, loc));
+    lastInserted.current = loc;
+    caretToEnd.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composing]);
+
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!caretToEnd.current || !el) return;
+    caretToEnd.current = false;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+    el.scrollTop = el.scrollHeight;
+  }, [draft, composing]);
 
   // 読み込み完了 (失敗も含む) を親へ通知する。コールバックの参照が変わっても再通知はしない
   const onRenderedRef = useRef(onRendered);
@@ -389,14 +483,16 @@ export function ReviewFileDiff({
                   <CommentItem key={c.id} comment={c} readOnly={readOnly} />
                 ))}
                 {composing && composingEnd === i && composingRange && (
-                  <div className={cx('rv-form')}>
+                  <div className={cx(`rv-form${ephemeral ? ' rv-form-ephemeral' : ''}`)}>
                     <div className={cx('rv-form-head')}>
                       {composingRange.start === composingRange.end
                         ? `L${composingRange.start}`
                         : `L${composingRange.start}-L${composingRange.end}`}
                       {composing.side === 'old' ? ' (変更前)' : ' (変更後)'} にコメント
+                      {ephemeral && <span className={cx('rv-badge')}>保存されません</span>}
                     </div>
                     <textarea
+                      ref={textareaRef}
                       className={cx('rv-textarea')}
                       autoFocus
                       value={draft}
@@ -404,17 +500,27 @@ export function ReviewFileDiff({
                       onChange={(e) => setDraft(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Escape') cancelSelect();
-                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void saveDraft();
+                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void (ephemeral ? copyDraft() : saveDraft());
                       }}
                     />
                     <div className={cx('rv-form-buttons')}>
-                      <span className={cx('rv-hint')}>Ctrl+Enter で保存</span>
+                      <span className={cx('rv-hint')}>
+                        {ephemeral
+                          ? 'Ctrl+Enter でコピー。開いたまま別の行を選ぶと、その位置を追記します'
+                          : 'Ctrl+Enter で保存'}
+                      </span>
                       <button className={cx('btn')} onClick={cancelSelect}>
-                        キャンセル
+                        {ephemeral ? '破棄' : 'キャンセル'}
                       </button>
-                      <button className={cx('btn primary')} disabled={!draft.trim()} onClick={() => void saveDraft()}>
-                        コメントする
-                      </button>
+                      {ephemeral ? (
+                        <button className={cx('btn primary')} disabled={!draft.trim()} onClick={() => void copyDraft()}>
+                          コピー
+                        </button>
+                      ) : (
+                        <button className={cx('btn primary')} disabled={!draft.trim()} onClick={() => void saveDraft()}>
+                          コメントする
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

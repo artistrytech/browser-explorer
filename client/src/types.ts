@@ -330,6 +330,12 @@ export interface LogSessionSummary {
  */
 export interface Review {
   id: number;
+  /**
+   * branch = 特定ブランチが対象 (作成時のコミットを固定)
+   * head = HEAD が対象 (開くたびに HEAD と merge-base を取り直す。コメントは保存しない)
+   * worktree = 未コミットの変更 (一覧の先頭に固定の疑似レビュー。id は WORKTREE_REVIEW_ID)
+   */
+  kind: 'branch' | 'head' | 'worktree';
   repo: string;
   title: string;
   /** レビュー全体のメモ (Markdown 出力の冒頭に入る) */

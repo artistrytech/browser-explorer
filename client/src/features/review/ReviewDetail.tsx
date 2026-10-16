@@ -2,8 +2,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { api } from '../../api/client';
 import { confirmDialog, promptDialog } from '../../stores/dialog';
-import { unresolvedByPath, useReview } from '../../stores/review';
-import { reviewFileFromUrl } from '../../stores/ui';
+import { useGit } from '../../stores/git';
+import { isLiveReview, unresolvedByPath, useReview } from '../../stores/review';
+import { reviewFileFromUrl, WORKTREE_REVIEW_ID } from '../../stores/ui';
 import { toastError, useToast } from '../../stores/toast';
 import {
   loadReviewDiffScroll,
@@ -48,10 +49,40 @@ export function ReviewDetail({ id }: { id: number }) {
    */
   const pendingDiffScroll = useRef<number | null>(null);
   const diffSaveTimer = useRef<ReturnType<typeof setTimeout>>();
+  /** 未コミットの変更は表示中のリポジトリの作業ツリーから求めるので、リポジトリが変わったら読み直す */
+  const worktreeRepo = useGit((s) => (id === WORKTREE_REVIEW_ID ? s.repoRoot : null));
+  /**
+   * 差分が自動で更新される種類 (HEAD が対象 / 未コミットの変更) で、詳細を読み直した回数。
+   * 開いているファイルの差分も、表示を保ったまま取り直させる (ReviewFileDiff)
+   */
+  const [reloadKey, setReloadKey] = useState(0);
+  const live = detail ? isLiveReview(detail.review) : id === WORKTREE_REVIEW_ID;
 
   useEffect(() => {
     void useReview.getState().loadDetail(id).catch(toastError);
-  }, [id]);
+  }, [id, worktreeRepo]);
+
+  // HEAD の移動 (コミット・ブランチ切り替え) やファイルの変更は Git の状態の更新として届くので、
+  // そのたびに差分を取り直す (status はファイル変更の WS 通知・フォーカス復帰・Git 操作のあとに更新される)
+  useEffect(() => {
+    if (!live) return;
+    return useGit.subscribe((s, prev) => {
+      if (!s.status || s.status === prev.status) return;
+      void useReview
+        .getState()
+        .loadDetail(id, { silent: true })
+        .then(() => setReloadKey((k) => k + 1))
+        .catch(() => undefined);
+    });
+  }, [live, id]);
+
+  const reload = () => {
+    void useReview
+      .getState()
+      .loadDetail(id, { silent: true })
+      .then(() => setReloadKey((k) => k + 1))
+      .catch(toastError);
+  };
 
   useEffect(() => {
     if (detail) setSummary(detail.review.summary);
@@ -89,9 +120,10 @@ export function ReviewDetail({ id }: { id: number }) {
    * 差分ペインのスクロール位置: 表示するファイルが変わる (クリック・戻る/進む・別タブから戻る・
    * 「最新に更新」で差分を取り直す) たびに、保存済みの位置を復元待ちにする。
    * クリーンアップで直前のファイルの最終位置を保存する (DOM が入れ替わる前に読むため layout effect)。
+   * 差分が自動で更新される種類はコミットが変わっても表示を保ったまま取り直すので、復元し直さない。
    */
-  const baseCommit = detail?.review.baseCommit;
-  const headCommit = detail?.review.headCommit;
+  const baseCommit = live ? '' : detail?.review.baseCommit;
+  const headCommit = live ? '' : detail?.review.headCommit;
   useLayoutEffect(() => {
     if (!selected) {
       pendingDiffScroll.current = null;
@@ -138,6 +170,7 @@ export function ReviewDetail({ id }: { id: number }) {
 
   const { review, comments, viewed, available, headExists, newCommits } = detail;
   const readOnly = review.status === 'closed';
+  const worktree = review.kind === 'worktree';
   const unresolved = unresolvedByPath(comments);
   const viewedSet = new Set(viewed);
   const current = files.find((f) => f.path === selected) ?? null;
@@ -153,6 +186,11 @@ export function ReviewDetail({ id }: { id: number }) {
 
   const toggleViewed = async (f: CommitFile, next: boolean) => {
     useReview.getState().setViewedLocal(f.path, next);
+    // 差分が自動で更新される種類は DB に持たず、タブ内でだけ覚える (読み直しても消えないように)
+    if (live) {
+      saveReviewView(id, { viewed: useReview.getState().detail?.viewed ?? [] });
+      return;
+    }
     try {
       await api.reviewSetViewed(id, f.path, next);
     } catch (e) {
@@ -233,43 +271,88 @@ export function ReviewDetail({ id }: { id: number }) {
         <button className={cx('status-btn')} onClick={() => useReview.getState().backToList()}>
           ← 一覧
         </button>
-        <span className={cx(`rv-status ${review.status}`)}>
-          {review.status === 'open' ? 'レビュー中' : 'クローズ'}
-        </span>
-        <span className={cx('rv-title')} title={review.title} onDoubleClick={() => void rename()}>
+        {worktree ? (
+          <span className={cx('rv-status worktree')}>未コミット</span>
+        ) : (
+          <span className={cx(`rv-status ${review.status}`)}>
+            {review.status === 'open' ? 'レビュー中' : 'クローズ'}
+          </span>
+        )}
+        <span
+          className={cx('rv-title')}
+          title={review.title}
+          onDoubleClick={worktree ? undefined : () => void rename()}
+        >
           {review.title}
         </span>
         <span className={cx('rv-branches')}>
-          {/* 名前が既定 (head → base) のままならタイトルと重複するのでブランチ名は省く */}
-          {review.title !== `${review.headBranch} → ${review.baseBranch}` && (
+          {worktree ? (
             <>
-              <code>{review.headBranch}</code> → <code>{review.baseBranch}</code>
+              <code className={cx('rv-code-live')}>作業ツリー</code> → <code>HEAD</code>
+              {review.baseBranch !== 'HEAD' && <span>({review.baseBranch})</span>}
+              {headExists && <span className={cx('rv-hashes')}>{review.baseCommit.slice(0, 7)}</span>}
+            </>
+          ) : (
+            <>
+              {/* 名前が既定 (head → base) のままならタイトルと重複するのでブランチ名は省く */}
+              {review.title !== `${review.headBranch} → ${review.baseBranch}` && (
+                <>
+                  <code className={cx(live ? 'rv-code-live' : '')}>{review.headBranch}</code> →{' '}
+                  <code>{review.baseBranch}</code>
+                </>
+              )}
+              {available && (
+                <span className={cx('rv-hashes')}>
+                  {review.baseCommit.slice(0, 7)} … {review.headCommit.slice(0, 7)}
+                </span>
+              )}
             </>
           )}
-          <span className={cx('rv-hashes')}>
-            {review.baseCommit.slice(0, 7)} … {review.headCommit.slice(0, 7)}
-          </span>
         </span>
         <span className={cx('rv-head-spacer')} />
-        <button className={cx('status-btn')} onClick={() => setSummaryOpen((v) => !v)}>
-          概要
-        </button>
-        <button className={cx('status-btn')} onClick={() => openReviewExportDialog(id)}>
-          Markdown 出力
-        </button>
-        <button className={cx('status-btn')} onClick={() => void rename()}>
-          名前変更
-        </button>
-        <button
-          className={cx('status-btn')}
-          onClick={() => void setStatus(review.status === 'open' ? 'closed' : 'open')}
-        >
-          {review.status === 'open' ? 'クローズ' : '再オープン'}
-        </button>
-        <button className={cx('status-btn danger')} onClick={() => void remove()}>
-          削除
-        </button>
+        {live && (
+          <button className={cx('status-btn')} title="差分を取り直す" onClick={reload}>
+            再読込
+          </button>
+        )}
+        {/* コメントを保存しない種類は、概要 (Markdown 出力の冒頭) と出力も使わない */}
+        {!live && (
+          <>
+            <button className={cx('status-btn')} onClick={() => setSummaryOpen((v) => !v)}>
+              概要
+            </button>
+            <button className={cx('status-btn')} onClick={() => openReviewExportDialog(id)}>
+              Markdown 出力
+            </button>
+          </>
+        )}
+        {/* 未コミットの変更は一覧に固定の項目なので、名前変更・クローズ・削除はできない */}
+        {!worktree && (
+          <>
+            <button className={cx('status-btn')} onClick={() => void rename()}>
+              名前変更
+            </button>
+            <button
+              className={cx('status-btn')}
+              onClick={() => void setStatus(review.status === 'open' ? 'closed' : 'open')}
+            >
+              {review.status === 'open' ? 'クローズ' : '再オープン'}
+            </button>
+            <button className={cx('status-btn danger')} onClick={() => void remove()}>
+              削除
+            </button>
+          </>
+        )}
       </div>
+
+      {live && !readOnly && (
+        <div className={cx('rv-banner info')}>
+          {worktree
+            ? '作業ツリーの未コミットの変更 (ステージ済み・未ステージ・未追跡) を HEAD と比較しています。ファイルを保存すると差分も自動で更新されます。'
+            : `${review.baseBranch} から分岐したあとの HEAD の変更を表示しています。コミットやブランチの切り替えで HEAD が動くと差分も自動で更新されます。`}
+          {' '}行番号をクリック / ドラッグすると、ファイルのパスと行番号が入ったコメント欄が開きます (保存はされません。「コピー」でクリップボードへ)。
+        </div>
+      )}
 
       {summaryOpen && (
         <div className={cx('rv-summary')}>
@@ -285,7 +368,11 @@ export function ReviewDetail({ id }: { id: number }) {
 
       {!available && (
         <div className={cx('rv-banner warn')}>
-          差分を表示できません (リポジトリまたは対象コミットが失われています)。コメントは閲覧・出力できます。
+          {worktree
+            ? '差分を表示できません (リポジトリを参照できません)。'
+            : live
+              ? `差分を表示できません (取り込み先 ${review.baseBranch} が見つからないか、HEAD と共通の祖先がありません)。`
+              : '差分を表示できません (リポジトリまたは対象コミットが失われています)。コメントは閲覧・出力できます。'}
         </div>
       )}
       {!headExists && review.closedReason === 'branch-deleted' && (
@@ -326,7 +413,11 @@ export function ReviewDetail({ id }: { id: number }) {
             >
               {filtered.length === 0 ? (
                 <div className={cx('empty-hint')}>
-                  {files.length === 0 ? '変更されたファイルはありません' : '一致するファイルはありません'}
+                  {files.length === 0
+                    ? worktree
+                      ? '未コミットの変更はありません'
+                      : '変更されたファイルはありません'
+                    : '一致するファイルはありません'}
                 </div>
               ) : (
                 filtered.map((f) => {
@@ -376,6 +467,8 @@ export function ReviewDetail({ id }: { id: number }) {
             ) : current ? (
               <ReviewFileDiff
                 reviewId={id}
+                kind={review.kind}
+                reloadKey={reloadKey}
                 file={current}
                 comments={comments.filter((c) => c.path === current.path)}
                 readOnly={readOnly}

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
-import { pushReviewView, reviewFileFromUrl, reviewIdFromUrl } from './ui';
+import { useGit } from './git';
+import { pushReviewView, reviewFileFromUrl, reviewIdFromUrl, WORKTREE_REVIEW_ID } from './ui';
 import { clearReviewView, loadReviewView, saveReviewView } from '../lib/reviewViewMemory';
 import type { Review, ReviewComment, ReviewDetail } from '../types';
 
@@ -71,11 +72,17 @@ export const useReview = create<ReviewStore>((set, get) => ({
   },
 
   loadDetail: async (id, { silent = false } = {}) => {
+    // 未コミットの変更は DB に無く、表示中のリポジトリの作業ツリーから求める
+    const repo = id === WORKTREE_REVIEW_ID ? useGit.getState().repoRoot : null;
+    if (id === WORKTREE_REVIEW_ID && !repo) return;
     if (!silent) set({ detailLoading: true });
     try {
-      const detail = await api.reviewDetail(id);
-      // 読み込み中に別のレビューへ切り替わっていたら破棄する
-      if (get().currentId === id) set({ detail });
+      const detail = repo ? await api.reviewWorktree(repo) : await api.reviewDetail(id);
+      // 読み込み中に別のレビュー (未コミットの変更なら別のリポジトリ) へ切り替わっていたら破棄する
+      if (get().currentId !== id || (repo && useGit.getState().repoRoot !== repo)) return;
+      // 確認済みを DB に持たない種類は、タブ内で覚えている分を戻す
+      if (isLiveReview(detail.review)) detail.viewed = loadReviewView(id)?.viewed ?? [];
+      set({ detail });
     } finally {
       set({ detailLoading: false });
     }
@@ -149,6 +156,14 @@ export const useReview = create<ReviewStore>((set, get) => ({
     }
   },
 }));
+
+/**
+ * 差分が自動で更新され続ける種類のレビュー (HEAD が対象 / 未コミットの変更)。
+ * コメントは保存せず、入力欄の内容をコピーして使う
+ */
+export function isLiveReview(review: Pick<Review, 'kind'>): boolean {
+  return review.kind !== 'branch';
+}
 
 /** 未解決コメント数 (outdated は除く) をファイル単位で数える */
 export function unresolvedByPath(comments: ReviewComment[]): Map<string, number> {

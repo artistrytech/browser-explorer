@@ -428,6 +428,12 @@ export const api = {
     post<{ review: Review }>('/api/review/status', { id, status }),
   reviewDelete: (id: number) => del<{ ok: true }>('/api/review', { id }),
   reviewDetail: (id: number) => get<ReviewDetail>(`/api/review/detail?id=${id}`),
+  /** 未コミットの変更 (作業ツリー vs HEAD) を、レビュー詳細と同じ形で得る */
+  reviewWorktree: (repo: string) => get<ReviewDetail>(`/api/review/worktree?repo=${q(repo)}`),
+  reviewWorktreeFilePatch: (repo: string, path: string, oldPath?: string | null) =>
+    get<{ diff: string }>(
+      `/api/review/worktree/file-patch?repo=${q(repo)}&path=${q(path)}${oldPath ? `&oldPath=${q(oldPath)}` : ''}`,
+    ),
   /** レビュー内 1 ファイルの unified 差分 (文脈行はサーバ側で広めに取る) */
   reviewFilePatch: (id: number, path: string, oldPath?: string | null) =>
     get<{ diff: string }>(

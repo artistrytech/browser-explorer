@@ -115,9 +115,20 @@ export function viewFromUrl(): MainView {
     : 'files';
 }
 
+/** 一覧の先頭に固定の「未コミットの変更」のレビュー ID (DB のレビューは 1 から振られる) */
+export const WORKTREE_REVIEW_ID = 0;
+/** URL 上の「未コミットの変更」の表記 (?review=worktree) */
+const WORKTREE_REVIEW_PARAM = 'worktree';
+
+/** レビュー ID の URL 上の表記 (?review=) */
+export function reviewUrlParam(id: number): string {
+  return id === WORKTREE_REVIEW_ID ? WORKTREE_REVIEW_PARAM : String(id);
+}
+
 /** URL の ?review= から表示中のレビュー ID を復元 (無ければ一覧表示) */
 export function reviewIdFromUrl(): number | null {
   const v = new URLSearchParams(location.search).get('review');
+  if (v === WORKTREE_REVIEW_PARAM) return WORKTREE_REVIEW_ID;
   const id = Number(v);
   return v && Number.isInteger(id) && id > 0 ? id : null;
 }
@@ -139,7 +150,7 @@ export function pushReviewView(id: number | null, file: string | null = null, re
   const params = new URLSearchParams(location.search);
   params.set('view', 'review');
   if (id === null) params.delete('review');
-  else params.set('review', String(id));
+  else params.set('review', reviewUrlParam(id));
   if (id === null || file === null) params.delete('rfile');
   else params.set('rfile', file);
   const search = `?${params}`;

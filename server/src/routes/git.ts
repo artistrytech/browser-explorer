@@ -575,7 +575,7 @@ gitRouter.get('/diff', async (req, res) => {
  * --no-index は差分があると終了コード 1 を返すため、stdout を拾って正常扱いにする。
  * /dev/null は git が全プラットフォームで空ファイルとして特別扱いする。
  */
-async function untrackedDiff(repo: string, rel: string): Promise<string> {
+export async function untrackedDiff(repo: string, rel: string): Promise<string> {
   try {
     const args = [...QUOTE_PATH_ARGS, 'diff', '--no-index', '--', '/dev/null', rel];
     const { stdout } = await execFileAsync('git', args, {

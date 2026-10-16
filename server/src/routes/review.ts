@@ -23,6 +23,8 @@ import {
   changedPaths,
   commitExists,
   countNewCommits,
+  EMPTY_TREE,
+  isUntracked,
   mergeBase,
   openGit,
   pinReviewRefs,
@@ -30,7 +32,10 @@ import {
   rangeFiles,
   resolveCommit,
   unpinReviewRefs,
+  worktreeFilePatch,
+  worktreeFiles,
 } from '../services/reviewGit.js';
+import { untrackedDiff } from './git.js';
 
 export const reviewRouter = Router();
 
@@ -104,16 +109,35 @@ async function branchNames(g: SimpleGit): Promise<Set<string>> {
 }
 
 /**
+ * レビュー対象に「HEAD」を指定したレビューの head_branch。
+ * git はブランチ名に HEAD を許さないので、実ブランチの名前と衝突しない。
+ */
+const HEAD_TARGET = 'HEAD';
+
+/**
+ * レビューの種類。
+ * branch = 特定ブランチが対象 (作成時のコミットを固定)
+ * head = HEAD が対象 (固定せず、開くたびに HEAD と merge-base を取り直す。コメントは保存しない)
+ * worktree = 未コミットの変更 (DB に持たない固定の疑似レビュー。GET /worktree)
+ */
+type ReviewKind = 'branch' | 'head' | 'worktree';
+
+function isHeadReview(review: Review): boolean {
+  return review.headBranch === HEAD_TARGET;
+}
+
+/**
  * レビュー対象ブランチが消えていたら自動でクローズする。
  * リポジトリ自体が参照できない場合 (フォルダ移動・取り外しドライブ) は判定しない。
  */
 function autoClose(review: Review, existing: Set<string>): Review {
-  if (review.status === 'closed') return review;
+  if (review.status === 'closed' || isHeadReview(review)) return review;
   if (existing.has(review.headBranch)) return review;
   return updateReview(review.id, { status: 'closed', closedReason: 'branch-deleted' }) ?? review;
 }
 
 export interface ReviewSummary extends Review {
+  kind: ReviewKind;
   comments: number;
   unresolved: number;
 }
@@ -122,12 +146,27 @@ function summarize(review: Review): ReviewSummary {
   const comments = listComments(review.id);
   return {
     ...review,
+    kind: isHeadReview(review) ? 'head' : 'branch',
     comments: comments.length,
     unresolved: comments.filter((c) => !c.resolved && !c.outdated).length,
   };
 }
 
-/** レビュー一覧 (新しい順)。開くたびにブランチの存在を突き合わせて自動クローズする */
+/** HEAD が対象のレビューの、現時点の比較コミット (HEAD と merge-base)。求められなければ null */
+async function liveCommits(
+  g: SimpleGit,
+  review: Review,
+): Promise<{ baseCommit: string; headCommit: string } | null> {
+  const headCommit = await resolveCommit(g, HEAD_TARGET);
+  if (!headCommit) return null;
+  const baseCommit = await mergeBase(g, review.baseBranch, HEAD_TARGET);
+  return baseCommit ? { baseCommit, headCommit } : null;
+}
+
+/**
+ * レビュー一覧。HEAD が対象のものを先に、それぞれ新しい順で並べる。
+ * 開くたびにブランチの存在を突き合わせて自動クローズする
+ */
 reviewRouter.get('/list', async (req, res) => {
   const repo = req.query.repo;
   if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
@@ -140,12 +179,15 @@ reviewRouter.get('/list', async (req, res) => {
       list = reviews.map((r) => autoClose(r, existing));
     }
   }
+  // sort は安定なので、同じ種類の中では新しい順のまま
+  list = [...list].sort((a, b) => Number(isHeadReview(b)) - Number(isHeadReview(a)));
   res.json({ reviews: list.map(summarize) });
 });
 
 /**
  * レビュー作成: base...head の merge-base と head のコミットを確定し、
  * refs/reviews/<id>/{base,head} に打って gc から保護する。
+ * 対象が HEAD (headBranch = 'HEAD') の場合は固定しない (開くたびに取り直すので ref も打たない)。
  */
 reviewRouter.post('/', async (req, res) => {
   const { repo, title } = (req.body ?? {}) as { repo?: string; title?: string };
@@ -153,10 +195,12 @@ reviewRouter.post('/', async (req, res) => {
   const baseBranch = normalizeBranch((req.body ?? {}).baseBranch);
   const headBranch = normalizeBranch((req.body ?? {}).headBranch);
   if (baseBranch === headBranch) badRequest('比較対象に同じブランチは指定できません');
+  if (baseBranch === HEAD_TARGET) badRequest('取り込み先に HEAD は指定できません');
+  const toHead = headBranch === HEAD_TARGET;
 
   const g = openGit(repo);
   const headCommit = await resolveCommit(g, headBranch);
-  if (!headCommit) badRequest(`ブランチが見つかりません: ${headBranch}`);
+  if (!headCommit) badRequest(toHead ? 'HEAD にコミットがありません' : `ブランチが見つかりません: ${headBranch}`);
   const baseHead = await resolveCommit(g, baseBranch);
   if (!baseHead) badRequest(`ブランチが見つかりません: ${baseBranch}`);
   const baseCommit = await mergeBase(g, baseBranch, headBranch);
@@ -170,7 +214,7 @@ reviewRouter.post('/', async (req, res) => {
     baseCommit,
     headCommit,
   });
-  await pinReviewRefs(g, review.id, baseCommit, headCommit);
+  if (!toHead) await pinReviewRefs(g, review.id, baseCommit, headCommit);
   res.json({ review: summarize(review) });
 });
 
@@ -218,6 +262,21 @@ reviewRouter.get('/detail', async (req, res) => {
   const available = g !== null && (await repoAvailable(g));
   if (g && available) review = autoClose(review, await branchNames(g));
 
+  // HEAD が対象: 固定したコミットではなく、現時点の HEAD と merge-base の差分を返す
+  if (isHeadReview(review)) {
+    const live = g && available ? await liveCommits(g, review) : null;
+    res.json({
+      review: summarize(live ? { ...review, ...live } : review),
+      files: g && live ? await rangeFiles(g, live.baseCommit, live.headCommit) : [],
+      comments: listComments(id),
+      viewed: [],
+      available: live !== null,
+      headExists: true,
+      newCommits: 0,
+    });
+    return;
+  }
+
   const snapshotOk =
     g !== null &&
     available &&
@@ -252,7 +311,79 @@ reviewRouter.get('/file-patch', async (req, res) => {
   const oldPath = typeof req.query.oldPath === 'string' && req.query.oldPath ? relPath(req.query.oldPath) : null;
   const g = tryOpenGit(review.repo);
   if (!g) badRequest('リポジトリを参照できません');
-  res.json({ diff: await rangeFilePatch(g, review.baseCommit, review.headCommit, rel, oldPath) });
+  let { baseCommit, headCommit } = review;
+  if (isHeadReview(review)) {
+    const live = await liveCommits(g, review);
+    if (!live) badRequest(`HEAD と ${review.baseBranch} の差分を求められません`);
+    ({ baseCommit, headCommit } = live);
+  }
+  res.json({ diff: await rangeFilePatch(g, baseCommit, headCommit, rel, oldPath) });
+});
+
+/* ---------- 未コミットの変更 (作業ツリー vs HEAD) ---------- */
+
+/** 未コミットの変更の比較基準: HEAD (コミットが無ければ空のツリー) */
+async function worktreeBase(g: SimpleGit): Promise<{ base: string; head: string | null }> {
+  const head = await resolveCommit(g, HEAD_TARGET);
+  return { base: head ?? EMPTY_TREE, head };
+}
+
+/**
+ * 未コミットの変更 (ステージ済み + 未ステージ + 未追跡)。DB には持たず、毎回作業ツリーから求める。
+ * 応答は GET /detail と同じ形にし、review は固定の疑似レビュー (id = 0) を返す。
+ */
+reviewRouter.get('/worktree', async (req, res) => {
+  const repo = req.query.repo;
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  const g = tryOpenGit(repo);
+  const available = await repoAvailable(g);
+  const { base, head } = g && available ? await worktreeBase(g) : { base: EMPTY_TREE, head: null };
+  const branch =
+    g && available ? (await g.raw(['rev-parse', '--abbrev-ref', HEAD_TARGET]).catch(() => '')).trim() : '';
+  const ts = new Date().toISOString();
+  const review: ReviewSummary = {
+    id: 0,
+    kind: 'worktree',
+    repo,
+    title: '未コミットの変更',
+    summary: '',
+    // ブランチ上なら「HEAD (ブランチ名)」と出せるよう、比較の基準側にブランチ名を入れる
+    baseBranch: branch && branch !== HEAD_TARGET ? branch : HEAD_TARGET,
+    headBranch: '作業ツリー',
+    baseCommit: base,
+    // 差分の色付けで変更後の内容を作業ツリーから読ませる (GET /api/git/file-content の rev)
+    headCommit: 'worktree',
+    status: 'open',
+    closedReason: null,
+    createdAt: ts,
+    updatedAt: ts,
+    comments: 0,
+    unresolved: 0,
+  };
+  res.json({
+    review,
+    files: g && available ? await worktreeFiles(g, repo, base) : [],
+    comments: [],
+    viewed: [],
+    available,
+    headExists: head !== null,
+    newCommits: 0,
+  });
+});
+
+/** 未コミットの変更の 1 ファイルの unified 差分 (未追跡ファイルは全行追加として出す) */
+reviewRouter.get('/worktree/file-patch', async (req, res) => {
+  const repo = req.query.repo;
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  const rel = relPath(req.query.path);
+  const oldPath = typeof req.query.oldPath === 'string' && req.query.oldPath ? relPath(req.query.oldPath) : null;
+  const g = openGit(repo);
+  if (!oldPath && (await isUntracked(g, rel))) {
+    res.json({ diff: await untrackedDiff(repo, rel) });
+    return;
+  }
+  const { base } = await worktreeBase(g);
+  res.json({ diff: await worktreeFilePatch(g, base, rel, oldPath) });
 });
 
 /**
@@ -262,6 +393,11 @@ reviewRouter.get('/file-patch', async (req, res) => {
 reviewRouter.post('/refresh', async (req, res) => {
   const id = reviewId((req.body ?? {}).id);
   const review = mustGetReview(id);
+  // HEAD が対象のレビューは固定しないので、取り込み直すものが無い
+  if (isHeadReview(review)) {
+    res.json({ review: summarize(review), outdated: 0, changed: [] });
+    return;
+  }
   const g = tryOpenGit(review.repo);
   if (!g || !(await repoAvailable(g))) badRequest('リポジトリを参照できません');
   const headCommit = await resolveCommit(g, review.headBranch);
@@ -299,7 +435,8 @@ reviewRouter.post('/comment', (req, res) => {
     body?: string;
   };
   const id = reviewId(body.id);
-  mustGetReview(id);
+  // HEAD が対象のレビューは差分が動き続けて行位置を保証できないため、コメントを保存しない
+  if (isHeadReview(mustGetReview(id))) badRequest('このレビューのコメントは保存できません');
   const text = (body.body ?? '').trim();
   if (!text) badRequest('コメントが空です');
   const lineStart = Number(body.lineStart);

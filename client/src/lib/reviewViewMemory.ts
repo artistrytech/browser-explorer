@@ -15,6 +15,11 @@ export interface ReviewViewRecord {
   listScrollTop: number;
   /** 差分ペインのスクロール位置 (ファイルの変更後パスごと)。同じファイルを再度開いた際に復元する */
   diffScrollTops: Record<string, number>;
+  /**
+   * 確認済みにしたファイル。DB に持たない種類のレビュー (HEAD が対象 / 未コミットの変更) だけが使う
+   * (差分が自動で更新され続けるので、タブを開いている間だけ覚えておけば足りる)
+   */
+  viewed?: string[];
   ts: number;
 }
 
@@ -30,7 +35,7 @@ export function loadReviewView(id: number): ReviewViewRecord | null {
     const raw = sessionStorage.getItem(PREFIX + id);
     if (!raw) return null;
     const rec = JSON.parse(raw) as ReviewViewRecord;
-    return { ...rec, diffScrollTops: rec.diffScrollTops ?? {} };
+    return { ...rec, diffScrollTops: rec.diffScrollTops ?? {}, viewed: rec.viewed ?? [] };
   } catch {
     return null;
   }

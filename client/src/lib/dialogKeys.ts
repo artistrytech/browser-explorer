@@ -42,6 +42,18 @@ function acceptsNewline(el: Element): boolean {
   return el.tagName === 'TEXTAREA' || el.isContentEditable;
 }
 
+/**
+ * 候補を開いているコンボボックス (role="combobox" + aria-expanded="true") か。
+ * その間の Enter / Escape は候補の確定・閉じるに使うので、ダイアログの操作にしない
+ */
+function ownsDialogKeys(el: Element | null): boolean {
+  return (
+    el instanceof HTMLElement &&
+    el.getAttribute('role') === 'combobox' &&
+    el.getAttribute('aria-expanded') === 'true'
+  );
+}
+
 export interface DialogKeyOptions {
   /** ダイアログが開いている間だけ true (閉じている間はキーを拾わない) */
   enabled?: boolean;
@@ -75,6 +87,7 @@ export function useDialogKeys({
     const entry: { handler: KeyHandler } = {
       handler: (e) => {
         if (e.defaultPrevented || composing(e)) return;
+        if ((e.key === 'Escape' || e.key === 'Enter') && ownsDialogKeys(document.activeElement)) return;
         const { onEnter: enter, onEscape: escape } = handlers.current;
         const accept = () => {
           e.preventDefault();

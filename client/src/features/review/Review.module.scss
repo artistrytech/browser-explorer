@@ -156,6 +156,35 @@
   color: var(--text-dim);
 }
 
+.rv-status.worktree {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* 未コミットの変更: 一覧の先頭に固定の行。左端の帯と薄い地色で他のレビューと区別する */
+.rv-tr.rv-worktree {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  box-shadow: inset 3px 0 0 var(--accent);
+  border-bottom: 2px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.rv-tr.rv-worktree:hover {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+}
+
+.rv-pin {
+  margin-right: 4px;
+  font-size: 11px;
+}
+
+/* 差分が自動で更新される比較対象 (HEAD / 作業ツリー) */
+.rv-branches code.rv-code-live,
+.rv-c-branch code.rv-code-live {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 /* --- 詳細 --- */
 
 .rv-detail {
@@ -224,6 +253,12 @@
 
 .rv-banner.warn {
   color: var(--danger);
+}
+
+.rv-banner.info {
+  display: block;
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
 }
 
 .rv-banner code {
@@ -642,9 +677,22 @@
 }
 
 .rv-form-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 11px;
   color: var(--text-dim);
   margin-bottom: 4px;
+}
+
+/* 保存しないコメントの入力欄 (コピーして使う) */
+.rv-form.rv-form-ephemeral {
+  border-style: dashed;
+}
+
+.rv-form.rv-form-ephemeral .rv-textarea {
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 
 .rv-textarea {
@@ -762,6 +810,133 @@
 }
 
 .rv-warn {
+  color: var(--danger);
+}
+
+.rv-radio-row {
+  display: flex;
+  gap: 16px;
+}
+
+.rv-radio,
+.rv-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.rv-check {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* --- ブランチのコンボボックス --- */
+
+.rv-combo {
+  position: relative;
+  min-width: 0;
+}
+
+.rv-combo-list {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  max-height: 260px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  padding: 2px 0;
+}
+
+.rv-combo-group {
+  padding: 4px 8px 2px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.rv-combo-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 14px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.rv-combo-option.active {
+  background: var(--bg-hover);
+}
+
+.rv-combo-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-combo-mark {
+  background: var(--line-sel-bg);
+  color: inherit;
+}
+
+.rv-combo-tag {
+  flex: none;
+  font-family: inherit;
+  font-size: 10px;
+  color: var(--add);
+  border: 1px solid var(--add);
+  border-radius: 8px;
+  padding: 0 5px;
+}
+
+.rv-combo-empty {
+  padding: 6px 10px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.rv-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  gap: 4px;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.rv-chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-chip-x {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.rv-chip-x:hover {
+  background: var(--bg-hover);
   color: var(--danger);
 }
 

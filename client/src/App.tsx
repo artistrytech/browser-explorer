@@ -46,6 +46,7 @@ import {
   useUi,
   reviewFileFromUrl,
   reviewIdFromUrl,
+  reviewUrlParam,
   viewFromUrl,
   switchView,
   replaceView,
@@ -110,8 +111,8 @@ export default function App() {
       params.set('dhash', initialDiff.hash);
       params.set('dpath', initialDiff.path);
     }
-    if (initialReview) {
-      params.set('review', String(initialReview));
+    if (initialReview !== null) {
+      params.set('review', reviewUrlParam(initialReview));
       if (initialReviewFile) params.set('rfile', initialReviewFile);
     }
     if (initialPreview) params.set('ppath', initialPreview);
