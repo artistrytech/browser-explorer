@@ -39,19 +39,37 @@ export function isMarkdownPath(path: string): boolean {
 
 interface PreviewStore {
   current: string | null;
-  /** 全画面モード (ツールバー・タブ・サイドバー等を隠して本文だけを表示)。Esc で解除 */
+  /**
+   * 全画面モード (ツールバー・タブ・サイドバー等を隠して本文だけを表示)。Esc で解除。
+   * ブラウザの全画面 (Fullscreen API) も連動して切り替える
+   */
   fullscreen: boolean;
   open: (path: string) => void;
   close: () => void;
   setFullscreen: (on: boolean) => void;
 }
 
+/** ブラウザの全画面を切り替える。拒否された (ユーザー操作外など) 場合はアプリ内の全画面だけで続ける */
+function setBrowserFullscreen(on: boolean): void {
+  if (on) {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+  } else if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  }
+}
+
 export const usePreviewTab = create<PreviewStore>((set) => ({
   current: null,
   fullscreen: false,
   open: (current) => set({ current }),
-  close: () => set({ current: null, fullscreen: false }),
-  setFullscreen: (fullscreen) => set({ fullscreen }),
+  close: () => {
+    setBrowserFullscreen(false);
+    set({ current: null, fullscreen: false });
+  },
+  setFullscreen: (fullscreen) => {
+    setBrowserFullscreen(fullscreen);
+    set({ fullscreen });
+  },
 }));
 
 /** URL の ?ppath= からプレビュー対象を復元 */
@@ -301,7 +319,8 @@ export function MarkdownTab() {
   }, []);
 
   // 全画面モード中は Esc で解除 (ダイアログ等が手前にある場合はそちらの Esc を優先させるため、
-  // 既に処理済み (defaultPrevented) のイベントは無視する)
+  // 既に処理済み (defaultPrevented) のイベントは無視する)。
+  // ブラウザの全画面中の Esc はブラウザが消費して keydown が届かないため、全画面の解除 (fullscreenchange) でも解除する
   useEffect(() => {
     if (!fullscreen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -309,8 +328,15 @@ export function MarkdownTab() {
       e.preventDefault();
       setFullscreen(false);
     };
+    const onBrowserFsChange = () => {
+      if (!document.fullscreenElement) setFullscreen(false);
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    document.addEventListener('fullscreenchange', onBrowserFsChange);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('fullscreenchange', onBrowserFsChange);
+    };
   }, [fullscreen, setFullscreen]);
 
   // Monaco のテーマ CSS を確実に注入する (コードブロックの colorize 結果の色付け用)
