@@ -18,7 +18,7 @@ import {
 import { Chevron, FolderTree } from './FolderTree';
 import { ProjectTree } from './ProjectTree';
 import type { VolumeInfo } from '../types';
-import { openInNewTab } from '../lib/appTabs';
+import { middleClickProps, openInNewTab, wantsNewTab } from '../lib/appTabs';
 import styles from './Sidebar.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
 
@@ -95,14 +95,14 @@ export function Sidebar() {
   }, []);
 
   /**
-   * サイドバーのリンク遷移。Ctrl (mac は ⌘) + クリックはブラウザの別タブで開く。
+   * サイドバーのリンク遷移。Ctrl (mac は ⌘) + クリック / 中クリックは別タブで開く。
    * 通常は「ファイル」タブで開く。keepView を指定すると、現在のタブが REPO_KEEP_VIEWS なら保持する
    * (navigate はビューを files に戻すので、完了後に元のタブへ切り替え直す)。
    */
   const go = (e: React.MouseEvent, target: string, keepView = false) => {
     const current = useUi.getState().view;
     const view: MainView = keepView && REPO_KEEP_VIEWS.includes(current) ? current : 'files';
-    if (e.ctrlKey || e.metaKey) {
+    if (wantsNewTab(e)) {
       const params = new URLSearchParams();
       params.set('path', target);
       if (view !== 'files') params.set('view', view);
@@ -163,13 +163,14 @@ export function Sidebar() {
       key={key}
       className={cx(`side-item${path === target ? ' active' : ''}`)}
       onClick={(e) => go(e, target)}
+      {...middleClickProps((e) => go(e, target))}
       onContextMenu={(e) => {
         if (onContext) {
           e.preventDefault();
           onContext(e);
         }
       }}
-      title={`${target}\n(Ctrl+クリックで別タブ)`}
+      title={`${target}\n(Ctrl+クリック / 中クリックで別タブ)`}
     >
       <span className={cx("side-icon")}>{icon}</span>
       <span className={cx("side-label")}>{label}</span>
@@ -271,6 +272,7 @@ export function Sidebar() {
                 <button
                   className={cx(`side-item${path === f.path ? ' active' : ''}`)}
                   onClick={(e) => go(e, f.path)}
+                  {...middleClickProps((e) => go(e, f.path))}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     openMenu(e.clientX, e.clientY, [
@@ -278,7 +280,7 @@ export function Sidebar() {
                       { label: 'ピン止めを解除', action: () => void unpinFolder(f.path, f.label) },
                     ]);
                   }}
-                  title={`${f.path}\n(Ctrl+クリックで別タブ)`}
+                  title={`${f.path}\n(Ctrl+クリック / 中クリックで別タブ)`}
                 >
                   <span className={cx("side-icon")}>★</span>
                   <span className={cx("side-label")}>{f.label}</span>
@@ -314,8 +316,9 @@ export function Sidebar() {
                 >
                   <button
                     className={cx(`side-item${repoRoot === r ? ' active' : ''}`)}
-                    title={`${r}\n(Ctrl+クリックで別タブ)`}
+                    title={`${r}\n(Ctrl+クリック / 中クリックで別タブ)`}
                     onClick={(e) => go(e, r, true)}
+                    {...middleClickProps((e) => go(e, r, true))}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       openMenu(e.clientX, e.clientY, [

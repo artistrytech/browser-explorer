@@ -42,7 +42,7 @@ import { openCommitDiff } from './DiffTab';
 import { CommitFileDiff, commitFileLabel } from './CommitFileDiff';
 import { useRebase } from '../../stores/rebase';
 import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
-import { openInNewTab } from '../../lib/appTabs';
+import { openInNewTab, wantsNewTab } from '../../lib/appTabs';
 import styles from './GitPanel.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -1091,12 +1091,13 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         action: () => void excludeUntracked(repoRoot, f.path),
       },
     );
-    // パス絞り込みログ (ファイルタブの「Gitログ」と同じ)。Ctrl+クリック (mac は ⌘) は別タブ
+    // パス絞り込みログ (ファイルタブの「Gitログ」と同じ)。Ctrl+クリック (mac は ⌘) / 中クリックは別タブ
     items.push(
       { separator: true },
       {
         label: 'Gitログ',
-        action: (ev) => useGit.getState().showLogFor(f.path, true, { newTab: ev.ctrlKey || ev.metaKey }),
+        newTab: true,
+        action: (ev) => useGit.getState().showLogFor(f.path, true, { newTab: wantsNewTab(ev) }),
       },
     );
     const tools = stagedSide
@@ -1128,7 +1129,8 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         const items: MenuItem[] = [
           {
             label: '差分を表示',
-            // Ctrl+クリック (mac は ⌘) はブラウザの別タブで開く
+            // Ctrl+クリック (mac は ⌘) / 中クリックは別タブで開く
+            newTab: true,
             action: (ev) =>
               openCommitDiff(
                 {
@@ -1138,7 +1140,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   oldPath: f.oldPath,
                   subject: detail.message.split('\n')[0],
                 },
-                ev.ctrlKey || ev.metaKey,
+                wantsNewTab(ev),
               ),
           },
           // 外部差分ツール (WinMerge / Meld など) でコミット前後を比較
@@ -1146,20 +1148,22 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           { separator: true },
           {
             label: 'ログを表示',
-            // Ctrl+クリック (mac は ⌘) はブラウザの別タブで開く
-            action: (ev) => useGit.getState().showLogFor(f.path, true, { newTab: ev.ctrlKey || ev.metaKey }),
+            // Ctrl+クリック (mac は ⌘) / 中クリックは別タブで開く
+            newTab: true,
+            action: (ev) => useGit.getState().showLogFor(f.path, true, { newTab: wantsNewTab(ev) }),
           },
           {
             label: 'ファイル場所に移動',
             disabled: !exists,
+            newTab: true,
             action: (ev) => {
               const slash = abs.lastIndexOf('/');
               const dir = abs.slice(0, slash);
               // 移動先でこのファイルにフォーカスが当たるように記録してから遷移する
               // (新規タブは sessionStorage が複製されるので、別タブで開くより先に保存する)
               saveEnteredChild(dir, f.path.slice(f.path.lastIndexOf('/') + 1), 0);
-              if (ev.ctrlKey || ev.metaKey) {
-                // Ctrl+クリック (mac は ⌘) はブラウザの別タブで開く
+              if (wantsNewTab(ev)) {
+                // Ctrl+クリック (mac は ⌘) / 中クリックは別タブで開く
                 openInNewTab(`${location.pathname}?path=${encodeURIComponent(dir)}`);
               } else {
                 void useExplorer.getState().navigate(dir);

@@ -18,7 +18,7 @@ import { toastError } from '../../stores/toast';
 import { baseName, parentPath, joinPath } from '../../lib/paths';
 import { savePreviewScroll, loadPreviewScroll } from '../../lib/previewViewMemory';
 import { renderMermaid } from './mermaid';
-import { openInNewTab } from '../../lib/appTabs';
+import { openInNewTab, wantsNewTab } from '../../lib/appTabs';
 import styles from './MarkdownTab.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -438,7 +438,8 @@ export function MarkdownTab() {
 
   /**
    * リンククリック: ページ内アンカーはスクロール、相対パスの Markdown はプレビューで開く、
-   * 外部 URL は別タブで開く (アプリ自体が遷移してしまうのを防ぐ)
+   * 外部 URL は別タブで開く (アプリ自体が遷移してしまうのを防ぐ)。
+   * Markdown へのリンクは Ctrl+クリック (mac は ⌘) / 中クリックで別タブのプレビューに開く
    */
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const a = (e.target as HTMLElement).closest('a');
@@ -457,7 +458,7 @@ export function MarkdownTab() {
       return;
     }
     const abs = resolveRef(current, href);
-    if (isMarkdownPath(abs)) openMarkdownPreview(abs, e.ctrlKey || e.metaKey);
+    if (isMarkdownPath(abs)) openMarkdownPreview(abs, wantsNewTab(e));
     else void useEditor.getState().open(abs);
   };
 
@@ -533,6 +534,10 @@ export function MarkdownTab() {
             className={cx('md-body')}
             style={{ zoom: zoom / 100 }}
             onClick={onClick}
+            // リンクの中クリックはブラウザの既定 (ブラウザの別タブで開く) にせず、クリックと同じ処理に渡す
+            onAuxClick={(e) => {
+              if (e.button === 1) onClick(e);
+            }}
             // marked → DOMPurify でサニタイズ済みの HTML
             dangerouslySetInnerHTML={{ __html: data.html }}
           />

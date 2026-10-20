@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import styles from './ContextMenu.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
+import { middleClickProps } from '../lib/appTabs';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -13,6 +14,12 @@ export interface MenuItem {
   title?: string;
   /** クリックイベントを受け取れる (Ctrl+クリック等の修飾キー判定用) */
   action?: (e: React.MouseEvent) => void;
+  /**
+   * 別タブで開ける項目 (Ctrl+クリックで別タブ)。中クリックでも action を呼ぶ
+   * (action 側は lib/appTabs.ts の wantsNewTab で別タブかを判定する)。
+   * 指定の無い項目は、誤操作を避けるため中クリックに反応しない
+   */
+  newTab?: boolean;
   disabled?: boolean;
   danger?: boolean;
   separator?: boolean;
@@ -96,6 +103,12 @@ function MenuList({ items, close }: { items: MenuItem[]; close: () => void }) {
               close();
               item.action?.(e);
             }}
+            {...(item.newTab
+              ? middleClickProps((e) => {
+                  close();
+                  item.action?.(e);
+                })
+              : {})}
           >
             {item.label}
             {item.detail && <span className={cx("menu-detail")}>{item.detail}</span>}

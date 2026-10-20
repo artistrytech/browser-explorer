@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { useExplorer } from '../stores/explorer';
 import { useSettings } from '../stores/settings';
 import { breadcrumbs } from '../lib/paths';
+import { middleClickProps } from '../lib/appTabs';
 import type { FsEntry, VolumeInfo } from '../types';
 import styles from './Sidebar.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
@@ -129,7 +130,8 @@ export function FolderTree({
           style={{ paddingLeft: 4 + depth * 14 }}
           data-tree-active={active}
           onClick={(e) => onOpen(e, nodePath)}
-          title={`${nodePath}\n(Ctrl+クリックで別タブ)`}
+          {...middleClickProps((e) => onOpen(e, nodePath))}
+          title={`${nodePath}\n(Ctrl+クリック / 中クリックで別タブ)`}
         >
           <span
             className={cx(`tree-twisty${leaf ? ' leaf' : ''}`)}
@@ -137,6 +139,8 @@ export function FolderTree({
               e.stopPropagation();
               if (!leaf) toggle(nodePath);
             }}
+            // 開閉ボタンの中クリックで別タブを開かない (クリックと同じく行の処理に渡さない)
+            onAuxClick={(e) => e.stopPropagation()}
           >
             <Chevron open={isOpen} />
           </span>

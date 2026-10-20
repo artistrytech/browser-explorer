@@ -12,7 +12,7 @@ import { openEntry, openWithDefault, runExternalTool } from './fileOps';
 import { saveEnteredChild } from './focusMemory';
 import { parentPath, baseName } from './paths';
 import type { MenuItem } from '../components/ContextMenu';
-import { openInNewTab } from './appTabs';
+import { openInNewTab, wantsNewTab } from './appTabs';
 
 /** contextMenu 設定 (id) を持てるメニュー項目 */
 export type CfgMenuItem = Omit<MenuItem, 'submenu'> & { id?: string; submenu?: CfgMenuItem[] };
@@ -108,14 +108,16 @@ export function fileOpenMenuItems(absPath: string): CfgMenuItem[] {
     {
       id: 'openNewWindow',
       label: '別ウィンドウで開く',
+      newTab: true,
       action: () => openDirInNewWindow(dir, name),
     },
     {
       id: 'openLocation',
       label: 'ファイル場所に移動',
+      newTab: true,
       action: (e) => {
         saveEnteredChild(dir, name, 0); // 移動先でこのファイルにフォーカスを当てる
-        if (e.ctrlKey || e.metaKey) openDirInNewWindow(dir, name);
+        if (wantsNewTab(e)) openDirInNewWindow(dir, name);
         else void useExplorer.getState().navigate(dir);
       },
     },

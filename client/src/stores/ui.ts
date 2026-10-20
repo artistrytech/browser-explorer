@@ -215,7 +215,7 @@ export function pushLogView(
   useUi.getState().setView('log');
 }
 
-/** ログタブをブラウザの別タブで開く (Ctrl+クリック用) */
+/** ログタブを別タブで開く (Ctrl+クリック / 中クリック用) */
 export function openLogInNewTab(filter: { path: string; follow: boolean } | null): void {
   const params = new URLSearchParams(location.search);
   params.set('view', 'log');

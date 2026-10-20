@@ -39,7 +39,7 @@ import { openConflictResolver } from '../../stores/conflict';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
 import type { FsEntry, SortKey } from '../../types';
-import { openInNewTab } from '../../lib/appTabs';
+import { openInNewTab, wantsNewTab } from '../../lib/appTabs';
 import styles from './FileList.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -364,11 +364,12 @@ export function FileList() {
     const rel = relOf(targetPath);
     const items: CfgMenuItem[] = [];
     if (rel !== null) {
-      // Git 管理下: パス絞り込みログ (002.md §1)。Ctrl+クリック (mac は ⌘) は別タブで開く
+      // Git 管理下: パス絞り込みログ (002.md §1)。Ctrl+クリック (mac は ⌘) / 中クリックは別タブで開く
       items.push({
         id: 'gitLog',
         label: 'Gitログ',
-        action: (e) => useGit.getState().showLogFor(rel, isFile, { newTab: e.ctrlKey || e.metaKey }),
+        newTab: true,
+        action: (e) => useGit.getState().showLogFor(rel, isFile, { newTab: wantsNewTab(e) }),
       });
       // HEAD 時点の内容を zip でダウンロード (対象がフォルダなら配下、ファイルならそのファイル)
       items.push({ id: 'gitArchive', label: 'アーカイブ', action: () => void downloadArchive(repoRoot!, rel) });
@@ -431,7 +432,7 @@ export function FileList() {
       ...(isDir
         ? [
             // フォルダ: 対象フォルダ自体を別ウィンドウ (ブラウザの別タブ) で開く
-            { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(entry.path) },
+            { id: 'openNewWindow', label: '別ウィンドウで開く', newTab: true, action: () => openInNewWindow(entry.path) },
             // 表示中のフォルダ (左) とこのフォルダ (右) を並べて整理する
             { id: 'openDualPane', label: '2 画面で整理…', action: () => openDualPane({ right: entry.path }) },
             { separator: true },
@@ -444,7 +445,7 @@ export function FileList() {
               ? [{ id: 'openPreview', label: 'プレビューで開く', action: () => openMarkdownPreview(entry.path) }]
               : []),
             // ファイル: 同じフォルダを別ウィンドウで開いて対象にフォーカス
-            { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(path, entry.name) },
+            { id: 'openNewWindow', label: '別ウィンドウで開く', newTab: true, action: () => openInNewWindow(path, entry.name) },
             { id: 'openDualPane', label: '2 画面で整理…', action: () => openDualPane() },
             { separator: true },
             // ファイルも OS 側で開ける (親フォルダを開き、そのファイルを選択した状態にする)
@@ -515,7 +516,7 @@ export function FileList() {
 
     const openGroup: CfgMenuItem[] = [
       // フォーカス無し: 表示中のフォルダを別ウィンドウで開く
-      { id: 'openNewWindow', label: '別ウィンドウで開く', action: () => openInNewWindow(path) },
+      { id: 'openNewWindow', label: '別ウィンドウで開く', newTab: true, action: () => openInNewWindow(path) },
       { id: 'openDualPane', label: '2 画面で整理…', action: () => openDualPane() },
       { separator: true },
       ...osItems(path),

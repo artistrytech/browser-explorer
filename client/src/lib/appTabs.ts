@@ -8,6 +8,8 @@
  * シェル外 (通常のブラウザのタブ) ではプレフィックス無しで、これまでと同じキーになる。
  */
 
+import type { MouseEvent as ReactMouseEvent } from 'react';
+
 const FRAME_NAME_PREFIX = 'ebtab-';
 /** postMessage の識別子 (シェル ⇄ タブ) */
 export const TAB_MESSAGE_TYPE = 'eb-tabs';
@@ -137,6 +139,29 @@ export function openInNewTab(url: string): void {
   const id = newTabId();
   copyTabSession(appTabId, id);
   postToShell({ type: TAB_MESSAGE_TYPE, kind: 'open', id, url });
+}
+
+/** 別タブで開く操作か: Ctrl+クリック (mac は ⌘+クリック) / 中クリック (ホイールクリック) */
+export function wantsNewTab(e: { ctrlKey: boolean; metaKey: boolean; button: number }): boolean {
+  return e.ctrlKey || e.metaKey || e.button === 1;
+}
+
+/**
+ * 中クリックでも handler (onClick と同じ処理) を呼ぶための props。Ctrl+クリックで別タブに開ける要素に付ける
+ * (中クリックは click ではなく auxclick になるため)。handler 側は wantsNewTab で別タブかを判定する。
+ * mousedown の既定動作 (自動スクロール) は止める
+ */
+export function middleClickProps<E extends Element>(handler: (e: ReactMouseEvent<E>) => void) {
+  return {
+    onMouseDown: (e: ReactMouseEvent<E>) => {
+      if (e.button === 1) e.preventDefault();
+    },
+    onAuxClick: (e: ReactMouseEvent<E>) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      handler(e);
+    },
+  };
 }
 
 /** シェルのページ */
