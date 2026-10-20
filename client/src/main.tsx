@@ -2,6 +2,8 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import { api } from './api/client';
+import { initTabClient } from './app/tabClient';
+import { enterShellIfStandalone } from './lib/appTabs';
 import './styles/global.module.scss';
 
 /**
@@ -28,8 +30,14 @@ window.addEventListener('unhandledrejection', (e) => {
   });
 });
 
-createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+// PWA のウィンドウで直接開いたときはアプリ内タブのシェルへ切り替える (この画面は描画しない)
+if (!enterShellIfStandalone()) {
+  // アプリ内タブ (tabs.html) の iframe として動くときの連携。App の初期化で URL を書き換える前に始める
+  initTabClient();
+
+  createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  );
+}

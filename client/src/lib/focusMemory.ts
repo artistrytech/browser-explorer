@@ -4,6 +4,8 @@
  * - キーはタブ内で最大 MAX_KEYS 件、ts の古い順に間引く。
  */
 
+import { tabSession } from './appTabs';
+
 const PREFIX = 'exp:focus:';
 const MAX_KEYS = 200;
 
@@ -20,7 +22,7 @@ export interface FocusRecord {
 
 export function saveFocus(path: string, rec: Omit<FocusRecord, 'ts'>): void {
   try {
-    sessionStorage.setItem(PREFIX + path, JSON.stringify({ ...rec, ts: Date.now() }));
+    tabSession.setItem(PREFIX + path, JSON.stringify({ ...rec, ts: Date.now() }));
     prune();
   } catch {
     /* storage full 等は無視 */
@@ -29,7 +31,7 @@ export function saveFocus(path: string, rec: Omit<FocusRecord, 'ts'>): void {
 
 export function loadFocus(path: string): FocusRecord | null {
   try {
-    const raw = sessionStorage.getItem(PREFIX + path);
+    const raw = tabSession.getItem(PREFIX + path);
     return raw ? (JSON.parse(raw) as FocusRecord) : null;
   } catch {
     return null;
@@ -52,11 +54,10 @@ export function saveEnteredChild(parentPath: string, childName: string, index: n
 
 function prune(): void {
   const keys: { key: string; ts: number }[] = [];
-  for (let i = 0; i < sessionStorage.length; i++) {
-    const key = sessionStorage.key(i);
-    if (!key?.startsWith(PREFIX)) continue;
+  for (const key of tabSession.keys()) {
+    if (!key.startsWith(PREFIX)) continue;
     try {
-      const rec = JSON.parse(sessionStorage.getItem(key) ?? '{}') as FocusRecord;
+      const rec = JSON.parse(tabSession.getItem(key) ?? '{}') as FocusRecord;
       keys.push({ key, ts: rec.ts ?? 0 });
     } catch {
       keys.push({ key, ts: 0 });
@@ -65,6 +66,6 @@ function prune(): void {
   if (keys.length <= MAX_KEYS) return;
   keys.sort((a, b) => a.ts - b.ts);
   for (const { key } of keys.slice(0, keys.length - MAX_KEYS)) {
-    sessionStorage.removeItem(key);
+    tabSession.removeItem(key);
   }
 }

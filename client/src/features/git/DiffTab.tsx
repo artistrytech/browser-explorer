@@ -5,6 +5,7 @@ import { monaco, languageForPath, MONACO_FONT_FAMILY } from '../editor/monacoSet
 import { useSettings } from '../../stores/settings';
 import { switchView, replaceView, useUi } from '../../stores/ui';
 import { toastError } from '../../stores/toast';
+import { openInNewTab } from '../../lib/appTabs';
 import styles from './DiffTab.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -63,7 +64,7 @@ export function diffTargetFromUrl(): CommitDiffTarget | null {
 export function openCommitDiff(target: CommitDiffTarget, newTab = false): void {
   const params = diffParams(target);
   if (newTab) {
-    window.open(`${location.pathname}?${params}`, '_blank');
+    openInNewTab(`${location.pathname}?${params}`);
     return;
   }
   useDiffTab.getState().open(target);

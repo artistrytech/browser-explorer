@@ -12,6 +12,7 @@ import { openEntry, openWithDefault, runExternalTool } from './fileOps';
 import { saveEnteredChild } from './focusMemory';
 import { parentPath, baseName } from './paths';
 import type { MenuItem } from '../components/ContextMenu';
+import { openInNewTab } from './appTabs';
 
 /** contextMenu 設定 (id) を持てるメニュー項目 */
 export type CfgMenuItem = Omit<MenuItem, 'submenu'> & { id?: string; submenu?: CfgMenuItem[] };
@@ -75,9 +76,9 @@ export function osMenuItems(targetPath: string, platform: string): CfgMenuItem[]
 
 /** 指定フォルダをブラウザの別タブで開く。focusName を渡すとその項目にフォーカスを当てる */
 export function openDirInNewWindow(dir: string, focusName?: string): void {
-  // フォーカス記録の sessionStorage は window.open 時に新タブへ複製されるので、先に保存する
+  // フォーカス記録の sessionStorage は別タブで開くときに新タブへ複製されるので、先に保存する
   if (focusName) saveEnteredChild(dir, focusName, 0);
-  window.open(`${location.pathname}?path=${encodeURIComponent(dir)}`, '_blank');
+  openInNewTab(`${location.pathname}?path=${encodeURIComponent(dir)}`);
 }
 
 /**

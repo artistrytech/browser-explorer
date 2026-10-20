@@ -4,6 +4,8 @@
  * (コメント・確認済みなど「内容」は DB 側に持つ → server/services/reviewStore.ts)
  */
 
+import { tabSession } from './appTabs';
+
 const PREFIX = 'review:view:';
 
 export interface ReviewViewRecord {
@@ -32,7 +34,7 @@ const EMPTY: Omit<ReviewViewRecord, 'ts'> = {
 
 export function loadReviewView(id: number): ReviewViewRecord | null {
   try {
-    const raw = sessionStorage.getItem(PREFIX + id);
+    const raw = tabSession.getItem(PREFIX + id);
     if (!raw) return null;
     const rec = JSON.parse(raw) as ReviewViewRecord;
     return { ...rec, diffScrollTops: rec.diffScrollTops ?? {}, viewed: rec.viewed ?? [] };
@@ -45,7 +47,7 @@ export function loadReviewView(id: number): ReviewViewRecord | null {
 export function saveReviewView(id: number, partial: Partial<Omit<ReviewViewRecord, 'ts'>>): void {
   try {
     const prev = loadReviewView(id) ?? EMPTY;
-    sessionStorage.setItem(PREFIX + id, JSON.stringify({ ...prev, ...partial, ts: Date.now() }));
+    tabSession.setItem(PREFIX + id, JSON.stringify({ ...prev, ...partial, ts: Date.now() }));
   } catch {
     /* storage full 等は無視 */
   }
@@ -64,7 +66,7 @@ export function loadReviewDiffScroll(id: number, path: string): number {
 
 export function clearReviewView(id: number): void {
   try {
-    sessionStorage.removeItem(PREFIX + id);
+    tabSession.removeItem(PREFIX + id);
   } catch {
     /* 無視 */
   }

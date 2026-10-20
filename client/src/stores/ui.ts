@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
+import { openInNewTab } from '../lib/appTabs';
 
 /**
  * メイン領域の表示: ファイル一覧 / コミット(変更) / ログ / ブランチ / エディタ / コミット差分 / Markdown プレビュー /
@@ -224,7 +225,7 @@ export function openLogInNewTab(filter: { path: string; follow: boolean } | null
     params.set('logpath', filter.path);
     if (filter.follow) params.set('follow', '1');
   }
-  window.open(`${location.pathname}?${params}`, '_blank');
+  openInNewTab(`${location.pathname}?${params}`);
 }
 
 /** 履歴を積まずにビューを切替え、URL の ?view= を現状に合わせる (自動フォールバック用) */

@@ -1,0 +1,143 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tab-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-height: 34px;
+  padding: 4px 8px 0;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  user-select: none;
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 200px;
+  min-width: 72px;
+  height: 30px;
+  padding: 0 6px 0 10px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: var(--bg-hover);
+}
+
+.tab.active {
+  /* 下の境界線に重ねて、本体とつながって見えるようにする */
+  margin-bottom: -1px;
+  height: 31px;
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.tab.dragging {
+  opacity: 0.5;
+}
+
+.tab.drop-before::before,
+.tab.drop-after::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
+}
+
+.tab.drop-before::before {
+  left: -2px;
+}
+
+.tab.drop-after::after {
+  right: -2px;
+}
+
+.tab-icon {
+  flex: none;
+  font-size: 12px;
+}
+
+.tab-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  flex: none;
+  border: none;
+  background: transparent;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tab-close:hover {
+  background: var(--bg-selected);
+  color: var(--danger);
+}
+
+.tab-add {
+  flex: none;
+  align-self: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.tab-add:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.frames {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+/*
+ * 非表示のタブも display:none にはせず、重ねたうえで隠す。
+ * display:none だと iframe 内の幅・高さが 0 になり、エディタやパネルの寸法が崩れるため。
+ */
+.frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  visibility: hidden;
+}
+
+.frame.active {
+  visibility: visible;
+}
+
+.drag-guard {
+  position: absolute;
+  inset: 0;
+}

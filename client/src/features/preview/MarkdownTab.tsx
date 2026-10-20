@@ -18,6 +18,7 @@ import { toastError } from '../../stores/toast';
 import { baseName, parentPath, joinPath } from '../../lib/paths';
 import { savePreviewScroll, loadPreviewScroll } from '../../lib/previewViewMemory';
 import { renderMermaid } from './mermaid';
+import { openInNewTab } from '../../lib/appTabs';
 import styles from './MarkdownTab.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -83,7 +84,7 @@ export function openMarkdownPreview(path: string, newTab = false): void {
   params.set('view', 'preview');
   params.set('ppath', path);
   if (newTab) {
-    window.open(`${location.pathname}?${params}`, '_blank');
+    openInNewTab(`${location.pathname}?${params}`);
     return;
   }
   usePreviewTab.getState().open(path);

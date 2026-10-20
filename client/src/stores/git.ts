@@ -147,7 +147,7 @@ export const useGit = create<GitStore>((set, get) => ({
     // リポジトリルート自体 ('') は全体表示 = 絞り込みなし
     const filter = relPath ? { path: relPath, follow: isFile } : null;
     if (newTab) {
-      // 別タブで開く: sessionStorage は window.open 時に複製されるので、
+      // 別タブで開く: sessionStorage は別タブで開くときに複製されるので、
       // 差分ファイル一覧のフィルタ初期値を一時的に対象パスへ差し替えてから開く
       const prev = repo ? loadGitView(repo)?.filesFilter ?? '' : '';
       if (repo) saveGitView(repo, { filesFilter: relPath });

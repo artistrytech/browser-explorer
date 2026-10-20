@@ -5,6 +5,8 @@
  * キーはタブ内で最大 MAX_KEYS 件、ts の古い順に間引く。
  */
 
+import { tabSession } from './appTabs';
+
 const PREFIX = 'preview:scroll:';
 const MAX_KEYS = 200;
 
@@ -15,7 +17,7 @@ interface ScrollRecord {
 
 export function savePreviewScroll(path: string, scrollTop: number): void {
   try {
-    sessionStorage.setItem(PREFIX + path, JSON.stringify({ scrollTop, ts: Date.now() }));
+    tabSession.setItem(PREFIX + path, JSON.stringify({ scrollTop, ts: Date.now() }));
     prune();
   } catch {
     /* storage full 等は無視 */
@@ -24,7 +26,7 @@ export function savePreviewScroll(path: string, scrollTop: number): void {
 
 export function loadPreviewScroll(path: string): number | null {
   try {
-    const raw = sessionStorage.getItem(PREFIX + path);
+    const raw = tabSession.getItem(PREFIX + path);
     if (!raw) return null;
     const rec = JSON.parse(raw) as ScrollRecord;
     return typeof rec.scrollTop === 'number' ? rec.scrollTop : null;
@@ -35,11 +37,10 @@ export function loadPreviewScroll(path: string): number | null {
 
 function prune(): void {
   const keys: { key: string; ts: number }[] = [];
-  for (let i = 0; i < sessionStorage.length; i++) {
-    const key = sessionStorage.key(i);
-    if (!key?.startsWith(PREFIX)) continue;
+  for (const key of tabSession.keys()) {
+    if (!key.startsWith(PREFIX)) continue;
     try {
-      const rec = JSON.parse(sessionStorage.getItem(key) ?? '{}') as ScrollRecord;
+      const rec = JSON.parse(tabSession.getItem(key) ?? '{}') as ScrollRecord;
       keys.push({ key, ts: rec.ts ?? 0 });
     } catch {
       keys.push({ key, ts: 0 });
@@ -48,6 +49,6 @@ function prune(): void {
   if (keys.length <= MAX_KEYS) return;
   keys.sort((a, b) => a.ts - b.ts);
   for (const { key } of keys.slice(0, keys.length - MAX_KEYS)) {
-    sessionStorage.removeItem(key);
+    tabSession.removeItem(key);
   }
 }

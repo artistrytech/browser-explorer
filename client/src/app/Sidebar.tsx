@@ -18,6 +18,7 @@ import {
 import { Chevron, FolderTree } from './FolderTree';
 import { ProjectTree } from './ProjectTree';
 import type { VolumeInfo } from '../types';
+import { openInNewTab } from '../lib/appTabs';
 import styles from './Sidebar.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
 
@@ -105,7 +106,7 @@ export function Sidebar() {
       const params = new URLSearchParams();
       params.set('path', target);
       if (view !== 'files') params.set('view', view);
-      window.open(`${location.pathname}?${params}`, '_blank');
+      openInNewTab(`${location.pathname}?${params}`);
       return;
     }
     const sameRepo = repoRoot === target;

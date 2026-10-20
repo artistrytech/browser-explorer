@@ -3,6 +3,8 @@
  * Git タブは非表示時にアンマウントされるため、タブを戻った際にここから復元する。
  */
 
+import { tabSession } from './appTabs';
+
 const PREFIX = 'git:view:';
 
 /** ブランチタブ内の一覧の切替 (ローカル / リモート / バックアップ) */
@@ -32,7 +34,7 @@ export interface GitViewRecord {
 
 export function loadGitView(repo: string): GitViewRecord | null {
   try {
-    const raw = sessionStorage.getItem(PREFIX + repo);
+    const raw = tabSession.getItem(PREFIX + repo);
     return raw ? (JSON.parse(raw) as GitViewRecord) : null;
   } catch {
     return null;
@@ -53,7 +55,7 @@ export function saveGitView(repo: string, partial: Partial<Omit<GitViewRecord, '
       selectedBranchKey: null,
       branchListTab: 'local',
     };
-    sessionStorage.setItem(PREFIX + repo, JSON.stringify({ ...prev, ...partial, ts: Date.now() }));
+    tabSession.setItem(PREFIX + repo, JSON.stringify({ ...prev, ...partial, ts: Date.now() }));
   } catch {
     /* storage full 等は無視 */
   }

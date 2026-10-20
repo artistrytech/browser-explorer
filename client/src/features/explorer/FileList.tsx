@@ -39,6 +39,7 @@ import { openConflictResolver } from '../../stores/conflict';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
 import type { FsEntry, SortKey } from '../../types';
+import { openInNewTab } from '../../lib/appTabs';
 import styles from './FileList.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -310,13 +311,13 @@ export function FileList() {
   /**
    * 「別ウィンドウで開く」: 指定フォルダをブラウザの別タブで開く。
    * focusName を渡すとそのエントリにフォーカスを当てる
-   * (フォーカス記録の sessionStorage は window.open 時に新タブへ複製される)
+   * (フォーカス記録の sessionStorage は別タブで開くときに新タブへ複製される)
    */
   const openInNewWindow = (dir: string, focusName?: string) => {
     if (focusName) {
       saveEnteredChild(dir, focusName, displayed.findIndex((d) => d.name === focusName));
     }
-    window.open(`${location.pathname}?path=${encodeURIComponent(dir)}`, '_blank');
+    openInNewTab(`${location.pathname}?path=${encodeURIComponent(dir)}`);
   };
 
   /** OS 連携項目 (002.md §4)。ファイルを渡すと親フォルダを開く (対象は選択状態になる) */

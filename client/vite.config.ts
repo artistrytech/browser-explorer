@@ -130,6 +130,15 @@ export default defineConfig({
   define: {
     __APP_TOKEN__: JSON.stringify(config.token),
   },
+  build: {
+    rollupOptions: {
+      // アプリ本体 (/) と、アプリ内タブのシェル (/tabs.html。PWA の起動先)
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        tabs: path.resolve(__dirname, 'tabs.html'),
+      },
+    },
+  },
   server: {
     host: '127.0.0.1',
     port: config.clientPort,

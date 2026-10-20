@@ -3,6 +3,8 @@
  * 表示の好みなのでウィンドウ単位ではなく、ブラウザの別タブ・再起動後も引き継ぐ。
  */
 
+import { tabSession } from './appTabs';
+
 const KEY = 'sidebar:collapsed';
 
 export function loadCollapsedSections(): Set<string> {
@@ -57,7 +59,7 @@ function expandedKey(repoRoot: string): string {
 
 export function loadProjectExpanded(repoRoot: string): Set<string> {
   try {
-    const raw = sessionStorage.getItem(expandedKey(repoRoot));
+    const raw = tabSession.getItem(expandedKey(repoRoot));
     if (!raw) return new Set();
     const parsed = JSON.parse(raw) as unknown;
     return new Set(Array.isArray(parsed) ? parsed.filter((n): n is string => typeof n === 'string') : []);
@@ -68,8 +70,8 @@ export function loadProjectExpanded(repoRoot: string): Set<string> {
 
 export function saveProjectExpanded(repoRoot: string, rels: Set<string>): void {
   try {
-    if (rels.size === 0) sessionStorage.removeItem(expandedKey(repoRoot));
-    else sessionStorage.setItem(expandedKey(repoRoot), JSON.stringify([...rels]));
+    if (rels.size === 0) tabSession.removeItem(expandedKey(repoRoot));
+    else tabSession.setItem(expandedKey(repoRoot), JSON.stringify([...rels]));
   } catch {
     /* storage full 等は無視 */
   }

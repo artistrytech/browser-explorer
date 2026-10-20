@@ -1,0 +1,17 @@
+{
+  "name": "Explorer Browser",
+  "short_name": "Explorer",
+  "description": "Explorer (ファイル管理) にテキスト編集と Git 管理を統合したローカル Web アプリ",
+  "id": "/tabs.html",
+  "start_url": "/tabs.html",
+  "scope": "/",
+  "display": "standalone",
+  "launch_handler": { "client_mode": ["focus-existing", "auto"] },
+  "background_color": "#ffffff",
+  "lang": "ja",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

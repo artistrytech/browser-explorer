@@ -5,7 +5,11 @@
  * sessionStorage はタブごとに独立し、リロードしても残るので「タブ = セッション」になる
  * (タブの複製ではコピーされるため、複製元と同じ ID になる点は許容する)。
  * sessionStorage が使えない環境 (無効化等) ではメモリ上の ID にフォールバックする。
+ * アプリ内タブ (tabs.html) ではタブ単位の記憶 (tabSession) に持つので、タブごとに別の ID になる。
  */
+
+import { tabSession } from './appTabs';
+
 const KEY = 'appSessionId';
 
 function generate(): string {
@@ -19,13 +23,13 @@ let cached: string | null = null;
 export function getSessionId(): string {
   if (cached) return cached;
   try {
-    const saved = sessionStorage.getItem(KEY);
+    const saved = tabSession.getItem(KEY);
     if (saved) {
       cached = saved;
       return saved;
     }
     const id = generate();
-    sessionStorage.setItem(KEY, id);
+    tabSession.setItem(KEY, id);
     cached = id;
     return id;
   } catch {

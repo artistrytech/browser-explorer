@@ -42,6 +42,7 @@ import { openCommitDiff } from './DiffTab';
 import { CommitFileDiff, commitFileLabel } from './CommitFileDiff';
 import { useRebase } from '../../stores/rebase';
 import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
+import { openInNewTab } from '../../lib/appTabs';
 import styles from './GitPanel.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -1155,11 +1156,11 @@ export function GitPanel({ tab }: { tab: GitTab }) {
               const slash = abs.lastIndexOf('/');
               const dir = abs.slice(0, slash);
               // 移動先でこのファイルにフォーカスが当たるように記録してから遷移する
-              // (新規タブは sessionStorage が複製されるので、window.open より先に保存する)
+              // (新規タブは sessionStorage が複製されるので、別タブで開くより先に保存する)
               saveEnteredChild(dir, f.path.slice(f.path.lastIndexOf('/') + 1), 0);
               if (ev.ctrlKey || ev.metaKey) {
                 // Ctrl+クリック (mac は ⌘) はブラウザの別タブで開く
-                window.open(`${location.pathname}?path=${encodeURIComponent(dir)}`, '_blank');
+                openInNewTab(`${location.pathname}?path=${encodeURIComponent(dir)}`);
               } else {
                 void useExplorer.getState().navigate(dir);
               }
