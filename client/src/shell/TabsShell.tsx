@@ -38,7 +38,6 @@ interface SavedState {
 }
 
 const STATE_KEY = 'tabsShell:state';
-const THEME_KEY = 'tabsShell:theme';
 const DEFAULT_URL = '/';
 const DEFAULT_TITLE = 'Explorer';
 
@@ -95,9 +94,6 @@ function initialState(primary: boolean, initialOpen: string | null): { tabs: She
   return { tabs: [tab], activeId: tab.id };
 }
 
-function applyTheme(theme: string): void {
-  document.body.dataset.theme = theme;
-}
 
 /** 新しいタブは表示中のタブと同じフォルダで開く */
 function newTabUrlFrom(tab: ShellTab | undefined): string {
@@ -249,14 +245,8 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
         setTabs((prev) =>
           prev.map((t) => (t.id === from ? { ...t, url: msg.url, title: msg.title || DEFAULT_TITLE } : t)),
         );
-        if (msg.theme && msg.theme !== document.body.dataset.theme) {
-          applyTheme(msg.theme);
-          try {
-            localStorage.setItem(THEME_KEY, msg.theme);
-          } catch {
-            /* ignore */
-          }
-        }
+        // シェルの配色をタブに合わせる (控えの保存はタブ側の App が行う。起動直後の配色は tabs.html で付ける)
+        if (msg.theme) document.body.dataset.theme = msg.theme;
       } else if (msg.kind === 'open') {
         if (isAppUrl(msg.url)) addTab(msg.url, from, msg.id);
       } else if (msg.kind === 'command') {
@@ -403,13 +393,4 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
       <DialogHost />
     </div>
   );
-}
-
-/** 起動時のテーマ。タブが読み込まれて設定を通知してくるまでの間、前回の配色で表示する */
-export function applySavedTheme(): void {
-  try {
-    applyTheme(localStorage.getItem(THEME_KEY) ?? 'light');
-  } catch {
-    applyTheme('light');
-  }
 }

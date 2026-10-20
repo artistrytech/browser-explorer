@@ -1,10 +1,9 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { TabsShell, applySavedTheme } from './TabsShell';
+import { TabsShell } from './TabsShell';
 import { acquirePrimary, sendOpenToPrimary, takeOpenParam } from './shellWindow';
 import '../styles/global.module.scss';
 
-applySavedTheme();
 void start();
 
 async function start() {

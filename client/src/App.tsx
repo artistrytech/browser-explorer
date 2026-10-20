@@ -58,6 +58,7 @@ import { onFsChange, onWsEvent } from './api/ws';
 import { useRebase } from './stores/rebase';
 import { useAppLog, closeAppLog } from './stores/applog';
 import { api } from './api/client';
+import { saveCachedTheme } from './lib/themeCache';
 import { parentPath, isRootPath, baseName } from './lib/paths';
 import styles from './App.module.scss';
 import { createCssModuleClassNames } from './lib/cssModule';
@@ -230,10 +231,11 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // テーマ反映
+  // テーマ反映。次回の起動直後 (設定の読み込み前) に使えるよう控えておく
   useEffect(() => {
     document.body.dataset.theme = theme;
-  }, [theme]);
+    if (loaded) saveCachedTheme(theme);
+  }, [theme, loaded]);
 
   // レビュー詳細は差分をできるだけ広く見せたいので、その間だけサイドバーを畳む
   useEffect(() => {

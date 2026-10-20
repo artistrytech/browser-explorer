@@ -12,6 +12,17 @@
     <title>Explorer</title>
   </head>
   <body>
+    <script>
+      // 設定 (API) の読み込み前にライトテーマで描画されて白くちらつかないよう、
+      // 最後に使ったテーマを CSS の適用前に付けておく (src/lib/themeCache.ts と同じキー)
+      try {
+        if (localStorage.getItem('app:theme') === 'dark') {
+          document.body.dataset.theme = 'dark';
+          // CSS が当たるまでの背景。アプリ内タブ (iframe) では透明のままにしてシェルの背景を見せる
+          if (window.parent === window) document.documentElement.style.backgroundColor = '#1e1e1e';
+        }
+      } catch (e) {}
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

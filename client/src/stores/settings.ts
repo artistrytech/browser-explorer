@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { useToast, toastError } from './toast';
 import type { Favorite, RecentItem, SortKey, ViewMode } from '../types';
 import { DEFAULT_BACKUP_BRANCH_PATTERN } from '../lib/backupBranch';
+import { loadCachedTheme } from '../lib/themeCache';
 
 /** 修飾キー基準。auto = OS に合わせる (Mac は ⌘、それ以外は Ctrl) */
 export type ModKey = 'auto' | 'ctrl' | 'meta';
@@ -59,7 +60,8 @@ const DEFAULT_SETTINGS: Settings = {
   sortKey: 'name',
   sortAsc: true,
   columnWidths: DEFAULT_COLUMN_WIDTHS,
-  theme: 'light',
+  // 設定の読み込みが終わるまでは最後に使ったテーマで描画する (ライトで描画されて白くちらつかないように)
+  theme: loadCachedTheme(),
   fontSize: 14,
   wordWrap: false,
   defaultEncoding: 'UTF-8',
