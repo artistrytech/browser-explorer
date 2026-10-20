@@ -158,9 +158,17 @@ export function enterShellIfStandalone(): boolean {
   return true;
 }
 
+/** T / W キーか (IME の状態や配列で key が変わっても判定できるよう code も見る) */
+function isLetterKey(e: KeyboardEvent, letter: 't' | 'w'): boolean {
+  return e.key.toLowerCase() === letter || e.code === `Key${letter.toUpperCase()}`;
+}
+
 /**
- * タブ操作のショートカット判定。ブラウザが予約している Ctrl+T / Ctrl+W は横取りできないので Alt に割り当てる。
- * - Alt+T: 新しいタブ / Alt+W: タブを閉じる
+ * タブ操作のショートカット判定。
+ * - Ctrl+T: 新しいタブ / Ctrl+W: タブを閉じる (ブラウザのタブと同じ)。
+ *   PWA のウィンドウではブラウザがこれらのキーを予約しないので、ページ側で横取りできる。
+ *   通常のブラウザのタブで tabs.html を開いたときはブラウザが先に使うため届かない
+ * - Alt+T / Alt+W: 同上の代替 (通常のブラウザのタブでも使える)
  * - Ctrl+Tab, Ctrl+PageDown: 次のタブ / Ctrl+Shift+Tab, Ctrl+PageUp: 前のタブ
  *   (ブラウザが先に使う環境では届かない)
  * - Alt+1〜8: n 番目のタブ / Alt+9: 最後のタブ
@@ -168,9 +176,8 @@ export function enterShellIfStandalone(): boolean {
 export function tabCommandFromKey(e: KeyboardEvent): TabCommand | null {
   if (e.metaKey) return null;
   if (e.altKey && !e.ctrlKey && !e.shiftKey) {
-    const k = e.key.toLowerCase();
-    if (k === 't') return { kind: 'new' };
-    if (k === 'w') return { kind: 'close' };
+    if (isLetterKey(e, 't')) return { kind: 'new' };
+    if (isLetterKey(e, 'w')) return { kind: 'close' };
     if (/^Digit[1-9]$/.test(e.code)) {
       const n = Number(e.code.slice(5));
       return { kind: 'select', index: n === 9 ? -1 : n - 1 };
@@ -178,6 +185,8 @@ export function tabCommandFromKey(e: KeyboardEvent): TabCommand | null {
     return null;
   }
   if (e.ctrlKey && !e.altKey) {
+    if (!e.shiftKey && isLetterKey(e, 't')) return { kind: 'new' };
+    if (!e.shiftKey && isLetterKey(e, 'w')) return { kind: 'close' };
     if (e.key === 'Tab') return { kind: e.shiftKey ? 'prev' : 'next' };
     if (!e.shiftKey && e.key === 'PageDown') return { kind: 'next' };
     if (!e.shiftKey && e.key === 'PageUp') return { kind: 'prev' };

@@ -53,10 +53,13 @@ PWA としてインストールできる。PWA は <http://127.0.0.1:5173/tabs.h
 
 | キー | 動作 |
 | --- | --- |
-| Alt+T | 新しいタブ |
-| Alt+W | タブを閉じる |
+| Ctrl+T (Alt+T) | 新しいタブ |
+| Ctrl+W (Alt+W) | タブを閉じる |
 | Ctrl+Tab / Ctrl+Shift+Tab, Ctrl+PageDown / Ctrl+PageUp | 次 / 前のタブ (ブラウザが先に使う環境では効かない) |
 | Alt+1〜8 / Alt+9 | n 番目のタブ / 最後のタブ |
+
+Ctrl+T / Ctrl+W が効くのは PWA のウィンドウだけ (通常のブラウザのタブで `/tabs.html` を開いた場合は
+ブラウザ自身のタブ操作になるので、Alt+T / Alt+W を使う)。
 
 ## 構成
 

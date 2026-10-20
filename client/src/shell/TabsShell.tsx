@@ -359,7 +359,7 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
             <span className={cx('tab-label')}>{t.title}</span>
             <button
               className={cx('tab-close')}
-              title="タブを閉じる (Alt+W)"
+              title="タブを閉じる (Ctrl+W)"
               onClick={(e) => {
                 e.stopPropagation();
                 void closeTab(t.id);
@@ -371,7 +371,7 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
         ))}
         <button
           className={cx('tab-add')}
-          title="新しいタブ (Alt+T)"
+          title="新しいタブ (Ctrl+T)"
           onClick={() => runCommand({ kind: 'new' }, activeId)}
         >
           ＋
