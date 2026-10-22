@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ContextMenuHost, useContextMenu } from '../components/ContextMenu';
 import { DialogHost } from '../components/DialogHost';
 import { confirmDialog } from '../stores/dialog';
 import {
@@ -114,6 +115,7 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
   const frames = useRef(new Map<string, HTMLIFrameElement>());
   /** 閉じたタブの ID (sessionStorage の片付け待ち) */
   const closedIds = useRef<string[]>([]);
+  const openMenu = useContextMenu((s) => s.open);
   const stateRef = useRef({ tabs, activeId });
   stateRef.current = { tabs, activeId };
 
@@ -157,44 +159,75 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
     setActiveId(tab.id);
   }, []);
 
-  const closeTab = useCallback(async (id: string) => {
-    const frameWin = frames.current.get(id)?.contentWindow as AppTabWindow | null | undefined;
-    let unsaved = false;
-    try {
-      unsaved = frameWin?.ebTabHasUnsaved?.() ?? false;
-    } catch {
-      /* 読み込み途中などで呼べないときは未保存なしとして扱う */
-    }
-    if (unsaved) {
-      setActiveId(id);
-      const tab = stateRef.current.tabs.find((t) => t.id === id);
+  /**
+   * タブをまとめて閉じる。エディタに未保存の変更があるタブを含むときは 1 回だけ確認し、
+   * キャンセルしたらどのタブも閉じない
+   */
+  const closeTabs = useCallback(async (ids: string[]) => {
+    const unsaved = ids.filter((id) => {
+      const frameWin = frames.current.get(id)?.contentWindow as AppTabWindow | null | undefined;
+      try {
+        return frameWin?.ebTabHasUnsaved?.() ?? false;
+      } catch {
+        /* 読み込み途中などで呼べないときは未保存なしとして扱う */
+        return false;
+      }
+    });
+    if (unsaved.length > 0) {
+      const titleOf = (id: string) => stateRef.current.tabs.find((t) => t.id === id)?.title ?? DEFAULT_TITLE;
+      // 1 つだけなら、そのタブを表示して確認する
+      if (unsaved.length === 1) setActiveId(unsaved[0]);
       const ok = await confirmDialog(
-        'タブを閉じる',
-        `「${tab?.title ?? DEFAULT_TITLE}」のエディタに未保存の変更があります。破棄して閉じますか?`,
+        ids.length > 1 ? 'タブをまとめて閉じる' : 'タブを閉じる',
+        unsaved.length === 1
+          ? `「${titleOf(unsaved[0])}」のエディタに未保存の変更があります。破棄して閉じますか?`
+          : `次のタブのエディタに未保存の変更があります。破棄して閉じますか?\n${unsaved
+              .map((id) => `・${titleOf(id)}`)
+              .join('\n')}`,
         true,
       );
       if (!ok) return;
     }
     const { tabs: cur, activeId: curActive } = stateRef.current;
-    const i = cur.findIndex((t) => t.id === id);
-    if (i < 0) return;
-    let rest = cur.filter((t) => t.id !== id);
+    const closing = new Set(ids.filter((id) => cur.some((t) => t.id === id)));
+    if (closing.size === 0) return;
+    let rest = cur.filter((t) => !closing.has(t.id));
     let nextActive = curActive;
     if (rest.length === 0) {
       // 最後のタブを閉じたら、同じフォルダで新しいタブを開き直す (シェルを空にしない)
-      const fresh = makeTab(newTabUrlFrom(cur[i]));
+      const fresh = makeTab(newTabUrlFrom(cur.find((t) => t.id === curActive) ?? cur[0]));
       rest = [fresh];
       setFrameOrder((prev) => [...prev, fresh.id]);
       nextActive = fresh.id;
-    } else if (curActive === id) {
-      // ブラウザと同じく右隣 (無ければ左隣) を表示する
-      nextActive = rest[Math.min(i, rest.length - 1)].id;
+    } else if (closing.has(curActive)) {
+      // ブラウザと同じく右隣 (無ければ左隣) の残るタブを表示する
+      const i = cur.findIndex((t) => t.id === curActive);
+      const right = cur.slice(i + 1).find((t) => !closing.has(t.id));
+      const left = cur.slice(0, i).reverse().find((t) => !closing.has(t.id));
+      nextActive = (right ?? left)!.id;
     }
     setTabs(rest);
     setActiveId(nextActive);
-    setFrameOrder((prev) => prev.filter((f) => f !== id));
-    closedIds.current.push(id);
+    setFrameOrder((prev) => prev.filter((f) => !closing.has(f)));
+    closedIds.current.push(...closing);
   }, []);
+
+  const closeTab = useCallback((id: string) => closeTabs([id]), [closeTabs]);
+
+  /** タブの右クリックメニュー */
+  const openTabMenu = (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    const i = tabs.findIndex((t) => t.id === id);
+    const others = tabs.filter((t) => t.id !== id).map((t) => t.id);
+    const right = tabs.slice(i + 1).map((t) => t.id);
+    openMenu(e.clientX, e.clientY, [
+      { label: '新しいタブ', action: () => addTab(newTabUrlFrom(tabs[i]), id) },
+      { separator: true },
+      { label: 'タブを閉じる', action: () => void closeTab(id) },
+      { label: '他のタブをすべて閉じる', disabled: others.length === 0, action: () => void closeTabs(others) },
+      { label: '右側のタブを閉じる', disabled: right.length === 0, action: () => void closeTabs(right) },
+    ]);
+  };
 
   // 閉じたタブの sessionStorage を片付ける。iframe を外すとタブ側の pagehide で記憶が書き込まれるため、
   // 外し終わった (コミット後の) タイミングで消す
@@ -315,6 +348,7 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
             title={t.title}
             draggable
             onClick={() => setActiveId(t.id)}
+            onContextMenu={(e) => openTabMenu(e, t.id)}
             onMouseDown={(e) => {
               // 中クリックで閉じる
               if (e.button === 1) {
@@ -390,6 +424,7 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
         {/* タブのドラッグ中に iframe の上へ落としても、アプリ側のドロップ処理に渡らないよう板を敷く */}
         {dragId && <div className={cx('drag-guard')} />}
       </div>
+      <ContextMenuHost />
       <DialogHost />
     </div>
   );
