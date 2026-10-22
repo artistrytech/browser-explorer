@@ -121,6 +121,8 @@ export type TabCommand =
 /** タブ側の window に生やす、シェルから同期で呼ぶ関数 (同一オリジンなので直接呼べる) */
 export interface AppTabWindow extends Window {
   ebTabHasUnsaved?: () => boolean;
+  /** コマンドパレットを開く (シェルのタブバーにフォーカスがあるときの Ctrl+Shift+P を転送する) */
+  ebOpenCommandPalette?: () => void;
 }
 
 export function postToShell(msg: TabToShellMessage): void {
@@ -181,6 +183,16 @@ export function enterShellIfStandalone(): boolean {
   const open = location.pathname + location.search;
   location.replace(`${SHELL_PATH}?open=${encodeURIComponent(open)}`);
   return true;
+}
+
+/** コマンドパレットを開くキー: Ctrl+Shift+P (mac は ⌘+Shift+P)。VSCode と同じ */
+export function isCommandPaletteKey(e: KeyboardEvent): boolean {
+  return (
+    (e.ctrlKey || e.metaKey) &&
+    e.shiftKey &&
+    !e.altKey &&
+    (e.key.toLowerCase() === 'p' || e.code === 'KeyP')
+  );
 }
 
 /** T / W キーか (IME の状態や配列で key が変わっても判定できるよう code も見る) */

@@ -330,6 +330,20 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     useCommitDraft.getState().clear();
   }, [commitDraft]);
 
+  // 入力欄へのフォーカスの要求 (コマンドパレットの「コミット」)。
+  // 変更一覧の読み込み前は入力欄がまだ無いので、できるまで要求を残しておく
+  const commitFocusRequested = useCommitDraft((s) => s.focusRequested);
+  useEffect(() => {
+    if (!commitFocusRequested || tab !== 'changes') return;
+    const el = commitMessageRef.current;
+    if (!el) return;
+    useCommitDraft.getState().clearFocusRequest();
+    el.focus();
+    // 既にフォーカスがあると focus イベントが来ないので、全体表示は明示的に切り替える
+    // (開発時の StrictMode では上のリセットが続けてもう一度走る)
+    setCommitFocused(true);
+  }, [commitFocusRequested, tab, status]);
+
   // 一括削除モードは「ブランチ」タブ専用。他タブへ移ったりリポジトリが変わったらキャンセル扱い
   useEffect(() => {
     if (tab !== 'branches') {

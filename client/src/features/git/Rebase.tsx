@@ -23,7 +23,7 @@ interface RebaseDialogStore {
   close: () => void;
 }
 
-const useRebaseDialog = create<RebaseDialogStore>((set) => ({
+export const useRebaseDialog = create<RebaseDialogStore>((set) => ({
   open: false,
   onto: '',
   baseBranch: '',

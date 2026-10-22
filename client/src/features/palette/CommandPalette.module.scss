@@ -1,0 +1,110 @@
+/* 画面全体を覆う透明な板。外側のクリックで閉じる (VSCode と同じく背景は暗くしない) */
+.cp-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1150;
+}
+
+/* VSCode のクイック入力と同じく、画面上部の中央に出す */
+.cp-box {
+  position: absolute;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(640px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+}
+
+.cp-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 4px 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cp-title-hint {
+  margin-left: auto;
+  font-weight: normal;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.cp-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg);
+  color: inherit;
+  outline: none;
+  font: inherit;
+}
+
+.cp-list {
+  margin-top: 6px;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+}
+
+.cp-item {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cp-item.active {
+  background: var(--bg-selected);
+}
+
+.cp-item.disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.cp-label {
+  flex-shrink: 0;
+}
+
+.cp-more {
+  color: var(--text-dim);
+}
+
+.cp-detail {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.cp-reason {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* 絞り込みで一致した文字 */
+.cp-hit {
+  background: transparent;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.cp-empty {
+  padding: 8px;
+  color: var(--text-dim);
+}

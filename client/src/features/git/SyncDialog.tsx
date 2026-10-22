@@ -29,7 +29,7 @@ const cx = createCssModuleClassNames(styles);
  *   チェック不可にして理由を出すだけに留める (手動マージ/リベースに任せる)
  */
 
-type SyncTab = 'push' | 'pull' | 'fetch' | 'bulk' | 'remote';
+export type SyncTab = 'push' | 'pull' | 'fetch' | 'bulk' | 'remote';
 
 const TABS: { key: SyncTab; label: string }[] = [
   { key: 'push', label: 'Push' },
@@ -88,6 +88,11 @@ export const useSyncDialog = create<SyncDialogStore>((set) => ({
 /** ブランチ名を渡すと「一括」タブをそのブランチだけに絞って開く */
 export function openSyncDialog(onlyBranch?: string): void {
   useSyncDialog.getState().show(onlyBranch ?? null);
+}
+
+/** タブを指定して開く (コマンドパレットの「同期: Pull」など)。開いたタブは次回も覚えておく */
+export function openSyncDialogTab(tab: SyncTab): void {
+  useSyncDialog.setState({ open: true, onlyBranch: null, tab });
 }
 
 function classify(b: GitBranch): SyncState {

@@ -3,8 +3,6 @@ import { api } from '../api/client';
 import { useExplorer } from '../stores/explorer';
 import { useSettings } from '../stores/settings';
 import { useGit } from '../stores/git';
-import { useReview } from '../stores/review';
-import { pushReviewView, switchView, useUi, type MainView } from '../stores/ui';
 import { useContextMenu, type MenuItem } from '../components/ContextMenu';
 import { baseName } from '../lib/paths';
 import { renameRepository, unpinFolder, unregisterRepository } from '../lib/quickaccessOps';
@@ -18,14 +16,12 @@ import {
 import { Chevron, FolderTree } from './FolderTree';
 import { ProjectTree } from './ProjectTree';
 import type { VolumeInfo } from '../types';
-import { middleClickProps, openInNewTab, wantsNewTab } from '../lib/appTabs';
+import { middleClickProps, wantsNewTab } from '../lib/appTabs';
+import { openLocation } from '../lib/openLocation';
 import styles from './Sidebar.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
 
 const cx = createCssModuleClassNames(styles);
-
-/** リポジトリ選択時にそのまま保持する最上位タブ。それ以外 (エディタ等) は「ファイル」へ移る */
-const REPO_KEEP_VIEWS: readonly MainView[] = ['files', 'commit', 'log', 'branches', 'review'];
 
 /** 編集ペン (右上から左下へ、ペン先が左下)。文字の ✎ はフォントで向きや形が変わるので SVG で描く */
 function PencilIcon() {
@@ -71,7 +67,7 @@ function applyReorder(section: ReorderSection, from: number, to: number): void {
 }
 
 export function Sidebar() {
-  const { path, navigate } = useExplorer();
+  const path = useExplorer((s) => s.path);
   const { favorites, repositories, settings: { repoLabels } } = useSettings();
   const repoRoot = useGit((s) => s.repoRoot);
   const status = useGit((s) => s.status);
@@ -96,30 +92,10 @@ export function Sidebar() {
 
   /**
    * サイドバーのリンク遷移。Ctrl (mac は ⌘) + クリック / 中クリックは別タブで開く。
-   * 通常は「ファイル」タブで開く。keepView を指定すると、現在のタブが REPO_KEEP_VIEWS なら保持する
-   * (navigate はビューを files に戻すので、完了後に元のタブへ切り替え直す)。
+   * keepView はリポジトリ用 (現在のタブを保持する。lib/openLocation.ts)
    */
-  const go = (e: React.MouseEvent, target: string, keepView = false) => {
-    const current = useUi.getState().view;
-    const view: MainView = keepView && REPO_KEEP_VIEWS.includes(current) ? current : 'files';
-    if (wantsNewTab(e)) {
-      const params = new URLSearchParams();
-      params.set('path', target);
-      if (view !== 'files') params.set('view', view);
-      openInNewTab(`${location.pathname}?${params}`);
-      return;
-    }
-    const sameRepo = repoRoot === target;
-    void navigate(target).then(() => {
-      if (view === 'review') {
-        // 同じリポジトリなら開いていたレビュー詳細を URL ごと保持、別リポジトリなら一覧へ
-        const { currentId, currentFile } = useReview.getState();
-        pushReviewView(sameRepo ? currentId : null, sameRepo ? currentFile : null);
-      } else {
-        switchView(view);
-      }
-    });
-  };
+  const go = (e: React.MouseEvent, target: string, keepView = false) =>
+    openLocation(target, { keepView, newTab: wantsNewTab(e) });
 
   /** プロジェクトツリーはリポジトリ内でだけ出す。リポジトリ外では選択を保ったまま通常の表示にする */
   const showProject = repoRoot !== null && mode === 'project';

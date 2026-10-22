@@ -21,6 +21,11 @@ function dispatch(e: KeyboardEvent): void {
   stack[stack.length - 1]?.handler(e);
 }
 
+/** useDialogKeys を使うダイアログが 1 つでも開いているか (コマンドパレットを開くかの判定に使う) */
+export function isDialogOpen(): boolean {
+  return stack.length > 0;
+}
+
 /**
  * IME 変換中か。変換中の Enter は変換の確定、Escape は変換の取り消しであって
  * ダイアログの操作ではないので、アプリ側では拾わない。

@@ -5,6 +5,7 @@ import { confirmDialog } from '../stores/dialog';
 import {
   clearTabSession,
   frameNameOf,
+  isCommandPaletteKey,
   newTabId,
   tabCommandFromKey,
   TAB_MESSAGE_TYPE,
@@ -304,6 +305,14 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
   // シェル自体 (タブバー) にフォーカスがあるときのショートカット
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // コマンドパレットは表示中のタブ (アプリ) 側で開く
+      if (isCommandPaletteKey(e)) {
+        e.preventDefault();
+        const win = frames.current.get(stateRef.current.activeId)?.contentWindow as AppTabWindow | null | undefined;
+        win?.focus();
+        win?.ebOpenCommandPalette?.();
+        return;
+      }
       const command = tabCommandFromKey(e);
       if (!command) return;
       e.preventDefault();
