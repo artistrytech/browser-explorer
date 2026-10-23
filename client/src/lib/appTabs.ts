@@ -131,6 +131,8 @@ export interface AppTabWindow extends Window {
   ebTabHasUnsaved?: () => boolean;
   /** コマンドパレットを開く (シェルのタブバーにフォーカスがあるときの Ctrl+Shift+P を転送する) */
   ebOpenCommandPalette?: () => void;
+  /** タブを読み込み直す (未保存の変更があれば確認する。シェルのタブバーにフォーカスがあるときの F5 を転送する) */
+  ebTabReload?: () => void;
 }
 
 export function postToShell(msg: TabToShellMessage): void {
@@ -201,6 +203,14 @@ export function isCommandPaletteKey(e: KeyboardEvent): boolean {
     !e.altKey &&
     (e.key.toLowerCase() === 'p' || e.code === 'KeyP')
   );
+}
+
+/**
+ * 表示中のタブだけを読み込み直すキー: F5 (修飾キーなし)。
+ * Ctrl+R・Ctrl+F5・Shift+F5 はブラウザの既定のまま (シェルごと読み込み直す)
+ */
+export function isTabReloadKey(e: KeyboardEvent): boolean {
+  return e.key === 'F5' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
 }
 
 /** T / W キーか (IME の状態や配列で key が変わっても判定できるよう code も見る) */

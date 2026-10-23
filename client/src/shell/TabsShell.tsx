@@ -7,6 +7,7 @@ import {
   clearTabSession,
   frameNameOf,
   isCommandPaletteKey,
+  isTabReloadKey,
   newTabId,
   tabCommandFromKey,
   TAB_MESSAGE_TYPE,
@@ -341,6 +342,14 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
         const win = frames.current.get(stateRef.current.activeId)?.contentWindow as AppTabWindow | null | undefined;
         win?.focus();
         win?.ebOpenCommandPalette?.();
+        return;
+      }
+      // F5 はシェルごとではなく表示中のタブだけを読み込み直す
+      if (isTabReloadKey(e)) {
+        e.preventDefault();
+        const win = frames.current.get(stateRef.current.activeId)?.contentWindow as AppTabWindow | null | undefined;
+        if (win?.ebTabReload) win.ebTabReload();
+        else win?.location.reload();
         return;
       }
       const command = tabCommandFromKey(e);

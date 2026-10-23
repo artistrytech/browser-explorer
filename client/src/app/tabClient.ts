@@ -1,12 +1,21 @@
+import { confirmDialog } from '../stores/dialog';
 import { useEditor } from '../stores/editor';
 import { useGit } from '../stores/git';
-import { appTabId, postToShell, tabCommandFromKey, TAB_MESSAGE_TYPE, type AppTabWindow } from '../lib/appTabs';
+import {
+  appTabId,
+  isTabReloadKey,
+  postToShell,
+  tabCommandFromKey,
+  TAB_MESSAGE_TYPE,
+  type AppTabWindow,
+} from '../lib/appTabs';
 
 /**
  * アプリ内タブ (tabs.html のシェルの iframe) として動くときの連携。シェル外では何もしない。
  * - URL・タイトル・テーマ・リポジトリの変化をシェルへ通知する (タブのラベル・復元・シェルの配色・グループの色に使う)
  * - タブ操作のショートカットをシェルへ転送する (フォーカスが iframe 内にあるとシェルにキーが届かないため)
  * - タブを閉じる前の未保存確認用に、エディタの未保存の有無をシェルから同期で引けるようにする
+ * - F5 でシェル全体ではなくこのタブだけを読み込み直す
  */
 export function initTabClient(): void {
   if (!appTabId) return;
@@ -62,7 +71,34 @@ export function initTabClient(): void {
     true,
   );
 
-  (window as AppTabWindow).ebTabHasUnsaved = () => useEditor.getState().tabs.some((t) => t.dirty);
+  const hasUnsaved = () => useEditor.getState().tabs.some((t) => t.dirty);
+  (window as AppTabWindow).ebTabHasUnsaved = hasUnsaved;
+
+  let reloading = false;
+  const reload = async () => {
+    if (reloading) return;
+    reloading = true;
+    try {
+      if (
+        hasUnsaved() &&
+        !(await confirmDialog('タブを読み込み直す', 'エディタに未保存の変更があります。破棄して読み込み直しますか?', true))
+      ) {
+        return;
+      }
+      location.reload();
+    } finally {
+      reloading = false;
+    }
+  };
+  (window as AppTabWindow).ebTabReload = () => void reload();
+
+  // F5 はこのタブだけを読み込み直す。2 画面のダイアログの F5 (コピー) などアプリ側で使ったキーは除くため、
+  // キャプチャではなく React の処理の後 (バブリング) で、既定動作が止められていないものだけを拾う
+  window.addEventListener('keydown', (e) => {
+    if (!isTabReloadKey(e) || e.defaultPrevented) return;
+    e.preventDefault();
+    void reload();
+  });
 
   notify();
 }
