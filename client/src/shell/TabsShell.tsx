@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { api } from '../api/client';
 import { ContextMenuHost, useContextMenu } from '../components/ContextMenu';
 import { DialogHost } from '../components/DialogHost';
 import { confirmDialog } from '../stores/dialog';
@@ -13,6 +14,14 @@ import {
   type TabCommand,
   type TabToShellMessage,
 } from '../lib/appTabs';
+import {
+  EMPTY_REPO_GROUPS,
+  normalizeRepoGroups,
+  onRepoGroupsChanged,
+  repoBadgeOf,
+  REPO_GROUPS_KEY,
+  textColorOn,
+} from '../lib/repoGroups';
 import { isAppUrl, onLaunch, onOpenRequest, onPromotedToPrimary } from './shellWindow';
 import styles from './TabsShell.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
@@ -32,10 +41,12 @@ interface ShellTab {
   /** 現在の URL (タブ側から通知される。復元に使う) */
   url: string;
   title: string;
+  /** 開いているリポジトリのルート (タブ側から通知される。グループの色・短縮名に使う) */
+  repo: string | null;
 }
 
 interface SavedState {
-  tabs: { id: string; url: string; title: string }[];
+  tabs: { id: string; url: string; title: string; repo?: string | null }[];
   activeId: string | null;
 }
 
@@ -61,8 +72,8 @@ function iconOf(url: string): string {
   return VIEW_ICONS[view] ?? '📁';
 }
 
-function makeTab(url: string, id = newTabId(), title = DEFAULT_TITLE): ShellTab {
-  return { id, src: url, url, title };
+function makeTab(url: string, id = newTabId(), title = DEFAULT_TITLE, repo: string | null = null): ShellTab {
+  return { id, src: url, url, title, repo };
 }
 
 function loadSaved(): { tabs: ShellTab[]; activeId: string } | null {
@@ -70,7 +81,7 @@ function loadSaved(): { tabs: ShellTab[]; activeId: string } | null {
     const saved = JSON.parse(localStorage.getItem(STATE_KEY) ?? 'null') as SavedState | null;
     const tabs = (saved?.tabs ?? [])
       .filter((t) => typeof t.id === 'string' && typeof t.url === 'string' && isAppUrl(t.url))
-      .map((t) => makeTab(t.url, t.id, t.title || DEFAULT_TITLE));
+      .map((t) => makeTab(t.url, t.id, t.title || DEFAULT_TITLE, typeof t.repo === 'string' ? t.repo : null));
     if (tabs.length > 0) {
       const activeId = tabs.some((t) => t.id === saved?.activeId) ? saved!.activeId! : tabs[0].id;
       return { tabs, activeId };
@@ -113,6 +124,8 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
   const [frameOrder, setFrameOrder] = useState<string[]>(() => initial.tabs.map((t) => t.id));
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropMark, setDropMark] = useState<{ id: string; after: boolean } | null>(null);
+  /** リポジトリのグループ分け (タブの色・短縮名)。ダイアログで変更されたらタブ側から知らされる */
+  const [repoGroups, setRepoGroups] = useState(EMPTY_REPO_GROUPS);
   const frames = useRef(new Map<string, HTMLIFrameElement>());
   /** 閉じたタブの ID (sessionStorage の片付け待ち) */
   const closedIds = useRef<string[]>([]);
@@ -122,12 +135,27 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
 
   useEffect(() => onPromotedToPrimary(() => setPrimary(true)), []);
 
+  useEffect(() => {
+    let alive = true;
+    api
+      .getState()
+      .then((s) => {
+        if (alive) setRepoGroups(normalizeRepoGroups(s.settings[REPO_GROUPS_KEY]));
+      })
+      .catch(() => {});
+    const off = onRepoGroupsChanged(setRepoGroups);
+    return () => {
+      alive = false;
+      off();
+    };
+  }, []);
+
   // 保存 (再起動後の復元用)。主ウィンドウだけが保存する
   useEffect(() => {
     if (!primary) return;
     try {
       const saved: SavedState = {
-        tabs: tabs.map(({ id, url, title }) => ({ id, url, title })),
+        tabs: tabs.map(({ id, url, title, repo }) => ({ id, url, title, repo })),
         activeId,
       };
       localStorage.setItem(STATE_KEY, JSON.stringify(saved));
@@ -277,7 +305,9 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
       const from = sourceId;
       if (msg.kind === 'state') {
         setTabs((prev) =>
-          prev.map((t) => (t.id === from ? { ...t, url: msg.url, title: msg.title || DEFAULT_TITLE } : t)),
+          prev.map((t) =>
+            t.id === from ? { ...t, url: msg.url, title: msg.title || DEFAULT_TITLE, repo: msg.repo ?? null } : t,
+          ),
         );
         // シェルの配色をタブに合わせる (控えの保存はタブ側の App が行う。起動直後の配色は tabs.html で付ける)
         if (msg.theme) document.body.dataset.theme = msg.theme;
@@ -345,63 +375,77 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
           if (e.target === e.currentTarget) runCommand({ kind: 'new' }, activeId);
         }}
       >
-        {tabs.map((t) => (
-          <div
-            key={t.id}
-            className={cx(
-              'tab',
-              t.id === activeId && 'active',
-              t.id === dragId && 'dragging',
-              dropMark?.id === t.id && (dropMark.after ? 'drop-after' : 'drop-before'),
-            )}
-            title={t.title}
-            draggable
-            onClick={() => setActiveId(t.id)}
-            onContextMenu={(e) => openTabMenu(e, t.id)}
-            onMouseDown={(e) => {
-              // 中クリックで閉じる
-              if (e.button === 1) {
+        {tabs.map((t) => {
+          const badge = repoBadgeOf(repoGroups, t.repo);
+          return (
+            <div
+              key={t.id}
+              className={cx(
+                'tab',
+                t.id === activeId && 'active',
+                badge && 'grouped',
+                t.id === dragId && 'dragging',
+                dropMark?.id === t.id && (dropMark.after ? 'drop-after' : 'drop-before'),
+              )}
+              title={t.title}
+              // グループの色を背景に混ぜる (TabsShell.module.scss の .grouped)
+              style={badge ? ({ '--group-color': badge.color } as CSSProperties) : undefined}
+              draggable
+              onClick={() => setActiveId(t.id)}
+              onContextMenu={(e) => openTabMenu(e, t.id)}
+              onMouseDown={(e) => {
+                // 中クリックで閉じる
+                if (e.button === 1) {
+                  e.preventDefault();
+                  void closeTab(t.id);
+                }
+              }}
+              onDragStart={(e) => {
+                setDragId(t.id);
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', t.title);
+              }}
+              onDragOver={(e) => {
+                if (!dragId) return;
                 e.preventDefault();
-                void closeTab(t.id);
-              }
-            }}
-            onDragStart={(e) => {
-              setDragId(t.id);
-              e.dataTransfer.effectAllowed = 'move';
-              e.dataTransfer.setData('text/plain', t.title);
-            }}
-            onDragOver={(e) => {
-              if (!dragId) return;
-              e.preventDefault();
-              const rect = e.currentTarget.getBoundingClientRect();
-              const after = e.clientX > rect.left + rect.width / 2;
-              if (dropMark?.id !== t.id || dropMark.after !== after) setDropMark({ id: t.id, after });
-            }}
-            onDragLeave={() => setDropMark((m) => (m?.id === t.id ? null : m))}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (dropMark) onDrop(dropMark.id, dropMark.after);
-              setDropMark(null);
-            }}
-            onDragEnd={() => {
-              setDragId(null);
-              setDropMark(null);
-            }}
-          >
-            <span className={cx('tab-icon')}>{iconOf(t.url)}</span>
-            <span className={cx('tab-label')}>{t.title}</span>
-            <button
-              className={cx('tab-close')}
-              title="タブを閉じる (Ctrl+W)"
-              onClick={(e) => {
-                e.stopPropagation();
-                void closeTab(t.id);
+                const rect = e.currentTarget.getBoundingClientRect();
+                const after = e.clientX > rect.left + rect.width / 2;
+                if (dropMark?.id !== t.id || dropMark.after !== after) setDropMark({ id: t.id, after });
+              }}
+              onDragLeave={() => setDropMark((m) => (m?.id === t.id ? null : m))}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dropMark) onDrop(dropMark.id, dropMark.after);
+                setDropMark(null);
+              }}
+              onDragEnd={() => {
+                setDragId(null);
+                setDropMark(null);
               }}
             >
-              ✕
-            </button>
-          </div>
-        ))}
+              {badge?.short && (
+                <span
+                  className={cx('tab-chip')}
+                  style={{ background: badge.color, color: textColorOn(badge.color) }}
+                >
+                  {badge.short}
+                </span>
+              )}
+              <span className={cx('tab-icon')}>{iconOf(t.url)}</span>
+              <span className={cx('tab-label')}>{t.title}</span>
+              <button
+                className={cx('tab-close')}
+                title="タブを閉じる (Ctrl+W)"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void closeTab(t.id);
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })}
         <button
           className={cx('tab-add')}
           title="新しいタブ (Ctrl+T)"

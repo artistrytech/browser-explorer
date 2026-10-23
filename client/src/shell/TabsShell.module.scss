@@ -46,6 +46,24 @@
   color: var(--text);
 }
 
+/*
+ * 登録リポジトリのグループの色 (--group-color、lib/repoGroups.ts) を背景に混ぜる。
+ * 文字が読めるよう、ライト / ダークとも背景色寄りの割合にする。
+ * 表示中のタブと見分けやすいよう、非表示のタブは薄く混ぜ、表示中のタブは濃く混ぜて上端に色の線を引く
+ */
+.tab.grouped {
+  background: color-mix(in srgb, var(--group-color) 9%, var(--bg-alt));
+}
+
+.tab.grouped:hover {
+  background: color-mix(in srgb, var(--group-color) 18%, var(--bg-alt));
+}
+
+.tab.grouped.active {
+  background: color-mix(in srgb, var(--group-color) 30%, var(--bg));
+  box-shadow: inset 0 2px 0 var(--group-color);
+}
+
 .tab.dragging {
   opacity: 0.5;
 }
@@ -66,6 +84,26 @@
 
 .tab.drop-after::after {
   right: -2px;
+}
+
+/* リポジトリの短縮名。色はグループの色 (文字色は白 / 黒の読みやすい方) */
+.tab-chip {
+  flex: none;
+  max-width: 8em;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.55;
+}
+
+/* 表示中のタブと見分けやすいよう、チップも表示中のタブだけ濃く出す */
+.tab.active .tab-chip {
+  opacity: 1;
 }
 
 .tab-icon {

@@ -60,6 +60,48 @@
   color: var(--text);
 }
 
+/* 見出しの右端にボタンを並べる行 (リポジトリのグループ分け) */
+.side-heading-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding-right: 6px;
+}
+
+.side-heading-row .side-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.heading-action {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.heading-action:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.heading-action-icon {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+
 .side-chevron,
 .tree-twisty {
   width: 20px;

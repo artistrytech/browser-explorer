@@ -9,6 +9,7 @@ import { Toolbar } from './app/Toolbar';
 import { Sidebar } from './app/Sidebar';
 import { StatusBar } from './app/StatusBar';
 import { SettingsDialog } from './app/SettingsDialog';
+import { RepoGroupsDialog } from './app/RepoGroupsDialog';
 import { FileList } from './features/explorer/FileList';
 import { EditorPane } from './features/editor/EditorPane';
 import { GitPanel } from './features/git/GitPanel';
@@ -420,6 +421,7 @@ export default function App() {
       <DialogHost />
       <ToastHost />
       <SettingsDialog />
+      <RepoGroupsDialog />
       <CloneDialog />
       {/* リベース中の全画面ロック。ConflictResolver より前に置き、解消ツールを手前に重ねる */}
       <RebaseOverlay />

@@ -11,6 +11,7 @@ import { useSettings } from '../../stores/settings';
 import { switchView, WORKTREE_REVIEW_ID } from '../../stores/ui';
 import { openSyncDialog, openSyncDialogTab, type SyncTab } from '../git/SyncDialog';
 import { useRebaseDialog } from '../git/Rebase';
+import { openRepoGroupsDialog } from '../../app/RepoGroupsDialog';
 import { appTabId, isCommandPaletteKey, type AppTabWindow } from '../../lib/appTabs';
 import { isDialogOpen } from '../../lib/dialogKeys';
 import { matchText } from '../../lib/fuzzyMatch';
@@ -114,6 +115,7 @@ function buildCommands(inRepo: boolean): PaletteItem[] {
       detail: 'Repository: Open in New Tab',
       next: { kind: 'repos', newTab: true },
     },
+    { key: 'repo.groups', label: 'リポジトリ: グループ分け', detail: 'Repository: Groups', run: openRepoGroupsDialog },
     { key: 'quick', label: 'クイックアクセス', detail: 'Quick Access: Open', next: { kind: 'quick', newTab: false } },
     {
       key: 'quick.newtab',

@@ -32,9 +32,14 @@ export async function unregisterRepository(path: string, label: string): Promise
     `「${label}」をリポジトリ一覧から外しますか?\n\n※ 一覧から外すだけで、リポジトリ本体は削除されません。`,
   );
   if (!ok) return;
-  const { repositories, setRepositories, setRepoLabel } = useSettings.getState();
+  const { repositories, setRepositories, setRepoLabel, repoGroups, setRepoGroups } = useSettings.getState();
   setRepositories(repositories.filter((p) => p !== path));
   setRepoLabel(path, '');
+  if (repoGroups.repos[path]) {
+    const repos = { ...repoGroups.repos };
+    delete repos[path];
+    void setRepoGroups({ ...repoGroups, repos }).catch(() => {});
+  }
   useToast.getState().show('success', 'リポジトリの登録を解除しました');
 }
 

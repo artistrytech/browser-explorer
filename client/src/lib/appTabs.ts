@@ -105,7 +105,15 @@ function copyTabSession(from: string, to: string): void {
 
 /** タブ → シェル */
 export type TabToShellMessage =
-  | { type: typeof TAB_MESSAGE_TYPE; kind: 'state'; url: string; title: string; theme: string | null }
+  | {
+      type: typeof TAB_MESSAGE_TYPE;
+      kind: 'state';
+      url: string;
+      title: string;
+      theme: string | null;
+      /** 開いているリポジトリのルート (リポジトリ外は null)。タブにグループの色・短縮名を付けるのに使う */
+      repo: string | null;
+    }
   | { type: typeof TAB_MESSAGE_TYPE; kind: 'open'; id: string; url: string }
   | { type: typeof TAB_MESSAGE_TYPE; kind: 'command'; command: TabCommand };
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { api } from '../api/client';
 import { useExplorer } from '../stores/explorer';
 import { useSettings } from '../stores/settings';
@@ -18,6 +18,9 @@ import { ProjectTree } from './ProjectTree';
 import type { VolumeInfo } from '../types';
 import { middleClickProps, wantsNewTab } from '../lib/appTabs';
 import { openLocation } from '../lib/openLocation';
+import { repoBadgeOf } from '../lib/repoGroups';
+import { moveItem } from '../lib/moveItem';
+import { openRepoGroupsDialog } from './RepoGroupsDialog';
 import styles from './Sidebar.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
 
@@ -29,6 +32,16 @@ function PencilIcon() {
     <svg className={cx('pencil-icon')} viewBox="0 0 16 16" aria-hidden="true">
       <path d="M11.3 2a1.9 1.9 0 1 1 2.7 2.7L5 13.7 1.3 14.7l1-3.7z" />
       <line x1="9.8" y1="3.5" x2="12.5" y2="6.2" />
+    </svg>
+  );
+}
+
+/** グループ分けのボタンの図案 (荷札) */
+function TagIcon() {
+  return (
+    <svg className={cx('heading-action-icon')} viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8.6 1.8H14.2v5.6L7.4 14.2a1.2 1.2 0 0 1-1.7 0L1.8 10.3a1.2 1.2 0 0 1 0-1.7z" />
+      <circle cx="11.3" cy="4.7" r="1.1" />
     </svg>
   );
 }
@@ -51,14 +64,6 @@ type ReorderSection = 'quick' | 'repos';
 /** サイドバー内の並び替えドラッグ。ファイルの D&D (application/x-entries) と区別する */
 const REORDER_MIME = 'application/x-sidebar-reorder';
 
-/** from 番目の要素を挿入位置 to (0..length、元の並びでの隙間) へ移す */
-function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
-  const next = [...list];
-  const [item] = next.splice(from, 1);
-  next.splice(to > from ? to - 1 : to, 0, item);
-  return next;
-}
-
 /** 並び替えを確定する。クイックアクセスは専用 API、リポジトリは状態保存で永続化する */
 function applyReorder(section: ReorderSection, from: number, to: number): void {
   const s = useSettings.getState();
@@ -68,7 +73,7 @@ function applyReorder(section: ReorderSection, from: number, to: number): void {
 
 export function Sidebar() {
   const path = useExplorer((s) => s.path);
-  const { favorites, repositories, settings: { repoLabels } } = useSettings();
+  const { favorites, repositories, repoGroups, settings: { repoLabels } } = useSettings();
   const repoRoot = useGit((s) => s.repoRoot);
   const status = useGit((s) => s.status);
   const openMenu = useContextMenu((s) => s.open);
@@ -114,19 +119,28 @@ export function Sidebar() {
     saveCollapsedSections(next);
   };
 
-  /** 折り畳み可能なルート項目の見出し */
-  const heading = (id: string, label: string) => (
-    <button
-      className={cx('side-heading')}
-      aria-expanded={!collapsed.has(id)}
-      onClick={() => toggleSection(id)}
-    >
-      <span className={cx('side-chevron')}>
-        <Chevron open={!collapsed.has(id)} />
-      </span>
-      {label}
-    </button>
-  );
+  /** 折り畳み可能なルート項目の見出し。action は見出しの行の右端に並べるボタン */
+  const heading = (id: string, label: string, action?: ReactNode) => {
+    const button = (
+      <button
+        className={cx('side-heading')}
+        aria-expanded={!collapsed.has(id)}
+        onClick={() => toggleSection(id)}
+      >
+        <span className={cx('side-chevron')}>
+          <Chevron open={!collapsed.has(id)} />
+        </span>
+        {label}
+      </button>
+    );
+    if (!action) return button;
+    return (
+      <div className={cx('side-heading-row')}>
+        {button}
+        {action}
+      </div>
+    );
+  };
 
   const item = (
     key: string,
@@ -278,11 +292,18 @@ export function Sidebar() {
       </div>
 
       <div className={cx(`side-section limited${collapsed.has('repos') ? ' collapsed' : ''}`)}>
-        {heading('repos', 'リポジトリ')}
+        {heading(
+          'repos',
+          'リポジトリ',
+          <button className={cx('heading-action')} title="グループ分け…" onClick={openRepoGroupsDialog}>
+            <TagIcon />
+          </button>,
+        )}
         {!collapsed.has('repos') && (
           <div className={cx("side-body")}>
             {repositories.map((r, i) => {
               const label = repoLabels[r] || baseName(r);
+              const badge = repoBadgeOf(repoGroups, r);
               return (
                 // ホバー / フォーカスで ✎ (表示名の変更) と ✕ (登録解除) を表示する。ドラッグで並び替え
                 <div
@@ -300,6 +321,7 @@ export function Sidebar() {
                       openMenu(e.clientX, e.clientY, [
                         ...moveMenu('repos', i, repositories.length),
                         { label: '表示名を変更…', action: () => void renameRepository(r) },
+                        { label: 'グループ分け…', action: openRepoGroupsDialog },
                         {
                           label: '一覧から削除',
                           action: () => void unregisterRepository(r, label),
@@ -307,7 +329,10 @@ export function Sidebar() {
                       ]);
                     }}
                   >
-                    <span className={cx("side-icon")}>●</span>
+                    {/* グループに入れたリポジトリは ● をグループの色にする */}
+                    <span className={cx("side-icon")} style={badge ? { color: badge.color } : undefined}>
+                      ●
+                    </span>
                     <span className={cx("side-label")}>
                       {label}
                       {repoRoot === r && status?.branch ? ` (${status.branch})` : ''}

@@ -4,6 +4,14 @@ import { useToast, toastError } from './toast';
 import type { Favorite, RecentItem, SortKey, ViewMode } from '../types';
 import { DEFAULT_BACKUP_BRANCH_PATTERN } from '../lib/backupBranch';
 import { loadCachedTheme } from '../lib/themeCache';
+import {
+  broadcastRepoGroups,
+  EMPTY_REPO_GROUPS,
+  normalizeRepoGroups,
+  onRepoGroupsChanged,
+  REPO_GROUPS_KEY,
+  type RepoGroupSettings,
+} from '../lib/repoGroups';
 
 /** 修飾キー基準。auto = OS に合わせる (Mac は ⌘、それ以外は Ctrl) */
 export type ModKey = 'auto' | 'ctrl' | 'meta';
@@ -77,6 +85,8 @@ interface SettingsStore {
   favorites: Favorite[];
   repositories: string[];
   recents: RecentItem[];
+  /** リポジトリのグループ分け (lib/repoGroups.ts)。アプリの設定とは別のキーで保存する */
+  repoGroups: RepoGroupSettings;
   loaded: boolean;
   load: () => Promise<void>;
   update: (partial: Partial<Settings>) => void;
@@ -88,6 +98,8 @@ interface SettingsStore {
   /** リポジトリの表示名を設定する。空文字なら解除してフォルダ名表示に戻す */
   setRepoLabel: (path: string, label: string) => void;
   addRepository: (path: string) => void;
+  /** グループ分けを保存し、他のタブ・シェルへ知らせる */
+  setRepoGroups: (repoGroups: RepoGroupSettings) => Promise<void>;
   addRecent: (path: string, kind: 'file' | 'dir') => void;
 }
 
@@ -109,6 +121,7 @@ export const useSettings = create<SettingsStore>((set, get) => ({
   favorites: [],
   repositories: [],
   recents: [],
+  repoGroups: EMPTY_REPO_GROUPS,
   loaded: false,
 
   load: async () => {
@@ -125,6 +138,7 @@ export const useSettings = create<SettingsStore>((set, get) => ({
         favorites: state.favorites,
         repositories: state.repositories,
         recents: state.recents,
+        repoGroups: normalizeRepoGroups(state.settings[REPO_GROUPS_KEY]),
         loaded: true,
       });
     } catch {
@@ -191,6 +205,12 @@ export const useSettings = create<SettingsStore>((set, get) => ({
     persist({ repositories });
   },
 
+  setRepoGroups: async (repoGroups) => {
+    set({ repoGroups });
+    await api.putState({ settings: { [REPO_GROUPS_KEY]: repoGroups } });
+    broadcastRepoGroups(repoGroups);
+  },
+
   addRecent: (path, kind) => {
     const recents = [
       { path, kind, openedAt: new Date().toISOString() },
@@ -200,6 +220,9 @@ export const useSettings = create<SettingsStore>((set, get) => ({
     persist({ recents });
   },
 }));
+
+// 他のタブでグループ分けが変わったら取り込む (左パネルのリポジトリの色に使う)
+onRepoGroupsChanged((repoGroups) => useSettings.setState({ repoGroups }));
 
 /** ブラウザが Mac 上で動作しているか (⌘ を修飾キーにするかの判定) */
 export function isMacBrowser(): boolean {

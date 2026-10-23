@@ -1,9 +1,10 @@
 import { useEditor } from '../stores/editor';
+import { useGit } from '../stores/git';
 import { appTabId, postToShell, tabCommandFromKey, TAB_MESSAGE_TYPE, type AppTabWindow } from '../lib/appTabs';
 
 /**
  * アプリ内タブ (tabs.html のシェルの iframe) として動くときの連携。シェル外では何もしない。
- * - URL・タイトル・テーマの変化をシェルへ通知する (タブのラベル・復元・シェルの配色に使う)
+ * - URL・タイトル・テーマ・リポジトリの変化をシェルへ通知する (タブのラベル・復元・シェルの配色・グループの色に使う)
  * - タブ操作のショートカットをシェルへ転送する (フォーカスが iframe 内にあるとシェルにキーが届かないため)
  * - タブを閉じる前の未保存確認用に、エディタの未保存の有無をシェルから同期で引けるようにする
  */
@@ -23,6 +24,7 @@ export function initTabClient(): void {
         url: location.pathname + location.search,
         title: document.title,
         theme: document.body.dataset.theme ?? null,
+        repo: useGit.getState().repoRoot,
       });
     });
   };
@@ -41,6 +43,11 @@ export function initTabClient(): void {
   const observer = new MutationObserver(notify);
   observer.observe(document.head, { subtree: true, childList: true, characterData: true });
   observer.observe(document.body, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // リポジトリ (フォルダの移動でリポジトリに入った / 出た / 別のリポジトリへ移った)
+  useGit.subscribe((s, prev) => {
+    if (s.repoRoot !== prev.repoRoot) notify();
+  });
 
   // ダイアログ等のキー処理より先に拾うため、キャプチャで登録する
   window.addEventListener(
