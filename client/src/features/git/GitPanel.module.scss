@@ -504,6 +504,17 @@
   line-height: 15px;
 }
 
+/* 他のワークツリーでチェックアウト中のブランチ */
+.branch-worktree {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 15px;
+}
+
 .branch-spacer {
   flex: 1 1 auto;
   min-width: 0;

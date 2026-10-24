@@ -43,6 +43,7 @@ import { CommitFileDiff, commitFileLabel } from './CommitFileDiff';
 import { useRebase } from '../../stores/rebase';
 import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
 import { openInNewTab, wantsNewTab } from '../../lib/appTabs';
+import { openLocation } from '../../lib/openLocation';
 import styles from './GitPanel.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -622,9 +623,28 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const isRemoteBranch = (b: GitBranch) => b.name.startsWith('remotes/');
   const isRemoteHead = (b: GitBranch) => /^remotes\/[^/]+\/HEAD$/.test(b.name);
 
+  /**
+   * 他のワークツリーでチェックアウト中のブランチを開く。
+   * git はこのワークツリーでの切替を拒否するので、代わりにそのワークツリーをブランチタブのまま開く
+   */
+  const openBranchWorktree = (b: GitBranch, newTab = false) => {
+    if (!b.worktree) return;
+    openLocation(b.worktree, { keepView: true, newTab });
+  };
+
   /** ローカルブランチへの切替。作業ツリーに影響する操作なので確認を挟む */
   const checkoutBranch = (b: GitBranch) => {
     if (b.current || isRemoteBranch(b)) return;
+    const worktree = b.worktree;
+    if (worktree) {
+      void confirmDialog(
+        'ブランチ切替',
+        `${b.name} は他のワークツリー (${worktree}) でチェックアウト中のため、ここでは切り替えられません。\nそのワークツリーを開きますか?`,
+      ).then((ok) => {
+        if (ok) openBranchWorktree(b);
+      });
+      return;
+    }
     void confirmDialog(
       'ブランチ切替',
       `${currentBranch ?? 'HEAD'} から ${b.name} へ切り替えますか?`,
@@ -687,15 +707,23 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           },
         ]
       : [
-          {
-            label: '切替',
-            disabled: b.current,
-            action: () => checkoutBranch(b),
-          },
+          ...(b.worktree
+            ? [
+                { label: 'ワークツリーを開く', action: () => openBranchWorktree(b) },
+                { label: 'ワークツリーを別タブで開く', action: () => openBranchWorktree(b, true) },
+              ]
+            : [
+                {
+                  label: '切替',
+                  disabled: b.current,
+                  action: () => checkoutBranch(b),
+                },
+              ]),
           {
             // 単独同期。切り替えずに追跡先へ早送りできる (ヘッダの「同期」を 1 件に絞ったもの)
+            // 他のワークツリーで使用中のブランチは git が更新を拒否するので、そのワークツリーで Pull する
             label: 'リモートから更新…',
-            disabled: !b.upstream,
+            disabled: !b.upstream || !!b.worktree,
             action: () => openSyncDialog(b.name),
           },
           {
@@ -726,7 +754,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           },
           {
             label: '削除',
-            disabled: b.current,
+            disabled: b.current || !!b.worktree,
             danger: true,
             action: () => deleteBranch(b),
           },
@@ -768,10 +796,10 @@ export function GitPanel({ tab }: { tab: GitTab }) {
 
   /**
    * 削除対象にできるブランチ。表示中のタブがローカル / バックアップのときだけ
-   * (カレントブランチと「常に除外」は削除不可)
+   * (カレントブランチ・他のワークツリーで使用中・「常に除外」は削除不可)
    */
   const bulkDeletable = (branchListTab === 'remote' ? [] : shownBranches).filter(
-    (b) => !b.current && !keepBranches.has(b.name),
+    (b) => !b.current && !b.worktree && !keepBranches.has(b.name),
   );
   const bulkTargetBranches = bulkDeletable.filter((b) => bulkTargets.has(b.name));
 
@@ -897,7 +925,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     } else if (e.key === ' ' && bulkMode) {
       // 一括削除モードではスペースで削除対象のチェックを切り替える
       const b = row?.node.branch;
-      if (!b || isRemoteBranch(b) || b.current || keepBranches.has(b.name)) return;
+      if (!b || isRemoteBranch(b) || b.current || b.worktree || keepBranches.has(b.name)) return;
       e.preventDefault();
       toggleBulkTarget(b.name);
     } else if (e.key === 'Enter') {
@@ -927,10 +955,10 @@ export function GitPanel({ tab }: { tab: GitTab }) {
       const b = node.branch;
       const remote = isRemoteBranch(b);
       // 一括削除モード中はローカルブランチだけが選択対象
-      // (カレントブランチと「常に除外」のブランチは削除不可)
+      // (カレントブランチ・他のワークツリーで使用中・「常に除外」のブランチは削除不可)
       const bulkRow = bulkMode && !remote;
       const kept = keepBranches.has(b.name);
-      const checkable = bulkRow && !b.current && !kept;
+      const checkable = bulkRow && !b.current && !b.worktree && !kept;
       return (
         <div
           key={node.key}
@@ -959,7 +987,9 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                   ? '一括削除の対象はローカルブランチのみです'
                   : b.current
                     ? 'カレントブランチは削除できません'
-                    : '「常に除外」が設定されています'
+                    : b.worktree
+                      ? `他のワークツリー (${b.worktree}) でチェックアウト中のため削除できません`
+                      : '「常に除外」が設定されています'
               : 'クリックで選択、右クリックでメニュー、ダブルクリックで操作'
           }
         >
@@ -980,6 +1010,11 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           </span>
           {b.ahead !== undefined && b.behind !== undefined && (
             <SyncBadge ahead={b.ahead} behind={b.behind} className={cx('branch-sync')} />
+          )}
+          {b.worktree && (
+            <span className={cx("branch-worktree")} title={`他のワークツリーでチェックアウト中: ${b.worktree}`}>
+              ワークツリー
+            </span>
           )}
           {bulkRow && b.merged && !kept && (
             <span className={cx("branch-merged")} title="既定ブランチにマージ済み">

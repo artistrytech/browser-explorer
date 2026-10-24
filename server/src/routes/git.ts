@@ -3,7 +3,7 @@ import { simpleGit, SimpleGit } from 'simple-git';
 import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,6 +18,7 @@ import {
   getRebaseSession,
   setRebaseSession,
   clearRebaseSession,
+  type GitAuth,
   type RebaseSession,
 } from '../services/stateStore.js';
 import { getDiffToolById, getAppConfig } from '../services/appConfigStore.js';
@@ -790,14 +791,17 @@ gitRouter.get('/branches', async (req, res) => {
   // 追跡先は短縮名 (origin/main) だけでなくリモート名と向こう側のフル ref も返す。
   // 同期機能が `git fetch <remote> <remoteRef>:refs/heads/<local>` を組み立てるのに使う
   // (短縮名だけでは origin/feature/x のどこまでがリモート名か判別できないため)
+  // %(worktreepath) はそのブランチをチェックアウトしているワークツリーのパス (どこにも無ければ空)
   const upstreamRaw = await g.raw([
     'for-each-ref',
-    '--format=%(refname:short)%00%(upstream:short)%00%(upstream:remotename)%00%(upstream:remoteref)',
+    '--format=%(refname:short)%00%(upstream:short)%00%(upstream:remotename)%00%(upstream:remoteref)%00%(worktreepath)',
     'refs/heads',
   ]);
   const upstreamByBranch = new Map<string, { upstream: string; upstreamRemote: string; upstreamRef: string }>();
+  const worktreeByBranch = new Map<string, string>();
   for (const line of upstreamRaw.split('\n')) {
-    const [name, upstream, upstreamRemote, upstreamRef] = line.split('\0');
+    const [name, upstream, upstreamRemote, upstreamRef, worktreePath] = line.split('\0');
+    if (name && worktreePath) worktreeByBranch.set(name, norm(worktreePath.trim()));
     if (name && upstream) {
       upstreamByBranch.set(name, {
         upstream,
@@ -821,12 +825,17 @@ gitRouter.get('/branches', async (req, res) => {
   res.json({
     current: b.current,
     defaultBranch,
-    branches: branches.map((branch) => ({
-      ...branch,
-      ...counts.get(branch.name),
-      ...upstreamByBranch.get(branch.name),
-      ...(merged.has(branch.name) ? { merged: true } : {}),
-    })),
+    branches: branches.map((branch) => {
+      // 他のワークツリーでチェックアウト中なら、そのパス (切替・削除・refspec 付き fetch を git が拒否する)
+      const worktree = branch.current ? undefined : worktreeByBranch.get(branch.name);
+      return {
+        ...branch,
+        ...counts.get(branch.name),
+        ...upstreamByBranch.get(branch.name),
+        ...(merged.has(branch.name) ? { merged: true } : {}),
+        ...(worktree ? { worktree } : {}),
+      };
+    }),
   });
 });
 
@@ -1100,6 +1109,31 @@ function safeKeyPath(p: string): boolean {
 }
 
 /**
+ * 認証設定の保存キー。ワークツリーではメインのワークツリーのルートにそろえ、同じリポジトリの
+ * ワークツリー同士で設定を共有する (パスごとに保存すると、ワークツリーでは鍵が使われない)。
+ * ワークツリーの .git はファイル (gitdir: <共通の .git>/worktrees/<名前>) で、その中の commondir が
+ * 共通の git ディレクトリを指す。サブモジュール (commondir が無い) やワークツリーでなければ repo のまま
+ */
+function authRepoKey(repo: string): string {
+  try {
+    const dotGit = path.join(repo, '.git');
+    if (!statSync(dotGit).isFile()) return repo;
+    const m = readFileSync(dotGit, 'utf8').match(/^gitdir:\s*(.+?)\s*$/m);
+    if (!m) return repo;
+    const gitDir = path.resolve(repo, m[1]);
+    const commonDir = path.resolve(gitDir, readFileSync(path.join(gitDir, 'commondir'), 'utf8').trim());
+    // ベアリポジトリのワークツリーは共通の git ディレクトリそのものをキーにする
+    return norm(path.basename(commonDir) === '.git' ? path.dirname(commonDir) : commonDir);
+  } catch {
+    return repo;
+  }
+}
+
+function repoAuth(repo: string): GitAuth {
+  return getGitAuth(authRepoKey(repo));
+}
+
+/**
  * git を非対話で実行するための環境変数。
  * 認証が必要になった場合、プロンプトで待ち続けずその場で失敗させる (ロックアウト防止)。
  * - GIT_TERMINAL_PROMPT=0 : ターミナルでのユーザー名/パスワード入力を無効化
@@ -1114,7 +1148,7 @@ export function gitEnv(repo?: string, interactive = false): NodeJS.ProcessEnv {
   const base = 'ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15';
   let sshCommand = process.env.GIT_SSH_COMMAND ?? base;
   if (repo) {
-    const { sshKey } = getGitAuth(repo);
+    const { sshKey } = repoAuth(repo);
     // 指定鍵のみを使う (IdentitiesOnly=yes)。パスフレーズ付き鍵は ssh-agent 経由で解錠される
     if (safeKeyPath(sshKey)) sshCommand = `${base} -o IdentitiesOnly=yes -i "${sshKey}"`;
   }
@@ -1143,7 +1177,7 @@ function noninteractiveArgs(repo?: string, interactive = false): string[] {
   const args = [...QUOTE_PATH_ARGS, '-c', 'core.askPass='];
   if (!interactive) args.push('-c', 'credential.interactive=false');
   if (repo) {
-    const { credentialHelper } = getGitAuth(repo);
+    const { credentialHelper } = repoAuth(repo);
     // ヘルパー名に改行等が混じらないよう検証 (-c の値として渡す)
     if (credentialHelper && !/[\r\n]/.test(credentialHelper)) {
       args.push('-c', `credential.helper=${credentialHelper}`);
@@ -1297,8 +1331,11 @@ gitRouter.get('/auth', async (req, res) => {
   if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
   const g = git(repo);
   const remotes = await g.getRemotes(true).catch(() => []);
+  const key = authRepoKey(repo);
   res.json({
-    auth: getGitAuth(repo),
+    auth: getGitAuth(key),
+    // ワークツリーなら、設定を共有するメインのワークツリー (ダイアログでの案内用)
+    sharedWith: key !== repo ? key : null,
     sshKeys: await listSshKeys(),
     remotes: remotes.map((r) => ({ name: r.name, url: r.refs.fetch || r.refs.push })),
   });
@@ -1316,8 +1353,8 @@ gitRouter.post('/auth', async (req, res) => {
     if (!st?.isFile()) badRequest('鍵ファイルが見つかりません');
   }
   if (/[\r\n]/.test(helper)) badRequest('資格情報ヘルパー名が不正です');
-  setGitAuth(repo, { sshKey: key, credentialHelper: helper });
-  res.json({ ok: true, auth: getGitAuth(repo) });
+  setGitAuth(authRepoKey(repo), { sshKey: key, credentialHelper: helper });
+  res.json({ ok: true, auth: repoAuth(repo) });
 });
 
 /** 接続テスト: 設定した認証で ls-remote を実行し、成否と出力を返す */

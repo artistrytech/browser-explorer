@@ -313,6 +313,8 @@ export const api = {
   gitAuthGet: (repo: string) =>
     get<{
       auth: { sshKey: string; credentialHelper: string };
+      /** ワークツリーのとき、設定を共有するメインのワークツリーのパス */
+      sharedWith: string | null;
       sshKeys: string[];
       remotes: { name: string; url: string }[];
     }>(`/api/git/auth?repo=${q(repo)}`),

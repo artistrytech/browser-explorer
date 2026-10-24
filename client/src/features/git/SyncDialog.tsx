@@ -27,6 +27,8 @@ const cx = createCssModuleClassNames(styles);
  *   現在のブランチだけは `merge --ff-only` で早送りする
  * - 早送りできない (分岐した) ブランチは強制更新すると履歴を失うため、
  *   チェック不可にして理由を出すだけに留める (手動マージ/リベースに任せる)
+ * - 他のワークツリーでチェックアウト中のブランチも refspec 付き fetch が拒否される。
+ *   1 件でも混ざると同じリモートの fetch 全体が失敗するので、チェック不可にする
  */
 
 export type SyncTab = 'push' | 'pull' | 'fetch' | 'bulk' | 'remote';
@@ -48,7 +50,7 @@ const RUN_TITLE: Record<Exclude<SyncTab, 'remote'>, string> = {
 };
 
 /** ブランチごとの同期可否 (一括タブ) */
-type SyncState = 'ff' | 'diverged' | 'up-to-date' | 'no-upstream';
+type SyncState = 'ff' | 'diverged' | 'worktree' | 'up-to-date' | 'no-upstream';
 
 interface SyncRow {
   branch: GitBranch;
@@ -59,8 +61,9 @@ interface SyncRow {
 const STATE_ORDER: Record<SyncState, number> = {
   ff: 0,
   diverged: 1,
-  'up-to-date': 2,
-  'no-upstream': 3,
+  worktree: 2,
+  'up-to-date': 3,
+  'no-upstream': 4,
 };
 
 interface SyncDialogStore {
@@ -99,6 +102,7 @@ function classify(b: GitBranch): SyncState {
   if (!b.upstream || !b.upstreamRemote || !b.upstreamRef) return 'no-upstream';
   const behind = b.behind ?? 0;
   if (behind === 0) return 'up-to-date';
+  if (b.worktree) return 'worktree';
   return (b.ahead ?? 0) > 0 ? 'diverged' : 'ff';
 }
 
@@ -108,6 +112,8 @@ function stateLabel(row: SyncRow): string {
       return row.branch.current ? '早送り (現在のブランチ)' : '早送り';
     case 'diverged':
       return '分岐 — 手動でマージ/リベースが必要';
+    case 'worktree':
+      return '他のワークツリーで使用中 — そのワークツリーで Pull が必要';
     case 'up-to-date':
       return '取り込む更新なし';
     default:
@@ -461,7 +467,9 @@ export function SyncDialog() {
                         <label
                           key={row.branch.name}
                           className={cx(`sync-item${on ? '' : ' disabled'}`)}
-                          title={on ? '' : stateLabel(row)}
+                          title={
+                            on ? '' : row.branch.worktree ? `${stateLabel(row)}\n${row.branch.worktree}` : stateLabel(row)
+                          }
                         >
                           <input
                             type="checkbox"

@@ -41,6 +41,7 @@ export function AuthDialog() {
   const [keys, setKeys] = useState<string[]>([]);
   const [remotes, setRemotes] = useState<{ name: string; url: string }[]>([]);
   const [remote, setRemote] = useState('origin');
+  const [sharedWith, setSharedWith] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; command: string; output: string } | null>(null);
@@ -57,6 +58,7 @@ export function AuthDialog() {
         setKeys(r.sshKeys);
         setRemotes(r.remotes);
         setRemote(r.remotes[0]?.name ?? 'origin');
+        setSharedWith(r.sharedWith);
       })
       .catch(toastError)
       .finally(() => setLoading(false));
@@ -106,6 +108,11 @@ export function AuthDialog() {
             <div className={cx("auth-note")}>
               秘密情報 (パスフレーズ・トークン) はアプリに保存しません。使用する鍵とヘルパーの指定のみ保存します。
             </div>
+            {sharedWith && (
+              <div className={cx("auth-note")}>
+                ワークツリーのため、メインのワークツリー ({sharedWith}) と同じ設定を使います。
+              </div>
+            )}
 
             <div className={cx("stash-section-title")}>SSH (git@… / ssh://…)</div>
             <label className={cx("clone-row")}>

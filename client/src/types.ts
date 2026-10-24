@@ -102,6 +102,11 @@ export interface GitBranch {
   upstreamRemote?: string;
   /** 追跡先のリモート側フル ref (例: refs/heads/main)。同期の refspec 組み立て用 */
   upstreamRef?: string;
+  /**
+   * 他のワークツリーでチェックアウト中のとき、そのワークツリーのパス。
+   * git がこのワークツリーからの切替・削除・refspec 付き fetch を拒否するため、それらの対象から外す
+   */
+  worktree?: string;
 }
 
 /** リモート (git remote)。push 用 URL を別に設定していなければ pushUrl は fetchUrl と同じ */
