@@ -12,6 +12,7 @@ import { switchView, WORKTREE_REVIEW_ID } from '../../stores/ui';
 import { openSyncDialog, openSyncDialogTab, type SyncTab } from '../git/SyncDialog';
 import { useRebaseDialog } from '../git/Rebase';
 import { openRepoGroupsDialog } from '../../app/RepoGroupsDialog';
+import { openAiChat } from '../aichat/aiChatStore';
 import { appTabId, isCommandPaletteKey, type AppTabWindow } from '../../lib/appTabs';
 import { isDialogOpen } from '../../lib/dialogKeys';
 import { matchText } from '../../lib/fuzzyMatch';
@@ -142,6 +143,7 @@ function buildCommands(inRepo: boolean): PaletteItem[] {
         useCommitDraft.getState().requestFocus();
       },
     },
+    { key: 'ai', label: 'AI チャット', detail: 'AI Chat: Codex / Claude', run: openAiChat },
   ];
   return commands.map((c) => ({ ...c, matchDetail: true }));
 }

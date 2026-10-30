@@ -10,10 +10,12 @@ import { createCssModuleClassNames } from '../lib/cssModule';
 import { useDialogKeys } from '../lib/dialogKeys';
 import { openAppLog } from '../stores/applog';
 import { backupBranchRegex, DEFAULT_BACKUP_BRANCH_PATTERN } from '../lib/backupBranch';
+import { AiSettingsTab } from './AiSettingsTab';
+import { useAiChat } from '../features/aichat/aiChatStore';
 
 const cx = createCssModuleClassNames(styles);
 
-type Tab = 'general' | 'menu' | 'tools' | 'diff';
+type Tab = 'general' | 'menu' | 'tools' | 'diff' | 'ai';
 
 /** contextMenu の各キーと日本語ラベル */
 const MENU_ITEMS: { key: string; label: string }[] = [
@@ -288,6 +290,8 @@ export function SettingsDialog() {
       setExtRows(Object.entries(saved.extDefaults).map(([ext, toolId]) => ({ ext, toolId })));
       setDirty(false);
       await refreshUiConfig(); // 再起動なしでメニュー等に即時反映
+      // AI チャットを開いていれば、選べるモデルを入れ替える
+      if (useAiChat.getState().open) void useAiChat.getState().refreshAgents();
       useToast.getState().show('success', '設定を保存しました');
     } catch (e) {
       toastError(e);
@@ -421,6 +425,7 @@ export function SettingsDialog() {
           {tabBtn('menu', 'コンテキストメニュー')}
           {tabBtn('tools', '外部ツール')}
           {tabBtn('diff', '差分ツール')}
+          {tabBtn('ai', 'AI')}
         </div>
 
         <div className={cx("settings-body")}>
@@ -720,6 +725,8 @@ export function SettingsDialog() {
               </div>
             </div>
           )}
+
+          {tab === 'ai' && draft && <AiSettingsTab draft={draft} patch={patch} />}
         </div>
 
         <div className={cx("settings-row")}>

@@ -38,7 +38,18 @@ export interface AppConfig {
   extDefaults: Record<string, string>;
   /** アプリログ (data/logs.db) の保存日数。これより古い行は定期的に削除する */
   logRetentionDays: number;
+  /** AI チャットで選べるモデル名 (AI ごと。設定画面のテキストエリアで 1 行 1 つ) */
+  aiModels: Record<'codex' | 'claude', string[]>;
+  /** Codex のサンドボックス (codex exec の sandbox_mode) */
+  aiCodexSandbox: AiCodexSandbox;
+  /** Claude の権限モード (claude -p の --permission-mode) */
+  aiClaudePermission: AiClaudePermission;
 }
+
+export const AI_CODEX_SANDBOXES = ['read-only', 'workspace-write', 'danger-full-access'] as const;
+export type AiCodexSandbox = (typeof AI_CODEX_SANDBOXES)[number];
+export const AI_CLAUDE_PERMISSIONS = ['acceptEdits', 'auto', 'plan', 'dontAsk', 'manual', 'bypassPermissions'] as const;
+export type AiClaudePermission = (typeof AI_CLAUDE_PERMISSIONS)[number];
 
 export const DEFAULT_LOG_RETENTION_DAYS = 30;
 export const MAX_LOG_RETENTION_DAYS = 3650;
@@ -133,6 +144,21 @@ export function getLogRetentionDays(): number {
   return readSetting<number>('logRetentionDays') ?? DEFAULT_LOG_RETENTION_DAYS;
 }
 
+/** モデル名として受け付ける文字 (CLI の引数にそのまま渡すため、空白や記号は通さない) */
+export const AI_MODEL_RE = /^[A-Za-z0-9][\w.\-:/@\[\]]*$/;
+
+function getAiModels(): Record<'codex' | 'claude', string[]> {
+  const v = readSetting<Partial<Record<'codex' | 'claude', string[]>>>('aiModels') ?? {};
+  return { codex: v.codex ?? [], claude: v.claude ?? [] };
+}
+
+/** 1 行 1 つのモデル名を正規化する (前後の空白・空行・重複・使えない文字を含む行を除く) */
+function sanitizeModels(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const names = v.filter((m): m is string => typeof m === 'string').map((m) => m.trim());
+  return [...new Set(names.filter((m) => AI_MODEL_RE.test(m)))];
+}
+
 /** 現在有効な設定 (未設定の項目は既定値) をまとめて返す */
 export function getAppConfig(): AppConfig {
   return {
@@ -142,6 +168,9 @@ export function getAppConfig(): AppConfig {
     diffTools: getDiffTools(),
     extDefaults: getExtDefaults(),
     logRetentionDays: getLogRetentionDays(),
+    aiModels: getAiModels(),
+    aiCodexSandbox: readSetting<AiCodexSandbox>('aiCodexSandbox') ?? 'workspace-write',
+    aiClaudePermission: readSetting<AiClaudePermission>('aiClaudePermission') ?? 'acceptEdits',
   };
 }
 
@@ -205,6 +234,16 @@ export function saveAppConfig(partial: Partial<Record<AppConfigKey, unknown>>): 
         'logRetentionDays',
         Number.isFinite(n) && n >= 1 ? Math.min(MAX_LOG_RETENTION_DAYS, Math.floor(n)) : DEFAULT_LOG_RETENTION_DAYS,
       );
+    }
+    if (partial.aiModels !== undefined && partial.aiModels && typeof partial.aiModels === 'object') {
+      const src = partial.aiModels as Record<string, unknown>;
+      writeSetting('aiModels', { codex: sanitizeModels(src.codex), claude: sanitizeModels(src.claude) });
+    }
+    if (AI_CODEX_SANDBOXES.includes(partial.aiCodexSandbox as AiCodexSandbox)) {
+      writeSetting('aiCodexSandbox', partial.aiCodexSandbox);
+    }
+    if (AI_CLAUDE_PERMISSIONS.includes(partial.aiClaudePermission as AiClaudePermission)) {
+      writeSetting('aiClaudePermission', partial.aiClaudePermission);
     }
   });
   tx();

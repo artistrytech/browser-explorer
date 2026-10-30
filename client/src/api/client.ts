@@ -1,5 +1,10 @@
 import type {
+  AiAgent,
+  AiAgentsResult,
+  AiBox,
+  AiTurn,
   AppSettings,
+  CodexModelInfo,
   AppState,
   CommitFilesResult,
   ConflictFile,
@@ -186,6 +191,29 @@ export const api = {
   // 設定編集 (command/args も含む全項目)
   getSettings: () => get<AppSettings>('/api/settings'),
   putSettings: (partial: Partial<AppSettings>) => put<AppSettings>('/api/settings', partial),
+
+  // --- AI チャット ---
+  aiAgents: (refresh = false) => get<AiAgentsResult>(`/api/ai/agents${refresh ? '?refresh=1' : ''}`),
+  aiCodexModels: () => get<{ models: CodexModelInfo[] }>('/api/ai/codex-models'),
+  aiBoxes: () => get<{ boxes: AiBox[] }>('/api/ai/boxes'),
+  aiBox: (id: number) => get<{ box: AiBox; turns: AiTurn[] }>(`/api/ai/boxes/${id}`),
+  aiCreateBox: (name: string, cwd: string) => post<AiBox>('/api/ai/boxes', { name, cwd }),
+  aiUpdateBox: (id: number, patch: { name?: string; cwd?: string }) =>
+    request<AiBox>(`/api/ai/boxes/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  aiDeleteBox: (id: number) => del<{ ok: true }>(`/api/ai/boxes/${id}`, {}),
+  aiSend: (
+    id: number,
+    body: {
+      agent: AiAgent;
+      mode: 'new' | 'continue';
+      model: string;
+      effort: string;
+      /** 空 = 設定の既定値 */
+      permission: string;
+      prompt: string;
+    },
+  ) => post<AiTurn>(`/api/ai/boxes/${id}/send`, body),
+  aiCancel: (turnId: number) => post<{ ok: boolean }>(`/api/ai/turns/${turnId}/cancel`, {}),
 
   // --- git ---
   isRepo: (path: string) =>

@@ -1,0 +1,137 @@
+/* モードレスのウィンドウ。モーダルのダイアログ (1100〜) やコンテキストメニュー (1000) より下に置く */
+.fw-window {
+  position: fixed;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.fw-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  flex: none;
+  padding: 0 6px 0 12px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  cursor: move;
+  user-select: none;
+}
+
+.fw-title-text {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fw-close {
+  border: none;
+  background: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-dim);
+}
+
+.fw-close:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+.fw-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- サイズ変更のつまみ (枠の内側に透明で重ねる) --- */
+
+.fw-handle {
+  position: absolute;
+  z-index: 2;
+}
+
+.fw-n,
+.fw-s {
+  left: 8px;
+  right: 8px;
+  height: 5px;
+  cursor: ns-resize;
+}
+
+.fw-n {
+  top: 0;
+}
+
+.fw-s {
+  bottom: 0;
+}
+
+.fw-e,
+.fw-w {
+  top: 8px;
+  bottom: 8px;
+  width: 5px;
+  cursor: ew-resize;
+}
+
+.fw-e {
+  right: 0;
+}
+
+.fw-w {
+  left: 0;
+}
+
+.fw-ne,
+.fw-nw,
+.fw-se,
+.fw-sw {
+  width: 10px;
+  height: 10px;
+}
+
+.fw-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.fw-sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.fw-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.fw-se {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}
+
+/* ドラッグ中は文字を選択しない */
+:global(body.fw-moving),
+:global(body.fw-resizing) {
+  user-select: none;
+}
+
+:global(body.fw-moving) {
+  cursor: move;
+}

@@ -3,6 +3,7 @@ import { useExplorer } from '../stores/explorer';
 import { useUi } from '../stores/ui';
 import { openAppLog } from '../stores/applog';
 import { openDualPane } from '../features/transfer/DualPaneDialog';
+import { openAiChat } from '../features/aichat/aiChatStore';
 import { breadcrumbs, parentPath, isRootPath } from '../lib/paths';
 import styles from './Toolbar.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
@@ -123,6 +124,9 @@ export function Toolbar() {
         onClick={() => openDualPane()}
       >
         ⧉
+      </button>
+      <button className={cx("tool-btn")} title="AI チャット (Codex / Claude)" onClick={() => openAiChat()}>
+        🤖
       </button>
       <button className={cx("tool-btn")} title="アプリログ (動作ログの確認・検索)" onClick={() => openAppLog()}>
         🩺

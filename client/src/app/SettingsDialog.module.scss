@@ -344,3 +344,78 @@
 .settings-link-btn:hover {
   text-decoration: underline;
 }
+
+/* --- AI タブ (AiSettingsTab) --- */
+
+.ai-models {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 0 4px;
+}
+
+.ai-models-text {
+  font-family: var(--font-mono);
+  resize: vertical;
+}
+
+.ai-support {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ai-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ai-chip {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ai-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ai-chip.hidden-model {
+  opacity: 0.6;
+}
+
+.ai-chip.added {
+  cursor: default;
+  color: var(--add);
+}
+
+.ai-builder {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+}
+
+.ai-series {
+  width: 90px;
+}
+
+.ai-version {
+  width: 72px;
+}
+
+.ai-preview {
+  margin: 0 6px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--bg-alt);
+}

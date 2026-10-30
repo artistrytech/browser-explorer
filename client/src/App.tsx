@@ -36,6 +36,7 @@ import { ReviewExportDialog } from './features/review/ReviewExportDialog';
 import { DualPaneDialog } from './features/transfer/DualPaneDialog';
 import { TransferConfirmDialog } from './features/transfer/TransferConfirmDialog';
 import { CommandPalette } from './features/palette/CommandPalette';
+import { AiChatDialog } from './features/aichat/AiChatDialog';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
 import { ToastHost } from './components/ToastHost';
@@ -417,6 +418,8 @@ export default function App() {
         </Panel>
       </PanelGroup>
       <StatusBar />
+      {/* AI チャットはモードレス。モーダルのダイアログ・コンテキストメニューより下に出す */}
+      <AiChatDialog />
       <ContextMenuHost />
       <DialogHost />
       <ToastHost />

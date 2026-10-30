@@ -285,6 +285,85 @@ export interface AppSettings {
   extDefaults: Record<string, string>;
   /** アプリログの保存日数 (既定 30) */
   logRetentionDays: number;
+  /** AI チャットで選べるモデル名 (AI ごと) */
+  aiModels: Record<AiAgent, string[]>;
+  /** Codex のサンドボックス (codex exec の sandbox_mode) */
+  aiCodexSandbox: 'read-only' | 'workspace-write' | 'danger-full-access';
+  /** Claude の権限モード (claude -p の --permission-mode) */
+  aiClaudePermission: 'acceptEdits' | 'auto' | 'plan' | 'dontAsk' | 'manual' | 'bypassPermissions';
+}
+
+// --- AI チャット (server/services/aiStore.ts / aiRunner.ts) ---
+
+export type AiAgent = 'codex' | 'claude';
+
+export interface AiAgentInfo {
+  available: boolean;
+  path: string | null;
+  version: string | null;
+}
+
+/** codex / claude の有無と、選べるモデル (設定) ・effort・権限 */
+export interface AiAgentsResult {
+  agents: Record<AiAgent, AiAgentInfo>;
+  models: Record<AiAgent, string[]>;
+  efforts: Record<AiAgent, string[]>;
+  /** 選べる権限 (Codex はサンドボックス、Claude は権限モード) */
+  permissions: Record<AiAgent, string[]>;
+  /** 権限の既定値 (設定画面の値。依頼で未指定のときに使う) */
+  defaultPermissions: Record<AiAgent, string>;
+}
+
+/** 「続ける」の対象 (AI ごとに最後の会話)。sessionId は CLI から受け取るまで null */
+export interface AiSession {
+  thread: number;
+  sessionId: string | null;
+}
+
+export interface AiBox {
+  id: number;
+  name: string;
+  cwd: string;
+  sessions: Partial<Record<AiAgent, AiSession>>;
+  createdAt: string;
+  updatedAt: string;
+  running: boolean;
+}
+
+export type AiItem =
+  | { kind: 'text'; key: string; text: string }
+  | { kind: 'reasoning'; key: string; text: string }
+  | { kind: 'tool'; key: string; title: string; detail?: string; output?: string; status: 'running' | 'done' | 'error' }
+  | { kind: 'error'; key: string; text: string };
+
+export type AiTurnStatus = 'running' | 'done' | 'error' | 'canceled';
+
+export interface AiTurn {
+  id: number;
+  boxId: number;
+  thread: number;
+  agent: AiAgent;
+  mode: 'new' | 'continue';
+  model: string;
+  effort: string;
+  /** Codex のサンドボックス / Claude の権限モード (実行時の値) */
+  permission: string;
+  prompt: string;
+  cwd: string;
+  items: AiItem[];
+  status: AiTurnStatus;
+  error: string | null;
+  sessionId: string | null;
+  usage: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+export interface CodexModelInfo {
+  slug: string;
+  displayName: string;
+  hidden: boolean;
+  efforts: string[];
 }
 
 // --- アプリログ (server/services/logger.ts) ---
