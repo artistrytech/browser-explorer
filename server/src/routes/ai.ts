@@ -14,7 +14,10 @@ import {
   listTurns,
   startTurn,
   updateBox,
+  AI_AGENTS,
   type AiBox,
+  type AiAgent,
+  type AiBoxPrefs,
 } from '../services/aiStore.js';
 import {
   AI_EFFORTS,
@@ -64,6 +67,23 @@ function boxName(v: unknown): string {
   const name = typeof v === 'string' ? v.trim() : '';
   if (!name) badRequest('名前を入力してください');
   return name.slice(0, 200);
+}
+
+/**
+ * 送信欄の選択 (AI・AI ごとのモデル / effort / 権限) を整える。
+ * 値の妥当性 (登録済みのモデルか等) は送信時に確かめるので、ここでは形だけをそろえる
+ */
+function boxPrefs(v: unknown): AiBoxPrefs {
+  if (!v || typeof v !== 'object') badRequest('prefs が不正です');
+  const p = v as Record<string, unknown>;
+  if (!isAiAgent(p.agent)) badRequest('AI の種類が不正です');
+  const perAgent = (x: unknown): Record<AiAgent, string> => {
+    const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+    const r = {} as Record<AiAgent, string>;
+    for (const a of AI_AGENTS) r[a] = typeof o[a] === 'string' ? (o[a] as string).trim().slice(0, 200) : '';
+    return r;
+  };
+  return { agent: p.agent, model: perAgent(p.model), effort: perAgent(p.effort), permission: perAgent(p.permission) };
 }
 
 /** Box に実行中のターンがあるかを付けて返す */
@@ -135,12 +155,15 @@ aiRouter.post('/boxes/:id/turns/delete', (req, res) => {
   res.json({ deleted });
 });
 
-/** 名前・ベースフォルダの変更 (フォルダを変えると、以降の依頼はすべて新しい会話になる) */
+/**
+ * 名前・ベースフォルダ・送信欄の選択の変更 (フォルダを変えると、以降の依頼はすべて新しい会話になる)
+ */
 aiRouter.patch('/boxes/:id', async (req, res) => {
   const box = mustGetBox(req.params.id);
-  const body = (req.body ?? {}) as { name?: unknown; cwd?: unknown };
-  const patch: { name?: string; cwd?: string } = {};
+  const body = (req.body ?? {}) as { name?: unknown; cwd?: unknown; prefs?: unknown };
+  const patch: { name?: string; cwd?: string; prefs?: AiBoxPrefs } = {};
   if (body.name !== undefined) patch.name = boxName(body.name);
+  if (body.prefs !== undefined) patch.prefs = boxPrefs(body.prefs);
   if (body.cwd !== undefined) {
     if (isBoxRunning(box.id)) badRequest('実行中はベースフォルダを変更できません');
     patch.cwd = await resolveDir(body.cwd);

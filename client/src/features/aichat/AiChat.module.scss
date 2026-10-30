@@ -775,10 +775,37 @@
 }
 
 .composer-text {
-  resize: vertical;
+  resize: none;
   min-height: 64px;
   height: 84px;
   max-height: 50vh;
+}
+
+/* 境界のドラッグで高さを決めたとき: 入力欄が残りの高さを埋める (会話の部分を最低限残す) */
+.composer.sized {
+  min-height: min-content;
+  max-height: calc(100% - 80px);
+}
+
+.composer.sized .composer-text {
+  flex: 1;
+  min-height: 40px;
+  height: auto;
+  max-height: none;
+}
+
+/* 会話と送信欄の境界 (ドラッグで送信欄の高さを変える) */
+.composer-resize {
+  flex: none;
+  height: 4px;
+  margin-bottom: -1px;
+  background: var(--bg-alt);
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.composer-resize:hover {
+  background: var(--accent);
 }
 
 .opt {

@@ -8,7 +8,15 @@ import { useExplorer } from '../../stores/explorer';
 import { toastError } from '../../stores/toast';
 import type { AiAgent, AiBox } from '../../types';
 import { AiTurnView } from './AiTurnView';
-import { AI_LABELS, closeAiChat, defaultBoxName, isTurnCollapsed, timestampName, useAiChat } from './aiChatStore';
+import {
+  AI_LABELS,
+  closeAiChat,
+  defaultBoxName,
+  isTurnCollapsed,
+  timestampName,
+  useAiChat,
+  type ComposerPrefs,
+} from './aiChatStore';
 import { PERMISSION_NAMES, permissionLabel } from './aiPermissions';
 import styles from './AiChat.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -16,6 +24,10 @@ import { createCssModuleClassNames } from '../../lib/cssModule';
 const cx = createCssModuleClassNames(styles);
 
 const AGENTS: AiAgent[] = ['codex', 'claude'];
+
+/** 境界のドラッグで送信欄の高さを変えるとき、入力欄 / 会話の部分に最低限残す高さ (px。CSS と合わせる) */
+const TEXTAREA_MIN_HEIGHT = 40;
+const TIMELINE_MIN_HEIGHT = 80;
 
 /**
  * AI チャット (VSCode の拡張機能のような Codex / Claude との対話)。
@@ -492,6 +504,17 @@ function BoxView({ box }: { box: AiBox }) {
   /** 前回の描画時の最新の会話 (新しい依頼が加わったかの判定に使う) */
   const lastTurnId = useRef<number | undefined>(undefined);
 
+  // 送信欄の高さを変える等で会話の部分が縮んでも、末尾を見ていたら末尾を表示し続ける
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      if (atBottom.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -559,8 +582,57 @@ function BoxView({ box }: { box: AiBox }) {
           </div>
         )}
       </div>
+      <ComposerResizer />
       <Composer box={box} />
     </>
+  );
+}
+
+/**
+ * 会話と送信欄の境界。ドラッグで送信欄の高さを変え (次に開いたときも引き継ぐ)、
+ * ダブルクリックで既定の高さに戻す。直前が会話の部分、直後が送信欄の要素
+ */
+function ComposerResizer() {
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const handle = e.currentTarget;
+    const timeline = handle.previousElementSibling as HTMLElement | null;
+    const composer = handle.nextElementSibling as HTMLElement | null;
+    const text = composer?.querySelector('textarea');
+    if (e.button !== 0 || !timeline || !composer || !text) return;
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = composer.offsetHeight;
+    // 入力欄と会話の部分を最低限残す (伸び縮みするのは入力欄だけ)
+    const min = Math.min(startH, startH - text.offsetHeight + TEXTAREA_MIN_HEIGHT);
+    const max = Math.max(startH, startH + timeline.clientHeight - TIMELINE_MIN_HEIGHT);
+    let height: number | null = null;
+    const onMove = (ev: PointerEvent) => {
+      height = Math.min(max, Math.max(min, startH + startY - ev.clientY));
+      useAiChat.getState().setComposerHeight(height, false);
+    };
+    const onUp = () => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+      // 動かさずに離した (クリックだけ) なら既定の高さのままにする。
+      // 内容の高さで下限が決まることがあるので、実際の高さを保存する
+      if (height !== null) useAiChat.getState().setComposerHeight(composer.offsetHeight, true);
+    };
+    handle.setPointerCapture(e.pointerId);
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
+  };
+
+  return (
+    <div
+      className={cx('composer-resize')}
+      role="separator"
+      aria-orientation="horizontal"
+      title="ドラッグで入力欄の高さを変更 (ダブルクリックで元の高さに戻す)"
+      onPointerDown={onPointerDown}
+      onDoubleClick={() => useAiChat.getState().setComposerHeight(null, true)}
+    />
   );
 }
 
@@ -652,7 +724,11 @@ function BoxHeader({ box }: { box: AiBox }) {
 
 function Composer({ box }: { box: AiBox }) {
   const agents = useAiChat((s) => s.agents);
-  const prefs = useAiChat((s) => s.prefs);
+  const lastPrefs = useAiChat((s) => s.prefs);
+  const height = useAiChat((s) => s.composerHeight);
+  // Box に保存した選択を復元する (まだ無ければ最後に使った選択)
+  const prefs = box.prefs ?? lastPrefs;
+  const setPrefs = (patch: Partial<ComposerPrefs>) => useAiChat.getState().setBoxPrefs(box, patch);
   const draft = useAiChat((s) => s.drafts[box.id] ?? '');
   const runningTurn = useAiChat((s) => s.turns[box.id]?.find((t) => t.status === 'running') ?? null);
   const running = box.running || runningTurn !== null;
@@ -687,6 +763,8 @@ function Composer({ box }: { box: AiBox }) {
     setSending(true);
     try {
       const turn = await api.aiSend(box.id, { agent, mode, model, effort, permission, prompt: draft });
+      // 選択をまだ保存していない Box は、送ったときの選択を覚える
+      if (!box.prefs) setPrefs({});
       // 新しい依頼を送ったら、それまでの出力は (開いていたものも) 折り畳む。
       // 送った依頼は WS で先に届いていることがあるので除く
       useAiChat.getState().setAllCollapsed(box.id, true, turn.id);
@@ -710,7 +788,10 @@ function Composer({ box }: { box: AiBox }) {
   };
 
   return (
-    <div className={cx('composer')}>
+    <div
+      className={cx(`composer${height !== null ? ' sized' : ''}`)}
+      style={height !== null ? { height } : undefined}
+    >
       {noneAvailable && (
         <div className={cx('composer-warn')}>
           codex / claude のどちらも PATH に見つかりません。インストールして PATH を通してから
@@ -728,7 +809,7 @@ function Composer({ box }: { box: AiBox }) {
           AI
           <select
             value={agent}
-            onChange={(e) => useAiChat.getState().setPrefs({ agent: e.target.value as AiAgent })}
+            onChange={(e) => setPrefs({ agent: e.target.value as AiAgent })}
           >
             {AGENTS.map((a) => {
               const available = agents?.agents[a].available ?? false;
@@ -764,9 +845,7 @@ function Composer({ box }: { box: AiBox }) {
           <select
             value={model}
             title={models.length === 0 ? '設定画面の「AI」タブでモデル名を登録できます' : undefined}
-            onChange={(e) =>
-              useAiChat.getState().setPrefs({ model: { ...prefs.model, [agent]: e.target.value } })
-            }
+            onChange={(e) => setPrefs({ model: { ...prefs.model, [agent]: e.target.value } })}
           >
             <option value="">(既定)</option>
             {models.map((m) => (
@@ -780,9 +859,7 @@ function Composer({ box }: { box: AiBox }) {
           effort
           <select
             value={effort}
-            onChange={(e) =>
-              useAiChat.getState().setPrefs({ effort: { ...prefs.effort, [agent]: e.target.value } })
-            }
+            onChange={(e) => setPrefs({ effort: { ...prefs.effort, [agent]: e.target.value } })}
           >
             <option value="">(既定)</option>
             {efforts.map((v) => (
@@ -799,9 +876,7 @@ function Composer({ box }: { box: AiBox }) {
           権限
           <select
             value={permission}
-            onChange={(e) =>
-              useAiChat.getState().setPrefs({ permission: { ...prefs.permission, [agent]: e.target.value } })
-            }
+            onChange={(e) => setPrefs({ permission: { ...prefs.permission, [agent]: e.target.value } })}
           >
             <option value="">(既定: {defaultPermission})</option>
             {permissions.map((v) => (

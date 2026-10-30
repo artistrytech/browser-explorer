@@ -24,6 +24,11 @@
   user-select: none;
 }
 
+/* 折り畳み中はウィンドウの枠と二重の線にならないよう、タイトルバーの下線を消す */
+.fw-window.collapsed .fw-title {
+  border-bottom-color: transparent;
+}
+
 .fw-title-text {
   flex: 1;
   min-width: 0;

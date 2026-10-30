@@ -7,6 +7,7 @@ const cx = createCssModuleClassNames(styles);
 /**
  * モードレスのフローティングウィンドウ。背後の画面はそのまま操作できる。
  * タイトルバーのドラッグで移動、四辺・四隅のドラッグでサイズ変更。
+ * タイトルバーのダブルクリックで本体を折り畳み、タイトルバーだけの表示にする (もう一度で戻す)。
  * 位置とサイズは localStorage (storageKey) に保持し、次に開いたときに復元する。
  */
 
@@ -78,6 +79,8 @@ export function FloatingWindow({
   children: ReactNode;
 }) {
   const [rect, setRect] = useState(() => loadRect(storageKey, defaultRect));
+  /** 本体を折り畳んでタイトルバーだけを表示しているか (開き直したら展開した状態に戻る) */
+  const [collapsed, setCollapsed] = useState(false);
   const rectRef = useRef(rect);
   rectRef.current = rect;
 
@@ -136,8 +139,9 @@ export function FloatingWindow({
 
   return (
     <div
-      className={cx('fw-window')}
-      style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
+      className={cx(`fw-window${collapsed ? ' collapsed' : ''}`)}
+      // 折り畳んでも本体の大きさは変えずに隠すだけにする (会話のスクロール位置等を保つ)
+      style={{ left: rect.x, top: rect.y, width: rect.w, height: collapsed ? TITLE_H + 2 : rect.h }}
       role="dialog"
       aria-modal="false"
       // ウィンドウ内のキー操作が背後の画面 (Alt+← 等のグローバルキー) へ伝わらないようにする
@@ -150,15 +154,24 @@ export function FloatingWindow({
           if ((e.target as HTMLElement).closest('button, input, select, a')) return;
           startDrag(e, 'move');
         }}
+        onDoubleClick={(e) => {
+          if ((e.target as HTMLElement).closest('button, input, select, a')) return;
+          setCollapsed((v) => !v);
+        }}
       >
-        <span className={cx('fw-title-text')}>{title}</span>
+        <span className={cx('fw-title-text')} title={collapsed ? 'ダブルクリックで展開' : 'ダブルクリックで折り畳む'}>
+          {title}
+        </span>
         {headerExtra}
         <button className={cx('fw-close')} title="閉じる" onClick={onClose}>
           ✕
         </button>
       </div>
-      <div className={cx('fw-body')}>{children}</div>
-      {DIRS.map((d) => (
+      <div className={cx('fw-body')} style={collapsed ? { flex: 'none', height: rect.h - TITLE_H - 2 } : undefined}>
+        {children}
+      </div>
+      {/* 折り畳み中は幅だけ変えられる */}
+      {(collapsed ? (['e', 'w'] as Dir[]) : DIRS).map((d) => (
         <div key={d} className={cx(`fw-handle fw-${d}`)} onPointerDown={(e) => startDrag(e, d)} />
       ))}
     </div>

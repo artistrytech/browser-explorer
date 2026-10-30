@@ -2,6 +2,7 @@ import type {
   AiAgent,
   AiAgentsResult,
   AiBox,
+  AiBoxPrefs,
   AiTurn,
   AppSettings,
   CodexModelInfo,
@@ -205,7 +206,7 @@ export const api = {
   aiDeleteTurns: (id: number, turnId: number, older: boolean) =>
     post<{ deleted: number[] }>(`/api/ai/boxes/${id}/turns/delete`, { turnId, older }),
   aiCreateBox: (name: string, cwd: string) => post<AiBox>('/api/ai/boxes', { name, cwd }),
-  aiUpdateBox: (id: number, patch: { name?: string; cwd?: string }) =>
+  aiUpdateBox: (id: number, patch: { name?: string; cwd?: string; prefs?: AiBoxPrefs }) =>
     request<AiBox>(`/api/ai/boxes/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   aiDeleteBox: (id: number) => del<{ ok: true }>(`/api/ai/boxes/${id}`, {}),
   aiSend: (

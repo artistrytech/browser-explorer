@@ -2,7 +2,8 @@ import { db } from './stateStore.js';
 
 /**
  * AI チャット (Codex / Claude の CLI との対話) の保存先。
- * - ai_boxes: 会話の Box。名前・ベースフォルダと、AI ごとに「続ける」対象の会話 (sessions) を持つ
+ * - ai_boxes: 会話の Box。名前・ベースフォルダと、AI ごとに「続ける」対象の会話 (sessions)、
+ *   送信欄の選択 (prefs: AI・AI ごとのモデル / effort / 権限。Box を開いたときに復元する) を持つ
  * - ai_turns: 依頼 1 回分 (人間の依頼 + AI の出力)。出力は表示用に整えた項目 (AiItem) の配列で持つ
  *
  * 会話 (thread) は Box 内の通し番号。「新しい会話」で採番し、「続ける」は同じ AI の最後の会話を引き継ぐ。
@@ -16,6 +17,7 @@ CREATE TABLE IF NOT EXISTS ai_boxes (
   name TEXT NOT NULL,
   cwd TEXT NOT NULL,
   sessions TEXT NOT NULL DEFAULT '{}',  -- AiAgent → AiSession (JSON)
+  prefs TEXT,                           -- AiBoxPrefs (JSON)。null = 未保存
   next_thread INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -50,6 +52,12 @@ CREATE INDEX IF NOT EXISTS ai_turns_box ON ai_turns (box_id, id);
   }
 }
 
+// 送信欄の選択 (prefs) の列が無い旧スキーマに追加する
+{
+  const cols = db.prepare('PRAGMA table_info(ai_boxes)').all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'prefs')) db.exec('ALTER TABLE ai_boxes ADD COLUMN prefs TEXT');
+}
+
 // 実行中のままサーバが終了したターンは中断扱いにする (子プロセスは残っていない)
 db.prepare(
   `UPDATE ai_turns SET status = 'error', error = 'サーバの再起動により中断しました', finished_at = ?
@@ -69,13 +77,25 @@ export interface AiSession {
   sessionId: string | null;
 }
 
+/** 送信欄の選択 (AI・AI ごとのモデル / effort / 権限)。空文字 = 既定 */
+export interface AiBoxPrefs {
+  agent: AiAgent;
+  model: Record<AiAgent, string>;
+  effort: Record<AiAgent, string>;
+  permission: Record<AiAgent, string>;
+}
+
 export interface AiBox {
   id: number;
   name: string;
   cwd: string;
   sessions: Partial<Record<AiAgent, AiSession>>;
+  /** 送信欄の選択。まだ保存していなければ null */
+  prefs: AiBoxPrefs | null;
   createdAt: string;
   updatedAt: string;
+  /** 最後に使った日時 (最新の依頼の日時。依頼が無ければ作成日時) */
+  lastActiveAt: string;
 }
 
 /** AI の出力を表示用に整えた項目 */
@@ -123,9 +143,11 @@ interface BoxRow {
   name: string;
   cwd: string;
   sessions: string;
+  prefs: string | null;
   next_thread: number;
   created_at: string;
   updated_at: string;
+  last_active_at: string;
 }
 
 interface TurnRow {
@@ -162,8 +184,10 @@ function toBox(r: BoxRow): AiBox {
     name: r.name,
     cwd: r.cwd,
     sessions: parseJson(r.sessions, {}),
+    prefs: r.prefs ? parseJson(r.prefs, null) : null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    lastActiveAt: r.last_active_at,
   };
 }
 
@@ -189,13 +213,19 @@ function toTurn(r: TurnRow): AiTurn {
   };
 }
 
+/** Box の列と、最後に使った日時 (最新の依頼の日時。依頼が無ければ作成日時) */
+const BOX_COLUMNS = `b.*, COALESCE(
+  (SELECT t.created_at FROM ai_turns t WHERE t.box_id = b.id ORDER BY t.id DESC LIMIT 1),
+  b.created_at
+) AS last_active_at`;
+
 /** Box の一覧 (新しい順) */
 export function listBoxes(): AiBox[] {
-  return (db.prepare('SELECT * FROM ai_boxes ORDER BY id DESC').all() as BoxRow[]).map(toBox);
+  return (db.prepare(`SELECT ${BOX_COLUMNS} FROM ai_boxes b ORDER BY b.id DESC`).all() as BoxRow[]).map(toBox);
 }
 
 export function getBox(id: number): AiBox | null {
-  const row = db.prepare('SELECT * FROM ai_boxes WHERE id = ?').get(id) as BoxRow | undefined;
+  const row = db.prepare(`SELECT ${BOX_COLUMNS} FROM ai_boxes b WHERE b.id = ?`).get(id) as BoxRow | undefined;
   return row ? toBox(row) : null;
 }
 
@@ -207,16 +237,23 @@ export function createBox(name: string, cwd: string): AiBox {
   return getBox(Number(r.lastInsertRowid))!;
 }
 
-/** 名前・ベースフォルダの変更。フォルダを変えたら「続ける」対象を消し、次からは新しい会話にする */
-export function updateBox(id: number, patch: { name?: string; cwd?: string }): AiBox | null {
+/**
+ * 名前・ベースフォルダ・送信欄の選択の変更。フォルダを変えたら「続ける」対象を消し、次からは新しい会話にする
+ */
+export function updateBox(
+  id: number,
+  patch: { name?: string; cwd?: string; prefs?: AiBoxPrefs },
+): AiBox | null {
   const box = getBox(id);
   if (!box) return null;
   const name = patch.name ?? box.name;
   const cwdChanged = patch.cwd !== undefined && patch.cwd !== box.cwd;
-  db.prepare('UPDATE ai_boxes SET name = ?, cwd = ?, sessions = ?, updated_at = ? WHERE id = ?').run(
+  const prefs = patch.prefs ?? box.prefs;
+  db.prepare('UPDATE ai_boxes SET name = ?, cwd = ?, sessions = ?, prefs = ?, updated_at = ? WHERE id = ?').run(
     name,
     patch.cwd ?? box.cwd,
     JSON.stringify(cwdChanged ? {} : box.sessions),
+    prefs ? JSON.stringify(prefs) : null,
     new Date().toISOString(),
     id,
   );

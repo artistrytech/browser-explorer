@@ -320,13 +320,25 @@ export interface AiSession {
   sessionId: string | null;
 }
 
+/** 送信欄の選択 (AI・AI ごとのモデル / effort / 権限)。空文字 = 既定 */
+export interface AiBoxPrefs {
+  agent: AiAgent;
+  model: Record<AiAgent, string>;
+  effort: Record<AiAgent, string>;
+  permission: Record<AiAgent, string>;
+}
+
 export interface AiBox {
   id: number;
   name: string;
   cwd: string;
   sessions: Partial<Record<AiAgent, AiSession>>;
+  /** 送信欄の選択 (Box を開いたときに復元する)。まだ保存していなければ null */
+  prefs: AiBoxPrefs | null;
   createdAt: string;
   updatedAt: string;
+  /** 最後に使った日時 (最新の依頼の日時。依頼が無ければ作成日時) */
+  lastActiveAt: string;
   running: boolean;
 }
 

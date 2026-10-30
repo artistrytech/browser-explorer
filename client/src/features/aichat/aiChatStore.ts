@@ -2,9 +2,10 @@ import { create } from 'zustand';
 import { api } from '../../api/client';
 import { onWsEvent } from '../../api/ws';
 import { confirmDialog } from '../../stores/dialog';
+import { useExplorer } from '../../stores/explorer';
 import { toastError } from '../../stores/toast';
 import { baseName } from '../../lib/paths';
-import type { AiAgent, AiAgentsResult, AiBox, AiTurn } from '../../types';
+import type { AiAgent, AiAgentsResult, AiBox, AiBoxPrefs, AiTurn } from '../../types';
 
 /**
  * AI チャット (Codex / Claude) の状態。Box と会話はサーバの DB にあり、
@@ -13,13 +14,12 @@ import type { AiAgent, AiAgentsResult, AiBox, AiTurn } from '../../types';
 
 export const AI_LABELS: Record<AiAgent, string> = { codex: 'Codex', claude: 'Claude' };
 
-/** 送信欄の選択 (AI・AI ごとのモデル / effort / 権限)。次に開いたときも引き継ぐ。空 = 既定 */
-export interface ComposerPrefs {
-  agent: AiAgent;
-  model: Record<AiAgent, string>;
-  effort: Record<AiAgent, string>;
-  permission: Record<AiAgent, string>;
-}
+/**
+ * 送信欄の選択 (AI・AI ごとのモデル / effort / 権限)。空 = 既定。
+ * Box ごとに保存して開いたときに復元する。ここに持つのは最後に使った選択で、
+ * まだ選択を保存していない Box (新しい Box 等) の初期値にする
+ */
+export type ComposerPrefs = AiBoxPrefs;
 
 const PREFS_KEY = 'aichat:composer';
 const BOX_KEY = 'aichat:box';
@@ -100,6 +100,56 @@ export function saveDockSize(size: number): void {
   }
 }
 
+const COMPOSER_HEIGHT_KEY = 'aichat:composerHeight';
+
+/** 送信欄の高さ (px)。null = 既定の高さ */
+function loadComposerHeight(): number | null {
+  try {
+    const n = Number(localStorage.getItem(COMPOSER_HEIGHT_KEY));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveComposerHeight(h: number | null): void {
+  try {
+    if (h === null) localStorage.removeItem(COMPOSER_HEIGHT_KEY);
+    else localStorage.setItem(COMPOSER_HEIGHT_KEY, String(Math.round(h)));
+  } catch {
+    /* storage full 等は無視 */
+  }
+}
+
+/** パスの比較用の表記 (区切り・末尾の / の違いを無視し、Windows のパスは大文字小文字を区別しない) */
+function pathKey(p: string): string {
+  const s = p.replace(/\\/g, '/').replace(/(?<=.)\/+$/, '');
+  return /^[A-Za-z]:/.test(s) ? s.toLowerCase() : s;
+}
+
+/** dir が path と同じフォルダか、その親 (祖先) のフォルダか。どちらも pathKey の表記 */
+function containsPath(dir: string, path: string): boolean {
+  return path === dir || path.startsWith(dir.endsWith('/') ? dir : `${dir}/`);
+}
+
+/**
+ * cwd を開くときに選ぶ Box。ベースフォルダが cwd か、その親のフォルダの Box のうち、
+ * 最も近いフォルダ (cwd に一致するものが最優先) の、最後に使ったもの
+ */
+function latestBoxFor(boxes: AiBox[], cwd: string): AiBox | null {
+  const target = pathKey(cwd);
+  let best: { box: AiBox; depth: number } | null = null;
+  for (const b of boxes) {
+    const dir = pathKey(b.cwd);
+    if (!containsPath(dir, target)) continue;
+    const depth = dir.length;
+    if (!best || depth > best.depth || (depth === best.depth && b.lastActiveAt > best.box.lastActiveAt)) {
+      best = { box: b, depth };
+    }
+  }
+  return best?.box ?? null;
+}
+
 /** 1 回に読み込む会話の件数 (古いものは「さらに読み込む」で遡る) */
 export const TURNS_PAGE_SIZE = 10;
 
@@ -133,12 +183,16 @@ interface AiChatStore {
   collapsed: Record<number, boolean>;
   /** 送信欄の入力 (Box ごと。送信するまで保持) */
   drafts: Record<number, string>;
+  /** 最後に使った送信欄の選択 (選択を保存していない Box の初期値) */
   prefs: ComposerPrefs;
+  /** 送信欄の高さ (px。会話との境界のドラッグで変える)。null = 既定の高さ */
+  composerHeight: number | null;
   setOpen: (open: boolean) => void;
   setDocked: (docked: boolean) => void;
   setCreating: (creating: boolean) => void;
   refreshAgents: (force?: boolean) => Promise<void>;
-  loadBoxes: () => Promise<void>;
+  /** Box の一覧を読み込む。cwd を渡すと、そのフォルダの最後に使った Box があれば選ぶ */
+  loadBoxes: (opts?: { cwd?: string }) => Promise<void>;
   select: (id: number | null) => void;
   /** 最新の会話を読み込み直す (開閉の状態も既定に戻す) */
   loadTurns: (id: number) => Promise<void>;
@@ -149,7 +203,10 @@ interface AiChatStore {
   /** 開閉の状態を既定 (最新以外を折り畳む) に戻す */
   resetCollapsed: (boxId: number) => void;
   setDraft: (id: number, text: string) => void;
-  setPrefs: (patch: Partial<ComposerPrefs>) => void;
+  /** Box の送信欄の選択を変えて保存する (最後に使った選択としても覚える) */
+  setBoxPrefs: (box: AiBox, patch: Partial<ComposerPrefs>) => void;
+  /** 送信欄の高さを変える (save = 保存もする。ドラッグ中は保存しない) */
+  setComposerHeight: (h: number | null, save: boolean) => void;
   toggleCollapsed: (turnId: number) => void;
   /** Box の出力をまとめて開閉する (exceptId のターンはそのまま) */
   setAllCollapsed: (boxId: number, collapsed: boolean, exceptId?: number) => void;
@@ -170,6 +227,7 @@ export const useAiChat = create<AiChatStore>((set, get) => ({
   collapsed: {},
   drafts: {},
   prefs: loadPrefs(),
+  composerHeight: loadComposerHeight(),
 
   setOpen: (open) => set({ open }),
 
@@ -192,12 +250,14 @@ export const useAiChat = create<AiChatStore>((set, get) => ({
     }
   },
 
-  loadBoxes: async () => {
+  loadBoxes: async (opts = {}) => {
     try {
       const { boxes } = await api.aiBoxes();
       const { selectedId } = get();
-      // 選択中の Box が消えていたら先頭を選ぶ
-      const next = boxes.some((b) => b.id === selectedId) ? selectedId : (boxes[0]?.id ?? null);
+      // 指定のフォルダ (またはその親のフォルダ) の Box を優先し、無ければ選択中のまま (消えていたら先頭を選ぶ)
+      const preferred = opts.cwd ? latestBoxFor(boxes, opts.cwd) : null;
+      const next =
+        preferred?.id ?? (boxes.some((b) => b.id === selectedId) ? selectedId : (boxes[0]?.id ?? null));
       set({ boxes, boxesLoaded: true, creating: get().creating || boxes.length === 0 });
       if (next !== selectedId) get().select(next);
       else if (next !== null && !get().turns[next]) void get().loadTurns(next);
@@ -260,10 +320,17 @@ export const useAiChat = create<AiChatStore>((set, get) => ({
 
   setDraft: (id, text) => set((s) => ({ drafts: { ...s.drafts, [id]: text } })),
 
-  setPrefs: (patch) => {
-    const prefs = { ...get().prefs, ...patch };
-    set({ prefs });
+  setBoxPrefs: (box, patch) => {
+    const prefs = { ...(box.prefs ?? get().prefs), ...patch };
+    set((s) => ({ prefs, boxes: s.boxes.map((b) => (b.id === box.id ? { ...b, prefs } : b)) }));
     savePrefs(prefs);
+    // 画面には先に反映済み。続けて変えたときに古い応答で戻らないよう、応答は反映しない
+    api.aiUpdateBox(box.id, { prefs }).catch(toastError);
+  },
+
+  setComposerHeight: (h, save) => {
+    set({ composerHeight: h });
+    if (save) saveComposerHeight(h);
   },
 
   toggleCollapsed: (turnId) =>
@@ -317,7 +384,8 @@ export function openAiChat(): void {
   // 開き直したときも、最新以外は折り畳んだ状態から表示する
   if (s.selectedId !== null) s.resetCollapsed(s.selectedId);
   void s.refreshAgents();
-  void s.loadBoxes();
+  // 表示中のフォルダ (無ければその親のフォルダ) で最後に使った Box を開く (無ければ前回の Box のまま)
+  void s.loadBoxes({ cwd: useExplorer.getState().path });
 }
 
 export function closeAiChat(): void {
