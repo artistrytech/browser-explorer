@@ -3,7 +3,7 @@ import { useExplorer } from '../stores/explorer';
 import { useUi } from '../stores/ui';
 import { openAppLog } from '../stores/applog';
 import { openDualPane } from '../features/transfer/DualPaneDialog';
-import { openAiChat } from '../features/aichat/aiChatStore';
+import { toggleAiChat, useAiChat } from '../features/aichat/aiChatStore';
 import { breadcrumbs, parentPath, isRootPath } from '../lib/paths';
 import styles from './Toolbar.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
@@ -13,6 +13,7 @@ const cx = createCssModuleClassNames(styles);
 export function Toolbar() {
   const { path, navigate, runSearch, searchQuery, clearSearch } = useExplorer();
   const setSettingsOpen = useUi((s) => s.setSettingsOpen);
+  const aiChatOpen = useAiChat((s) => s.open);
   const [editing, setEditing] = useState(false);
   const [addressValue, setAddressValue] = useState(path);
   const [search, setSearch] = useState('');
@@ -125,7 +126,12 @@ export function Toolbar() {
       >
         ⧉
       </button>
-      <button className={cx("tool-btn")} title="AI チャット (Codex / Claude)" onClick={() => openAiChat()}>
+      <button
+        className={cx(`tool-btn${aiChatOpen ? ' active' : ''}`)}
+        title={`AI チャット (Codex / Claude) を${aiChatOpen ? '隠す' : '表示'}`}
+        aria-pressed={aiChatOpen}
+        onClick={toggleAiChat}
+      >
         🤖
       </button>
       <button className={cx("tool-btn")} title="アプリログ (動作ログの確認・検索)" onClick={() => openAppLog()}>

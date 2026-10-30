@@ -42,12 +42,95 @@ function saveListWidth(w: number): void {
 
 /**
  * AI チャット (VSCode の拡張機能のような Codex / Claude との対話)。
- * モードレスのウィンドウで開き、背後の画面を操作しながら使える。
+ * 表示はモードレスのフローティングウィンドウか、右パネルへの固定 (AiChatPanel) を選べる。
+ * どちらも背後の画面を操作しながら使える。
  * 会話は Box 単位にまとめ、Box ごとにベースフォルダ (CLI の作業フォルダ) を持つ。
  */
 export function AiChatDialog() {
   const open = useAiChat((s) => s.open);
-  const [showList, setShowList] = useState(true);
+  const docked = useAiChat((s) => s.docked);
+  if (!open || docked) return null;
+  return (
+    <FloatingWindow
+      title="🤖 AI チャット"
+      storageKey="aichat:rect"
+      defaultRect={() => {
+        const w = Math.min(760, innerWidth - 40);
+        const h = Math.min(720, innerHeight - 80);
+        return { x: innerWidth - w - 24, y: 56, w, h };
+      }}
+      onClose={closeAiChat}
+      headerExtra={<HeaderButtons />}
+    >
+      <ChatContent />
+    </FloatingWindow>
+  );
+}
+
+/** 右パネルに固定したときの表示 (App のメイン領域の右のパネルに置く) */
+export function AiChatPanel() {
+  return (
+    // パネル内のキー操作が背後の画面 (Alt+← 等のグローバルキー) へ伝わらないようにする
+    <div className={cx('dock')} onKeyDown={(e) => e.stopPropagation()}>
+      <div className={cx('dock-title')}>
+        <span className={cx('dock-title-text')}>🤖 AI チャット</span>
+        <HeaderButtons />
+        <button className={cx('title-btn close')} title="閉じる" onClick={closeAiChat}>
+          ✕
+        </button>
+      </div>
+      <ChatContent />
+    </div>
+  );
+}
+
+/** 右パネルに固定するアイコン (枠の右側を塗る) */
+function DockRightIcon() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" />
+      <rect x="9" y="3" width="5" height="10" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** フローティングに戻すアイコン (重なった 2 枚の枠) */
+function FloatIcon() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor">
+      <rect x="1.5" y="5.5" width="9" height="8" rx="1" />
+      <path d="M5.5 5.5V2.5h9v8h-4" />
+    </svg>
+  );
+}
+
+/** タイトルバーのボタン (Box の一覧の表示切替 / 右パネル固定 ⇄ フローティング) */
+function HeaderButtons() {
+  const showList = useAiChat((s) => s.showList);
+  const docked = useAiChat((s) => s.docked);
+  return (
+    <>
+      <button
+        className={cx('title-btn')}
+        title={showList ? 'Box の一覧を隠す' : 'Box の一覧を表示'}
+        onClick={() => useAiChat.getState().setShowList(!showList)}
+      >
+        ☰
+      </button>
+      <button
+        className={cx('title-btn')}
+        title={docked ? 'フローティングで表示' : '右パネルに固定'}
+        onClick={() => useAiChat.getState().setDocked(!docked)}
+      >
+        {docked ? <FloatIcon /> : <DockRightIcon />}
+      </button>
+    </>
+  );
+}
+
+/** Box の一覧と会話 (フローティング・右パネル共通) */
+function ChatContent() {
+  const showList = useAiChat((s) => s.showList);
   const [listWidth, setListWidth] = useState(loadListWidth);
   const chatRef = useRef<HTMLDivElement>(null);
 
@@ -82,45 +165,30 @@ export function AiChatDialog() {
     handle.addEventListener('pointercancel', onUp);
   };
 
-  if (!open) return null;
   return (
-    <FloatingWindow
-      title="🤖 AI チャット"
-      storageKey="aichat:rect"
-      defaultRect={() => {
-        const w = Math.min(760, innerWidth - 40);
-        const h = Math.min(720, innerHeight - 80);
-        return { x: innerWidth - w - 24, y: 56, w, h };
-      }}
-      onClose={closeAiChat}
-      headerExtra={
-        <button
-          className={cx('title-btn')}
-          title={showList ? 'Box の一覧を隠す' : 'Box の一覧を表示'}
-          onClick={() => setShowList((v) => !v)}
-        >
-          ☰
-        </button>
-      }
-    >
-      <div ref={chatRef} className={cx('chat')}>
-        {showList && (
-          <>
-            {/* ウィンドウを縮めても会話側が潰れないよう、一覧は残り幅の範囲に収める */}
-            <div
-              className={cx('box-list-wrap')}
-              style={{ width: listWidth, maxWidth: `calc(100% - ${MIN_MAIN_WIDTH}px)` }}
-            >
-              <BoxList />
-            </div>
-            <div className={cx('split-handle')} title="ドラッグで幅を変更" onPointerDown={startResize} />
-          </>
-        )}
-        <div className={cx('chat-main')}>
-          <MainArea />
-        </div>
+    <div ref={chatRef} className={cx('chat')}>
+      {showList && (
+        <>
+          {/*
+            ウィンドウ・パネルを縮めても会話側が潰れないよう、一覧は残り幅の範囲に収める
+            (それでも狭いときは一覧の最小幅を優先する)
+          */}
+          <div
+            className={cx('box-list-wrap')}
+            style={{
+              width: listWidth,
+              maxWidth: `max(${MIN_LIST_WIDTH}px, calc(100% - ${MIN_MAIN_WIDTH}px))`,
+            }}
+          >
+            <BoxList />
+          </div>
+          <div className={cx('split-handle')} title="ドラッグで幅を変更" onPointerDown={startResize} />
+        </>
+      )}
+      <div className={cx('chat-main')}>
+        <MainArea />
       </div>
-    </FloatingWindow>
+    </div>
   );
 }
 

@@ -36,7 +36,8 @@ import { ReviewExportDialog } from './features/review/ReviewExportDialog';
 import { DualPaneDialog } from './features/transfer/DualPaneDialog';
 import { TransferConfirmDialog } from './features/transfer/TransferConfirmDialog';
 import { CommandPalette } from './features/palette/CommandPalette';
-import { AiChatDialog } from './features/aichat/AiChatDialog';
+import { AiChatDialog, AiChatPanel } from './features/aichat/AiChatDialog';
+import { loadDockSize, saveDockSize, useAiChat } from './features/aichat/aiChatStore';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
 import { ToastHost } from './components/ToastHost';
@@ -68,6 +69,10 @@ import { createCssModuleClassNames } from './lib/cssModule';
 
 const cx = createCssModuleClassNames(styles);
 
+/** AI チャットの右パネルの幅 (メイン領域全体に対する %) */
+const AI_DOCK_MIN = 18;
+const AI_DOCK_MAX = 70;
+
 export default function App() {
   const path = useExplorer((s) => s.path);
   const navigate = useExplorer((s) => s.navigate);
@@ -82,6 +87,8 @@ export default function App() {
   const { view, setView } = useUi();
   /** レビュー詳細を開いているか (開いている間はサイドバーを畳んで差分を広く取る) */
   const reviewDetailOpen = useReview((s) => s.currentId !== null);
+  /** AI チャットを右パネルに固定して開いているか */
+  const aiDocked = useAiChat((s) => s.open && s.docked);
   const theme = useSettings((s) => s.settings.theme);
   const loaded = useSettings((s) => s.loaded);
   const refreshTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -381,11 +388,12 @@ export default function App() {
         )}
       </div>
       <PanelGroup direction="horizontal" className={cx("main-split")}>
-        <Panel ref={sidebarPanel} collapsible defaultSize={18} minSize={12} maxSize={40}>
+        {/* AI チャットの右パネルを出し入れするので、各パネルに id / order を付ける */}
+        <Panel id="sidebar" order={1} ref={sidebarPanel} collapsible defaultSize={18} minSize={12} maxSize={40}>
           <Sidebar />
         </Panel>
         <PanelResizeHandle className={cx("resize-handle")} />
-        <Panel>
+        <Panel id="main" order={2}>
           <div className={cx("main-area")}>
             <div className={cx(`main-view${view === 'files' ? '' : ' hidden'}`)}>
               {/* リポジトリ内ならファイルタブにも Git のツールバー (ブランチ・同期・Stash 等) を出す */}
@@ -416,9 +424,24 @@ export default function App() {
             </div>
           </div>
         </Panel>
+        {aiDocked && (
+          <>
+            <PanelResizeHandle className={cx("resize-handle")} />
+            <Panel
+              id="aichat"
+              order={3}
+              defaultSize={loadDockSize(AI_DOCK_MIN, AI_DOCK_MAX)}
+              minSize={AI_DOCK_MIN}
+              maxSize={AI_DOCK_MAX}
+              onResize={saveDockSize}
+            >
+              <AiChatPanel />
+            </Panel>
+          </>
+        )}
       </PanelGroup>
       <StatusBar />
-      {/* AI チャットはモードレス。モーダルのダイアログ・コンテキストメニューより下に出す */}
+      {/* AI チャット (フローティング時)。モードレスで、モーダルのダイアログ・コンテキストメニューより下に出す */}
       <AiChatDialog />
       <ContextMenuHost />
       <DialogHost />

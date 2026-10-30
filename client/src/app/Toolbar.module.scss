@@ -21,6 +21,12 @@
   border-color: var(--border);
 }
 
+/* 表示中のパネル等を開くボタン (AI チャット) */
+.tool-btn.active {
+  background: var(--bg-selected);
+  border-color: var(--border);
+}
+
 .tool-btn:disabled {
   opacity: 0.4;
   cursor: default;

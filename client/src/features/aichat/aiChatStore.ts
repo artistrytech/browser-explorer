@@ -67,8 +67,44 @@ function saveSelectedBox(id: number | null): void {
   }
 }
 
+const DOCKED_KEY = 'aichat:docked';
+const DOCK_SIZE_KEY = 'aichat:dockSize';
+/** 右パネルの幅 (メイン領域全体に対する %) の既定値 */
+const DEFAULT_DOCK_SIZE = 32;
+
+function loadDocked(): boolean {
+  try {
+    return localStorage.getItem(DOCKED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** 右パネルの幅 (%)。パネルの最小〜最大の範囲に収める */
+export function loadDockSize(min: number, max: number): number {
+  try {
+    const n = Number(localStorage.getItem(DOCK_SIZE_KEY));
+    if (Number.isFinite(n) && n > 0) return Math.min(max, Math.max(min, n));
+  } catch {
+    /* 読めなければ既定の幅 */
+  }
+  return DEFAULT_DOCK_SIZE;
+}
+
+export function saveDockSize(size: number): void {
+  try {
+    localStorage.setItem(DOCK_SIZE_KEY, String(Math.round(size * 10) / 10));
+  } catch {
+    /* storage full 等は無視 */
+  }
+}
+
 interface AiChatStore {
   open: boolean;
+  /** 右パネルに固定して表示するか (false はフローティングウィンドウ) */
+  docked: boolean;
+  /** Box の一覧を表示するか */
+  showList: boolean;
   agents: AiAgentsResult | null;
   boxes: AiBox[];
   boxesLoaded: boolean;
@@ -83,6 +119,8 @@ interface AiChatStore {
   drafts: Record<number, string>;
   prefs: ComposerPrefs;
   setOpen: (open: boolean) => void;
+  setDocked: (docked: boolean) => void;
+  setShowList: (showList: boolean) => void;
   setCreating: (creating: boolean) => void;
   refreshAgents: (force?: boolean) => Promise<void>;
   loadBoxes: () => Promise<void>;
@@ -98,6 +136,8 @@ interface AiChatStore {
 
 export const useAiChat = create<AiChatStore>((set, get) => ({
   open: false,
+  docked: loadDocked(),
+  showList: true,
   agents: null,
   boxes: [],
   boxesLoaded: false,
@@ -109,6 +149,18 @@ export const useAiChat = create<AiChatStore>((set, get) => ({
   prefs: loadPrefs(),
 
   setOpen: (open) => set({ open }),
+
+  setDocked: (docked) => {
+    set({ docked });
+    try {
+      if (docked) localStorage.setItem(DOCKED_KEY, '1');
+      else localStorage.removeItem(DOCKED_KEY);
+    } catch {
+      /* storage full 等は無視 */
+    }
+  },
+
+  setShowList: (showList) => set({ showList }),
   setCreating: (creating) => set({ creating }),
 
   refreshAgents: async (force = false) => {
@@ -201,6 +253,12 @@ export function openAiChat(): void {
 
 export function closeAiChat(): void {
   useAiChat.getState().setOpen(false);
+}
+
+/** 表示中なら閉じ、閉じていれば開く (ツールバーのアイコン用) */
+export function toggleAiChat(): void {
+  if (useAiChat.getState().open) closeAiChat();
+  else openAiChat();
 }
 
 /** 作成日時 (既定の Box 名に使う) */
