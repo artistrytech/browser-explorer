@@ -6,6 +6,7 @@ import { AI_MODEL_RE, getAppConfig } from '../services/appConfigStore.js';
 import {
   createBox,
   deleteBox,
+  deleteTurns,
   getBox,
   getTurn,
   isAiAgent,
@@ -104,9 +105,34 @@ aiRouter.post('/boxes', async (req, res) => {
   res.json(withRunning(box));
 });
 
+/** 1 回に返す会話の件数の上限 (古いものは「さらに読み込む」で before を付けて取りに来る) */
+const MAX_TURNS_PAGE = 100;
+
+/** Box と、その会話 (新しい方から limit 件。before より古いものに限ることもできる) */
 aiRouter.get('/boxes/:id', (req, res) => {
   const box = mustGetBox(req.params.id);
-  res.json({ box: withRunning(box), turns: listTurns(box.id) });
+  const n = Number(req.query.limit);
+  const limit = Number.isInteger(n) && n > 0 ? Math.min(n, MAX_TURNS_PAGE) : MAX_TURNS_PAGE;
+  const b = Number(req.query.before);
+  const before = Number.isInteger(b) && b > 0 ? b : undefined;
+  const { turns, hasMore } = listTurns(box.id, { limit, before });
+  res.json({ box: withRunning(box), turns, hasMore });
+});
+
+/**
+ * 会話の削除。older=true なら指定の会話と、それより古い会話をまとめて削除する。
+ * 表示上の記録を消すだけで、CLI 側の会話の記録 (継続したときの文脈) には影響しない
+ */
+aiRouter.post('/boxes/:id/turns/delete', (req, res) => {
+  const box = mustGetBox(req.params.id);
+  const body = (req.body ?? {}) as { turnId?: unknown; older?: unknown };
+  const turnId = Number(body.turnId);
+  if (!Number.isInteger(turnId) || turnId <= 0) badRequest('turnId is required');
+  const older = body.older === true;
+  const deleted = deleteTurns(box.id, turnId, older);
+  if (deleted === null) badRequest('実行中の会話は削除できません。先に停止してください');
+  broadcastEvent('ai:turns-deleted', { boxId: box.id, ids: deleted, older });
+  res.json({ deleted });
 });
 
 /** 名前・ベースフォルダの変更 (フォルダを変えると、以降の依頼はすべて新しい会話になる) */

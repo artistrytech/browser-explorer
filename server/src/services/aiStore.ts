@@ -231,8 +231,42 @@ export function deleteBox(id: number): void {
   tx();
 }
 
-export function listTurns(boxId: number): AiTurn[] {
-  return (db.prepare('SELECT * FROM ai_turns WHERE box_id = ? ORDER BY id').all(boxId) as TurnRow[]).map(toTurn);
+/**
+ * Box の会話を新しい方から limit 件 (古い順に並べて) 返す。before を渡すとそれより古いものから数える
+ * (「さらに読み込む」で遡る)。hasMore はさらに古いものが残っているか
+ */
+export function listTurns(
+  boxId: number,
+  opts: { limit: number; before?: number },
+): { turns: AiTurn[]; hasMore: boolean } {
+  const rows = db
+    .prepare(
+      `SELECT * FROM ai_turns WHERE box_id = ? AND (? IS NULL OR id < ?)
+       ORDER BY id DESC LIMIT ?`,
+    )
+    .all(boxId, opts.before ?? null, opts.before ?? null, opts.limit + 1) as TurnRow[];
+  const hasMore = rows.length > opts.limit;
+  return { turns: rows.slice(0, opts.limit).reverse().map(toTurn), hasMore };
+}
+
+/**
+ * 会話を削除する。older=true なら指定のものと、それより古い同じ Box の会話もまとめて削除する。
+ * 実行中のものが含まれる場合は削除しない (null を返す)。削除したターンの ID を返す
+ */
+export function deleteTurns(boxId: number, turnId: number, older: boolean): number[] | null {
+  const rows = (
+    older
+      ? db.prepare('SELECT id, status FROM ai_turns WHERE box_id = ? AND id <= ?').all(boxId, turnId)
+      : db.prepare('SELECT id, status FROM ai_turns WHERE box_id = ? AND id = ?').all(boxId, turnId)
+  ) as { id: number; status: string }[];
+  if (rows.some((r) => r.status === 'running')) return null;
+  const ids = rows.map((r) => r.id);
+  const tx = db.transaction(() => {
+    const stmt = db.prepare('DELETE FROM ai_turns WHERE id = ?');
+    for (const id of ids) stmt.run(id);
+  });
+  tx();
+  return ids;
 }
 
 export function getTurn(id: number): AiTurn | null {

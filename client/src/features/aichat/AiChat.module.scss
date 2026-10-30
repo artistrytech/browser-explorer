@@ -797,3 +797,10 @@
   background: var(--bg);
   color: var(--text);
 }
+
+/* 会話の上端の「さらに読み込む」 */
+.load-more {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+}

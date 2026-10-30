@@ -8,7 +8,7 @@ import { useExplorer } from '../../stores/explorer';
 import { toastError } from '../../stores/toast';
 import type { AiAgent, AiBox } from '../../types';
 import { AiTurnView } from './AiTurnView';
-import { AI_LABELS, closeAiChat, defaultBoxName, timestampName, useAiChat } from './aiChatStore';
+import { AI_LABELS, closeAiChat, defaultBoxName, isTurnCollapsed, timestampName, useAiChat } from './aiChatStore';
 import { PERMISSION_NAMES, permissionLabel } from './aiPermissions';
 import styles from './AiChat.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -480,16 +480,42 @@ function NewBoxForm() {
 
 function BoxView({ box }: { box: AiBox }) {
   const turns = useAiChat((s) => s.turns[box.id]);
+  const hasMore = useAiChat((s) => s.hasMore[box.id] ?? false);
   const collapsed = useAiChat((s) => s.collapsed);
   const toggle = useAiChat((s) => s.toggleCollapsed);
+  const [loadingMore, setLoadingMore] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   /** 末尾付近を見ているか (見ている間だけ新しい出力に追従してスクロールする) */
   const atBottom = useRef(true);
+  /** 古い会話を読み足す直前の高さ (読み足した後、見ていた位置を保つのに使う) */
+  const heightBeforeMore = useRef<number | null>(null);
+  /** 前回の描画時の最新の会話 (新しい依頼が加わったかの判定に使う) */
+  const lastTurnId = useRef<number | undefined>(undefined);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el && atBottom.current) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (heightBeforeMore.current !== null) {
+      el.scrollTop += el.scrollHeight - heightBeforeMore.current;
+      heightBeforeMore.current = null;
+      return;
+    }
+    // 新しい依頼が加わったら (前の出力が折り畳まれて高さが変わっても) 末尾へ移って追従する
+    const last = turns?.[turns.length - 1]?.id;
+    if (last !== lastTurnId.current) atBottom.current = true;
+    lastTurnId.current = last;
+    if (atBottom.current) el.scrollTop = el.scrollHeight;
   }, [turns]);
+
+  const loadMore = async () => {
+    heightBeforeMore.current = scrollRef.current?.scrollHeight ?? null;
+    setLoadingMore(true);
+    const before = useAiChat.getState().turns[box.id];
+    await useAiChat.getState().loadMoreTurns(box.id);
+    // 読み足せなかった (失敗した) ときは位置の補正をしない
+    if (useAiChat.getState().turns[box.id] === before) heightBeforeMore.current = null;
+    setLoadingMore(false);
+  };
 
   return (
     <>
@@ -503,6 +529,13 @@ function BoxView({ box }: { box: AiBox }) {
         }}
       >
         {!turns && <div className={cx('empty')}>読み込み中…</div>}
+        {hasMore && (
+          <div className={cx('load-more')}>
+            <button className={cx('btn small')} disabled={loadingMore} onClick={() => void loadMore()}>
+              {loadingMore ? '読み込み中…' : 'さらに読み込む'}
+            </button>
+          </div>
+        )}
         {turns?.length === 0 && (
           <div className={cx('empty')}>
             下の入力欄から依頼を送ってください。
@@ -517,7 +550,7 @@ function BoxView({ box }: { box: AiBox }) {
                 <span>📁 ベースフォルダを変更: {t.cwd}</span>
               </div>
             )}
-            <AiTurnView turn={t} collapsed={collapsed[t.id] === true} onToggle={toggle} />
+            <AiTurnView turn={t} collapsed={isTurnCollapsed(collapsed, turns, t.id)} onToggle={toggle} />
           </div>
         ))}
         {turns && turns.length > 0 && turns[turns.length - 1].cwd !== box.cwd && (
@@ -654,6 +687,9 @@ function Composer({ box }: { box: AiBox }) {
     setSending(true);
     try {
       const turn = await api.aiSend(box.id, { agent, mode, model, effort, permission, prompt: draft });
+      // 新しい依頼を送ったら、それまでの出力は (開いていたものも) 折り畳む。
+      // 送った依頼は WS で先に届いていることがあるので除く
+      useAiChat.getState().setAllCollapsed(box.id, true, turn.id);
       useAiChat.getState().applyTurn(turn);
       useAiChat.getState().setDraft(box.id, '');
     } catch (e) {

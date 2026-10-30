@@ -196,7 +196,14 @@ export const api = {
   aiAgents: (refresh = false) => get<AiAgentsResult>(`/api/ai/agents${refresh ? '?refresh=1' : ''}`),
   aiCodexModels: () => get<{ models: CodexModelInfo[] }>('/api/ai/codex-models'),
   aiBoxes: () => get<{ boxes: AiBox[] }>('/api/ai/boxes'),
-  aiBox: (id: number) => get<{ box: AiBox; turns: AiTurn[] }>(`/api/ai/boxes/${id}`),
+  /** Box と会話 (新しい方から limit 件。before を付けるとそれより古いもの) */
+  aiBox: (id: number, opts: { limit?: number; before?: number } = {}) =>
+    get<{ box: AiBox; turns: AiTurn[]; hasMore: boolean }>(
+      `/api/ai/boxes/${id}?limit=${opts.limit ?? ''}${opts.before ? `&before=${opts.before}` : ''}`,
+    ),
+  /** 会話の削除 (older = それより古い会話もまとめて削除) */
+  aiDeleteTurns: (id: number, turnId: number, older: boolean) =>
+    post<{ deleted: number[] }>(`/api/ai/boxes/${id}/turns/delete`, { turnId, older }),
   aiCreateBox: (name: string, cwd: string) => post<AiBox>('/api/ai/boxes', { name, cwd }),
   aiUpdateBox: (id: number, patch: { name?: string; cwd?: string }) =>
     request<AiBox>(`/api/ai/boxes/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),

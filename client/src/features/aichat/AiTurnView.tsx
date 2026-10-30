@@ -2,9 +2,10 @@ import { memo, useMemo } from 'react';
 import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { copyText } from '../../lib/clipboard';
+import { useContextMenu } from '../../components/ContextMenu';
 import { useToast, toastError } from '../../stores/toast';
 import type { AiItem, AiTurn } from '../../types';
-import { AI_LABELS } from './aiChatStore';
+import { AI_LABELS, deleteTurn } from './aiChatStore';
 import { permissionLabel } from './aiPermissions';
 import styles from './AiChat.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -115,9 +116,30 @@ export const AiTurnView = memo(function AiTurnView({
     }
   };
 
+  /** 削除のメニュー (⋯ ボタン・依頼や出力の見出しの右クリック) */
+  const openMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const running = turn.status === 'running';
+    useContextMenu.getState().open(e.clientX, e.clientY, [
+      {
+        label: 'このメッセージを削除',
+        danger: true,
+        disabled: running,
+        action: () => void deleteTurn(turn, false),
+      },
+      {
+        label: 'このメッセージと、これより古い会話を削除',
+        danger: true,
+        disabled: running,
+        action: () => void deleteTurn(turn, true),
+      },
+    ]);
+  };
+
   return (
     <div className={cx('turn')}>
-      <div className={cx('user-msg')}>
+      <div className={cx('user-msg')} onContextMenu={openMenu}>
         <div className={cx('turn-meta')}>
           <span className={cx(`agent-chip ${turn.agent}`)}>{AI_LABELS[turn.agent]}</span>
           <span>
@@ -127,12 +149,20 @@ export const AiTurnView = memo(function AiTurnView({
           <span>effort: {turn.effort || '既定'}</span>
           {turn.permission && <span title={permissionLabel(turn.agent, turn.permission)}>権限: {turn.permission}</span>}
           <span className={cx('turn-time')}>{formatTime(turn.createdAt)}</span>
+          <button className={cx('ai-icon-btn')} title="削除…" onClick={openMenu}>
+            ⋯
+          </button>
         </div>
         <div className={cx('user-text')}>{turn.prompt}</div>
       </div>
 
       <div className={cx(`ai-msg ${turn.status}`)}>
-        <div className={cx('ai-head')} onClick={() => onToggle(turn.id)} title={collapsed ? '展開する' : '折り畳む'}>
+        <div
+          className={cx('ai-head')}
+          onClick={() => onToggle(turn.id)}
+          onContextMenu={openMenu}
+          title={collapsed ? '展開する' : '折り畳む'}
+        >
           <span className={cx('ai-caret')}>{collapsed ? '▸' : '▾'}</span>
           <span className={cx('ai-name')}>{AI_LABELS[turn.agent]}</span>
           <span className={cx(`ai-status ${turn.status}`)}>{STATUS_LABEL[turn.status]}</span>
