@@ -17,29 +17,6 @@ const cx = createCssModuleClassNames(styles);
 
 const AGENTS: AiAgent[] = ['codex', 'claude'];
 
-const LIST_WIDTH_KEY = 'aichat:listWidth';
-const DEFAULT_LIST_WIDTH = 180;
-const MIN_LIST_WIDTH = 120;
-/** 会話側に最低限残す幅 */
-const MIN_MAIN_WIDTH = 280;
-
-function loadListWidth(): number {
-  try {
-    const n = Number(localStorage.getItem(LIST_WIDTH_KEY));
-    return Number.isFinite(n) && n >= MIN_LIST_WIDTH ? n : DEFAULT_LIST_WIDTH;
-  } catch {
-    return DEFAULT_LIST_WIDTH;
-  }
-}
-
-function saveListWidth(w: number): void {
-  try {
-    localStorage.setItem(LIST_WIDTH_KEY, String(w));
-  } catch {
-    /* storage full 等は無視 */
-  }
-}
-
 /**
  * AI チャット (VSCode の拡張機能のような Codex / Claude との対話)。
  * 表示はモードレスのフローティングウィンドウか、右パネルへの固定 (AiChatPanel) を選べる。
@@ -104,87 +81,25 @@ function FloatIcon() {
   );
 }
 
-/** タイトルバーのボタン (Box の一覧の表示切替 / 右パネル固定 ⇄ フローティング) */
+/** タイトルバーのボタン (右パネル固定 ⇄ フローティング) */
 function HeaderButtons() {
-  const showList = useAiChat((s) => s.showList);
   const docked = useAiChat((s) => s.docked);
   return (
-    <>
-      <button
-        className={cx('title-btn')}
-        title={showList ? 'Box の一覧を隠す' : 'Box の一覧を表示'}
-        onClick={() => useAiChat.getState().setShowList(!showList)}
-      >
-        ☰
-      </button>
-      <button
-        className={cx('title-btn')}
-        title={docked ? 'フローティングで表示' : '右パネルに固定'}
-        onClick={() => useAiChat.getState().setDocked(!docked)}
-      >
-        {docked ? <FloatIcon /> : <DockRightIcon />}
-      </button>
-    </>
+    <button
+      className={cx('title-btn')}
+      title={docked ? 'フローティングで表示' : '右パネルに固定'}
+      onClick={() => useAiChat.getState().setDocked(!docked)}
+    >
+      {docked ? <FloatIcon /> : <DockRightIcon />}
+    </button>
   );
 }
 
-/** Box の一覧と会話 (フローティング・右パネル共通) */
+/** Box の選択と会話 (フローティング・右パネル共通) */
 function ChatContent() {
-  const showList = useAiChat((s) => s.showList);
-  const [listWidth, setListWidth] = useState(loadListWidth);
-  const chatRef = useRef<HTMLDivElement>(null);
-
-  /** 一覧と会話の境界のドラッグで一覧の幅を変える */
-  const startResize = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const handle = e.currentTarget as HTMLElement;
-    handle.setPointerCapture(e.pointerId);
-    const startX = e.clientX;
-    const startW = listWidth;
-    const clamp = (w: number) => {
-      const max = (chatRef.current?.clientWidth ?? innerWidth) - MIN_MAIN_WIDTH;
-      return Math.round(Math.max(MIN_LIST_WIDTH, Math.min(w, max)));
-    };
-    let last = startW;
-    document.body.classList.add('col-resizing');
-    const onMove = (ev: PointerEvent) => {
-      last = clamp(startW + ev.clientX - startX);
-      setListWidth(last);
-    };
-    const onUp = (ev: PointerEvent) => {
-      onMove(ev);
-      handle.removeEventListener('pointermove', onMove);
-      handle.removeEventListener('pointerup', onUp);
-      handle.removeEventListener('pointercancel', onUp);
-      document.body.classList.remove('col-resizing');
-      saveListWidth(last);
-    };
-    handle.addEventListener('pointermove', onMove);
-    handle.addEventListener('pointerup', onUp);
-    handle.addEventListener('pointercancel', onUp);
-  };
-
   return (
-    <div ref={chatRef} className={cx('chat')}>
-      {showList && (
-        <>
-          {/*
-            ウィンドウ・パネルを縮めても会話側が潰れないよう、一覧は残り幅の範囲に収める
-            (それでも狭いときは一覧の最小幅を優先する)
-          */}
-          <div
-            className={cx('box-list-wrap')}
-            style={{
-              width: listWidth,
-              maxWidth: `max(${MIN_LIST_WIDTH}px, calc(100% - ${MIN_MAIN_WIDTH}px))`,
-            }}
-          >
-            <BoxList />
-          </div>
-          <div className={cx('split-handle')} title="ドラッグで幅を変更" onPointerDown={startResize} />
-        </>
-      )}
+    <div className={cx('chat')}>
+      <BoxBar />
       <div className={cx('chat-main')}>
         <MainArea />
       </div>
@@ -207,57 +122,222 @@ function MainArea() {
   return <BoxView key={box.id} box={box} />;
 }
 
-// --- Box の一覧 ---
+// --- Box の選択 (上部のバー) ---
 
-function BoxList() {
-  const boxes = useAiChat((s) => s.boxes);
-  const selectedId = useAiChat((s) => s.selectedId);
+/** Box の選択 (ドロップダウン)・名前の変更・出力の一括折り畳み・削除 */
+function BoxBar() {
   const creating = useAiChat((s) => s.creating);
-  const [renaming, setRenaming] = useState<number | null>(null);
+  const box = useAiChat((s) => (s.creating ? null : (s.boxes.find((b) => b.id === s.selectedId) ?? null)));
+  const hasTurns = useAiChat((s) => (box ? (s.turns[box.id]?.length ?? 0) > 0 : false));
+  /** 名前を編集中の Box (別の Box に切り替えたら編集は終わる) */
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const renaming = box !== null && renamingId === box.id;
 
-  const onMenu = (e: React.MouseEvent, box: AiBox) => {
+  return (
+    <div className={cx('box-bar')}>
+      {renaming ? (
+        <RenameInput box={box} onDone={() => setRenamingId(null)} />
+      ) : (
+        <BoxPicker
+          current={box}
+          label={creating ? '新規 Box' : (box?.name ?? 'Box を選択')}
+          onRename={(b) => {
+            useAiChat.getState().select(b.id);
+            setRenamingId(b.id);
+          }}
+        />
+      )}
+      {box && !renaming && (
+        <button className={cx('pen-btn')} title="名前を変更" onClick={() => setRenamingId(box.id)}>
+          <PenIcon />
+        </button>
+      )}
+      <span className={cx('ai-spacer')} />
+      {box && hasTurns && (
+        <>
+          <button
+            className={cx('btn small')}
+            title="AI の出力をすべて折り畳む"
+            onClick={() => useAiChat.getState().setAllCollapsed(box.id, true)}
+          >
+            すべて折り畳む
+          </button>
+          <button
+            className={cx('btn small')}
+            title="AI の出力をすべて展開する"
+            onClick={() => useAiChat.getState().setAllCollapsed(box.id, false)}
+          >
+            すべて展開
+          </button>
+        </>
+      )}
+      {box && (
+        <button
+          className={cx('btn small')}
+          title={box.running ? '実行中は削除できません' : 'この Box を削除'}
+          disabled={box.running}
+          onClick={() => void removeBox(box)}
+        >
+          削除
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Box を選ぶドロップダウン (select ではなく独自の部品)。
+ * 開くと絞り込みの入力欄と一覧を出し、↑↓ で選んで Enter で切り替える。
+ * 一覧の右クリックで名前の変更・削除、末尾のボタンで新規 Box の作成。
+ */
+function BoxPicker({
+  current,
+  label,
+  onRename,
+}: {
+  current: AiBox | null;
+  label: string;
+  onRename: (box: AiBox) => void;
+}) {
+  const boxes = useAiChat((s) => s.boxes);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [active, setActive] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const q = query.trim().toLowerCase();
+  const rows = q ? boxes.filter((b) => `${b.name}\n${b.cwd}`.toLowerCase().includes(q)) : boxes;
+
+  // 開いたら絞り込みを空にし、選択中の Box に合わせる
+  useEffect(() => {
+    if (!open) return;
+    setQuery('');
+    setActive(Math.max(0, boxes.findIndex((b) => b.id === current?.id)));
+    inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // 外側のクリックで閉じる
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  useEffect(() => {
+    const el = listRef.current?.children[active];
+    if (el instanceof HTMLElement) el.scrollIntoView({ block: 'nearest' });
+  }, [active, open]);
+
+  const choose = (b: AiBox | undefined) => {
+    if (!b) return;
+    setOpen(false);
+    useAiChat.getState().select(b.id);
+  };
+
+  const onMenu = (e: React.MouseEvent, b: AiBox) => {
     e.preventDefault();
     useContextMenu.getState().open(e.clientX, e.clientY, [
-      { label: '名前の変更', action: () => setRenaming(box.id) },
       {
-        label: '削除',
-        danger: true,
-        disabled: box.running,
-        action: () => void removeBox(box),
+        label: '名前の変更',
+        action: () => {
+          setOpen(false);
+          onRename(b);
+        },
       },
+      { label: '削除', danger: true, disabled: b.running, action: () => void removeBox(b) },
     ]);
   };
 
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    const move = (delta: number) => {
+      e.preventDefault();
+      if (rows.length > 0) setActive((i) => (i + delta + rows.length) % rows.length);
+    };
+    if (e.key === 'ArrowDown') move(1);
+    else if (e.key === 'ArrowUp') move(-1);
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      choose(rows[active]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpen(false);
+    }
+  };
+
   return (
-    <div className={cx('box-list')}>
+    <div ref={rootRef} className={cx('picker')}>
       <button
-        className={cx(`box-new${creating ? ' active' : ''}`)}
-        onClick={() => useAiChat.getState().setCreating(true)}
+        className={cx(`picker-btn${open ? ' open' : ''}`)}
+        title={current ? `${current.name}\n${current.cwd}` : undefined}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
       >
-        ＋ 新規 Box
+        {current?.running && <span className={cx('box-running')} title="実行中" />}
+        <span className={cx('picker-label')}>{label}</span>
+        <span className={cx('picker-caret')}>▾</span>
       </button>
-      <div className={cx('box-items')}>
-        {boxes.map((b) =>
-          renaming === b.id ? (
-            <RenameInput key={b.id} box={b} onDone={() => setRenaming(null)} />
-          ) : (
-            <div
-              key={b.id}
-              className={cx(`box-item${b.id === selectedId && !creating ? ' active' : ''}`)}
-              title={`${b.name}\n${b.cwd}\n(ダブルクリックで名前の変更)`}
-              onClick={() => useAiChat.getState().select(b.id)}
-              onDoubleClick={() => setRenaming(b.id)}
-              onContextMenu={(e) => onMenu(e, b)}
-            >
-              <span className={cx('box-name')}>
-                {b.running && <span className={cx('box-running')} title="実行中" />}
-                {b.name}
-              </span>
-              <span className={cx('box-cwd')}>{b.cwd}</span>
-            </div>
-          ),
-        )}
-      </div>
+      {open && (
+        <div className={cx('picker-pop')}>
+          <input
+            ref={inputRef}
+            className={cx('input picker-filter')}
+            value={query}
+            placeholder="名前・フォルダで絞り込み"
+            spellCheck={false}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="aichat-box-list"
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActive(0);
+            }}
+            onKeyDown={onKeyDown}
+          />
+          <div ref={listRef} id="aichat-box-list" className={cx('picker-list')} role="listbox">
+            {rows.map((b, i) => (
+              <div
+                key={b.id}
+                role="option"
+                aria-selected={b.id === current?.id}
+                className={cx(`picker-item${i === active ? ' active' : ''}${b.id === current?.id ? ' current' : ''}`)}
+                title={`${b.name}\n${b.cwd}\n(右クリックで名前の変更・削除)`}
+                onMouseMove={() => i !== active && setActive(i)}
+                onClick={() => choose(b)}
+                onContextMenu={(e) => onMenu(e, b)}
+              >
+                <span className={cx('picker-check')}>{b.id === current?.id ? '✓' : ''}</span>
+                <span className={cx('picker-item-main')}>
+                  <span className={cx('picker-item-name')}>
+                    {b.running && <span className={cx('box-running')} title="実行中" />}
+                    {b.name}
+                  </span>
+                  <span className={cx('picker-item-cwd')}>{b.cwd}</span>
+                </span>
+              </div>
+            ))}
+            {rows.length === 0 && (
+              <div className={cx('picker-empty')}>{boxes.length === 0 ? 'Box はまだありません' : '一致する Box はありません'}</div>
+            )}
+          </div>
+          <button
+            className={cx('picker-new')}
+            onClick={() => {
+              setOpen(false);
+              useAiChat.getState().setCreating(true);
+            }}
+          >
+            ＋ 新規 Box
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -451,11 +531,10 @@ function BoxView({ box }: { box: AiBox }) {
   );
 }
 
+/** ベースフォルダの表示と変更 */
 function BoxHeader({ box }: { box: AiBox }) {
-  const [editingName, setEditingName] = useState(false);
   const [editingCwd, setEditingCwd] = useState(false);
   const [cwd, setCwd] = useState(box.cwd);
-  const hasTurns = useAiChat((s) => (s.turns[box.id]?.length ?? 0) > 0);
 
   const saveCwd = async () => {
     const v = cwd.trim();
@@ -483,45 +562,6 @@ function BoxHeader({ box }: { box: AiBox }) {
 
   return (
     <div className={cx('box-header')}>
-      <div className={cx('box-header-row')}>
-        {editingName ? (
-          <RenameInput box={box} onDone={() => setEditingName(false)} />
-        ) : (
-          <button className={cx('box-title')} title="クリックで名前を変更" onClick={() => setEditingName(true)}>
-            <span className={cx('box-title-text')}>{box.name}</span>
-            <span className={cx('edit-mark')}>
-              <PenIcon />
-            </span>
-          </button>
-        )}
-        <span className={cx('ai-spacer')} />
-        {hasTurns && (
-          <>
-            <button
-              className={cx('btn small')}
-              title="AI の出力をすべて折り畳む"
-              onClick={() => useAiChat.getState().setAllCollapsed(box.id, true)}
-            >
-              すべて折り畳む
-            </button>
-            <button
-              className={cx('btn small')}
-              title="AI の出力をすべて展開する"
-              onClick={() => useAiChat.getState().setAllCollapsed(box.id, false)}
-            >
-              すべて展開
-            </button>
-          </>
-        )}
-        <button
-          className={cx('btn small')}
-          title={box.running ? '実行中は削除できません' : 'この Box を削除'}
-          disabled={box.running}
-          onClick={() => void removeBox(box)}
-        >
-          削除
-        </button>
-      </div>
       <div className={cx('box-header-row')}>
         <span className={cx('cwd-label')}>📁</span>
         {editingCwd ? (

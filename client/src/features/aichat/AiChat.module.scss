@@ -1,13 +1,16 @@
-/* --- 全体 (左: Box の一覧 / 右: 会話) --- */
+/* --- 全体 (上: Box の選択 / 下: 会話) --- */
 
 .chat {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
+  flex-direction: column;
 }
 
 .chat-main {
   flex: 1;
+  min-height: 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -151,76 +154,114 @@
   text-decoration: underline;
 }
 
-/* --- Box の一覧 --- */
+/* --- Box の選択 (上部のバーとドロップダウン) --- */
 
-.box-list-wrap {
+.box-bar {
   flex: none;
-  min-width: 0;
+  height: 38px;
   display: flex;
-}
-
-.box-list {
-  flex: 1;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-alt);
 }
 
-/* 一覧と会話の境界 (ドラッグで一覧の幅を変える) */
-.split-handle {
-  flex: none;
-  width: 5px;
-  cursor: col-resize;
-  background: var(--bg-alt);
-  border-left: 1px solid var(--border);
+.box-rename {
+  flex: 0 1 320px;
+  min-width: 120px;
 }
 
-.split-handle:hover {
-  background: var(--accent);
+.picker {
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
-.box-new {
-  margin: 8px;
-  padding: 5px 8px;
-  border: 1px dashed var(--border);
+.picker-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg);
   cursor: pointer;
-  text-align: left;
+  font-weight: 600;
 }
 
-.box-new:hover,
-.box-new.active {
+.picker-btn:hover,
+.picker-btn.open {
   border-color: var(--accent);
-  color: var(--accent);
 }
 
-.box-items {
+.picker-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-caret {
+  flex: none;
+  color: var(--text-dim);
+  font-weight: normal;
+}
+
+/* ドロップダウン。.chat を基準に置き、ウィンドウ・パネルの高さに収める */
+.picker-pop {
+  position: absolute;
+  z-index: 5;
+  top: 36px;
+  left: 8px;
+  width: min(440px, calc(100% - 16px));
+  max-height: calc(100% - 44px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.picker-filter {
+  margin: 6px;
+}
+
+.picker-list {
   flex: 1;
   min-height: 0;
   overflow: auto;
 }
 
-.box-item {
+.picker-item {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 5px 10px;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 4px 10px 4px 4px;
   cursor: pointer;
-  border-left: 3px solid transparent;
 }
 
-.box-item:hover {
+.picker-item.active {
   background: var(--bg-hover);
 }
 
-.box-item.active {
-  background: var(--bg-selected);
-  border-left-color: var(--accent);
+.picker-check {
+  flex: none;
+  width: 16px;
+  text-align: center;
+  color: var(--accent);
 }
 
-.box-name {
+.picker-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.picker-item-name {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -229,7 +270,11 @@
   white-space: nowrap;
 }
 
-.box-cwd {
+.picker-item.current .picker-item-name {
+  font-weight: 600;
+}
+
+.picker-item-cwd {
   font-size: 11px;
   color: var(--text-dim);
   overflow: hidden;
@@ -237,6 +282,25 @@
   white-space: nowrap;
   direction: rtl;
   text-align: left;
+}
+
+.picker-empty {
+  padding: 10px 12px;
+  color: var(--text-dim);
+}
+
+.picker-new {
+  flex: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: var(--bg-alt);
+  padding: 7px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-new:hover {
+  color: var(--accent);
 }
 
 .box-running {
@@ -252,10 +316,6 @@
   50% {
     opacity: 0.3;
   }
-}
-
-.box-rename {
-  margin: 2px 6px;
 }
 
 /* --- 新しい Box --- */
@@ -316,43 +376,7 @@
   min-width: 0;
 }
 
-.box-title {
-  display: inline-flex;
-  align-items: center;
-  border: none;
-  background: none;
-  padding: 2px 4px;
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-  border-radius: 4px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.box-title:hover {
-  background: var(--bg-hover);
-}
-
-.box-title-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.edit-mark {
-  flex: none;
-  display: inline-flex;
-  margin-left: 6px;
-  color: var(--text-dim);
-}
-
-.box-title:hover .edit-mark {
-  color: var(--accent);
-}
-
-/* フォルダ名のすぐ右に置く編集ボタン */
+/* 名前・フォルダ名のすぐ右に置く編集ボタン */
 .pen-btn {
   flex: none;
   display: inline-flex;

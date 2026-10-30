@@ -27,6 +27,12 @@
   border-color: var(--border);
 }
 
+/* 表示中のままホバーしたときは背景を保ち、枠だけ強調する (通常のホバーの背景で上書きしない) */
+.tool-btn.active:hover:not(:disabled) {
+  background: var(--bg-selected);
+  border-color: var(--accent);
+}
+
 .tool-btn:disabled {
   opacity: 0.4;
   cursor: default;

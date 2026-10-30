@@ -103,8 +103,6 @@ interface AiChatStore {
   open: boolean;
   /** 右パネルに固定して表示するか (false はフローティングウィンドウ) */
   docked: boolean;
-  /** Box の一覧を表示するか */
-  showList: boolean;
   agents: AiAgentsResult | null;
   boxes: AiBox[];
   boxesLoaded: boolean;
@@ -120,7 +118,6 @@ interface AiChatStore {
   prefs: ComposerPrefs;
   setOpen: (open: boolean) => void;
   setDocked: (docked: boolean) => void;
-  setShowList: (showList: boolean) => void;
   setCreating: (creating: boolean) => void;
   refreshAgents: (force?: boolean) => Promise<void>;
   loadBoxes: () => Promise<void>;
@@ -137,7 +134,6 @@ interface AiChatStore {
 export const useAiChat = create<AiChatStore>((set, get) => ({
   open: false,
   docked: loadDocked(),
-  showList: true,
   agents: null,
   boxes: [],
   boxesLoaded: false,
@@ -159,8 +155,6 @@ export const useAiChat = create<AiChatStore>((set, get) => ({
       /* storage full 等は無視 */
     }
   },
-
-  setShowList: (showList) => set({ showList }),
   setCreating: (creating) => set({ creating }),
 
   refreshAgents: async (force = false) => {
