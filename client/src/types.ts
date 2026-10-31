@@ -293,6 +293,8 @@ export interface AppSettings {
   aiClaudePermission: 'acceptEdits' | 'auto' | 'plan' | 'dontAsk' | 'manual' | 'bypassPermissions';
   /** アプリ内のターミナルで開くシェル (TerminalShell.id) */
   terminalShell: string;
+  /** コードマップに使う言語サーバ */
+  lspServers: LspServerDef[];
 }
 
 // --- アプリ内のターミナル (server/services/terminal.ts) ---
@@ -505,4 +507,95 @@ export interface ReviewDetail {
   headExists: boolean;
   /** 固定したコミット以降、対象ブランチに積まれた新しいコミット数 */
   newCommits: number;
+}
+
+// --- コードマップ (server/services/lsp.ts・codeMapAi.ts) ---
+
+export interface LspServerDef {
+  id: string;
+  label: string;
+  /** 対象の拡張子 (ドット無し・小文字) */
+  extensions: string[];
+  /** コマンド名 (PATH・プロジェクトの node_modules/.bin から探す) または絶対パス */
+  command: string;
+  /** 引数。${root} / ${dataDir} を展開する */
+  args: string[];
+  /** プロジェクトのフォルダを決めるファイル */
+  rootMarkers: string[];
+  enabled: boolean;
+}
+
+/** GET /api/codemap/servers の定義ごとの状態 */
+export interface LspServerStatus extends LspServerDef {
+  /** 見つかったコマンドのパス (見つからなければ null) */
+  resolved: string | null;
+  /** プリセットのインストール方法 */
+  install: string | null;
+}
+
+/** 言語サーバのプリセット (設定画面の「プリセットから追加」) */
+export interface LspPreset extends Omit<LspServerDef, 'enabled'> {
+  install: string;
+}
+
+/** 起動中の言語サーバ */
+export interface LspInstanceInfo {
+  serverId: string;
+  label: string;
+  root: string;
+  command: string;
+  state: 'starting' | 'ready' | 'exited';
+  progress: string[];
+  startedAt: number;
+  lastUsed: number;
+}
+
+/** 位置 (0 始まり・UTF-16 単位。LSP と同じ) */
+export interface CodePos {
+  line: number;
+  character: number;
+}
+
+export interface CodeRange {
+  start: CodePos;
+  end: CodePos;
+}
+
+/** マップのノード (クラス・メソッド・関数など) */
+export interface CodeItem {
+  name: string;
+  /** LSP の SymbolKind */
+  kind: number;
+  detail?: string;
+  path: string;
+  range: CodeRange;
+  selectionRange: CodeRange;
+  /** 言語サーバの階層の項目 (展開するときにそのまま返す) */
+  call?: unknown;
+  type?: unknown;
+  /** プロジェクトの外 (ライブラリ等) */
+  external?: boolean;
+}
+
+/** 展開の結果: 相手のノードと、呼び出し / 参照している箇所 (sitePath のファイル内) */
+export interface CodeLink {
+  item: CodeItem;
+  sitePath: string;
+  sites: CodeRange[];
+}
+
+export type CodeRelation = 'callers' | 'callees' | 'references' | 'supertypes' | 'subtypes';
+
+export interface CodeMapPrepareResult {
+  serverId: string;
+  serverLabel: string;
+  root: string;
+  items: CodeItem[];
+  notices: string[];
+}
+
+export interface CodeMapAiPrepareResult {
+  root: string;
+  item: CodeItem;
+  links: Record<'callers' | 'callees', CodeLink[]>;
 }

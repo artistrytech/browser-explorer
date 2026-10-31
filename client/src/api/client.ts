@@ -6,6 +6,12 @@ import type {
   AiTurn,
   AppSettings,
   CodexModelInfo,
+  CodeItem,
+  CodeLink,
+  CodeMapAiPrepareResult,
+  CodeMapPrepareResult,
+  CodePos,
+  CodeRelation,
   AppState,
   CommitFilesResult,
   ConflictFile,
@@ -24,6 +30,9 @@ import type {
   LogLevel,
   LogQueryParams,
   LogSessionSummary,
+  LspInstanceInfo,
+  LspPreset,
+  LspServerStatus,
   MergeState,
   RebaseActionResult,
   RebaseBackup,
@@ -137,6 +146,9 @@ async function requestBlob(url: string): Promise<Blob> {
 const get = <T>(url: string) => request<T>(url);
 const post = <T>(url: string, body: unknown) =>
   request<T>(url, { method: 'POST', body: JSON.stringify(body) });
+/** 中断できる POST (AI での生成など時間のかかるもの) */
+const postAbortable = <T>(url: string, body: unknown, signal?: AbortSignal) =>
+  request<T>(url, { method: 'POST', body: JSON.stringify(body), signal });
 const put = <T>(url: string, body: unknown) =>
   request<T>(url, { method: 'PUT', body: JSON.stringify(body) });
 const del = <T>(url: string, body: unknown) =>
@@ -224,6 +236,24 @@ export const api = {
     },
   ) => post<AiTurn>(`/api/ai/boxes/${id}/send`, body),
   aiCancel: (turnId: number) => post<{ ok: boolean }>(`/api/ai/turns/${turnId}/cancel`, {}),
+
+  // --- コードマップ (言語サーバ / AI で参照元・参照先を調べる) ---
+  codeMapServers: (root?: string) =>
+    get<{ servers: LspServerStatus[]; running: LspInstanceInfo[]; presets: LspPreset[] }>(
+      `/api/codemap/servers${root ? `?root=${q(root)}` : ''}`,
+    ),
+  codeMapStop: (body: { serverId?: string; root?: string } = {}) =>
+    post<{ stopped: number }>('/api/codemap/stop', body),
+  codeMapPrepare: (body: { path: string; position: CodePos; content?: string }) =>
+    post<CodeMapPrepareResult>('/api/codemap/prepare', body),
+  codeMapExpand: (body: { item: CodeItem; relation: CodeRelation; serverId: string; root: string }) =>
+    post<{ links: CodeLink[]; notices: string[] }>('/api/codemap/expand', body),
+  codeMapAiPrepare: (body: { agent: AiAgent; path: string; position: CodePos; word: string }, signal?: AbortSignal) =>
+    postAbortable<CodeMapAiPrepareResult>('/api/codemap/ai', body, signal),
+  codeMapAiExpand: (
+    body: { agent: AiAgent; item: CodeItem; relation: 'callers' | 'callees'; root: string },
+    signal?: AbortSignal,
+  ) => postAbortable<{ links: CodeLink[] }>('/api/codemap/ai', body, signal),
 
   // --- アプリ内のターミナル (入出力は WS の /ws/terminal) ---
   terminals: () => get<TerminalListResult>('/api/terminal'),

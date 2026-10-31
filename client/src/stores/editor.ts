@@ -23,8 +23,13 @@ interface EditorStore {
   tabs: EditorTab[];
   activePath: string | null;
   cursor: { line: number; col: number };
+  /** 開いた後にカーソルを移す位置 (1 始まり)。EditorPane が反映して消す */
+  reveal: { path: string; line: number; column: number } | null;
 
   open: (path: string) => Promise<void>;
+  /** ファイルを開いて指定の位置 (1 始まり) を表示する */
+  openAt: (path: string, line: number, column: number) => Promise<void>;
+  clearReveal: () => void;
   close: (path: string) => Promise<void>;
   activate: (path: string) => void;
   updateContent: (path: string, content: string) => void;
@@ -61,6 +66,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
   tabs: [],
   activePath: null,
   cursor: { line: 1, col: 1 },
+  reveal: null,
 
   open: async (path) => {
     const existing = get().tabs.find((t) => t.path === path);
@@ -90,6 +96,15 @@ export const useEditor = create<EditorStore>((set, get) => ({
       toastError(e);
     }
   },
+
+  openAt: async (path, line, column) => {
+    await get().open(path);
+    const activePath = get().activePath;
+    // 開けなかった (エラーは open がトーストで出す) ときは何もしない
+    if (activePath && activePath.toLowerCase() === path.toLowerCase()) set({ reveal: { path: activePath, line, column } });
+  },
+
+  clearReveal: () => set({ reveal: null }),
 
   close: async (path) => {
     const tab = get().tabs.find((t) => t.path === path);

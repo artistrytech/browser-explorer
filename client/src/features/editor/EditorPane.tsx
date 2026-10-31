@@ -8,6 +8,7 @@ import { useUi } from '../../stores/ui';
 import { useContextMenu, type MenuItem } from '../../components/ContextMenu';
 import { api } from '../../api/client';
 import { copyText } from '../../lib/clipboard';
+import { openCodeMap } from '../codemap/codeMapStore';
 import { parentPath, joinPath } from '../../lib/paths';
 import styles from './EditorPane.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -105,6 +106,27 @@ export function EditorPane() {
       () => void useEditor.getState().saveAll(),
     );
 
+    // カーソル位置のシンボルの参照元 / 参照先のマップ (VSCode の呼び出し階層と同じキー)
+    editor.addAction({
+      id: 'explorer.codeMap',
+      label: '参照マップを表示',
+      keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyH],
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1.6,
+      run: (ed) => {
+        const model = ed.getModel();
+        const pos = ed.getPosition();
+        const path = useEditor.getState().activePath;
+        if (!model || !pos || !path) return;
+        openCodeMap({
+          path,
+          position: { line: pos.lineNumber - 1, character: pos.column - 1 },
+          word: model.getWordAtPosition(pos)?.word ?? '',
+          content: model.getValue(),
+        });
+      },
+    });
+
     return () => {
       editor.dispose();
       editorRef.current = null;
@@ -166,6 +188,19 @@ export function EditorPane() {
       syncingRef.current = false;
     }
   }, [activeTab?.content, activeTab?.path]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // コードマップ等からの「この位置を開く」: モデルを表示してからカーソルを移す
+  const reveal = useEditor((s) => s.reveal);
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || !reveal || reveal.path !== activeTab?.path) return;
+    if (editor.getModel() !== modelsRef.current.get(reveal.path)) return;
+    const pos = { lineNumber: reveal.line, column: reveal.column };
+    editor.setPosition(pos);
+    editor.revealPositionInCenter(pos);
+    editor.focus();
+    useEditor.getState().clearReveal();
+  }, [reveal, activeTab?.path]);
 
   const doSaveAs = async () => {
     if (!activeTab) return;

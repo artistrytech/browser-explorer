@@ -4,7 +4,7 @@ import { openInNewTab } from '../lib/appTabs';
 
 /**
  * メイン領域の表示: ファイル一覧 / コミット(変更) / ログ / ブランチ / エディタ / コミット差分 / Markdown プレビュー /
- * アプリログ (サーバ・クライアントの動作ログ。Git のログとは別)。
+ * アプリログ (サーバ・クライアントの動作ログ。Git のログとは別) / コードマップ (参照元・参照先のマップ)。
  * Git 系 (commit/log/branches) はそれぞれ独立した最上位タブ (ブラウザ履歴も独立)。
  */
 export type MainView =
@@ -16,7 +16,8 @@ export type MainView =
   | 'editor'
   | 'diff'
   | 'preview'
-  | 'applog';
+  | 'applog'
+  | 'codemap';
 
 /** Git パネルを表示するビューか */
 export function isGitView(v: MainView): boolean {
@@ -51,6 +52,8 @@ export function defaultDiffToolIndex(tools: DiffTool[]): number {
 interface UiStore {
   view: MainView;
   settingsOpen: boolean;
+  /** 設定を開いたときに選ぶタブ (SettingsDialog が読んで消す) */
+  settingsTab: string | null;
   /** サーバー (ホスト) の OS。メニューラベルの出し分けに使う (002.md §4.2) */
   platform: string;
   /** コンテキストメニューの表示設定 (config.jsonc の contextMenu。false で非表示) */
@@ -73,6 +76,7 @@ interface UiStore {
 export const useUi = create<UiStore>((set) => ({
   view: 'files',
   settingsOpen: false,
+  settingsTab: null,
   platform: 'win32',
   menuConfig: {},
   externalTools: [],
@@ -100,6 +104,11 @@ export async function refreshUiConfig(): Promise<void> {
   s.setExtDefaults(r.extDefaults ?? {});
 }
 
+/** 設定を指定のタブで開く */
+export function openSettingsTab(tab: string): void {
+  useUi.setState({ settingsTab: tab, settingsOpen: true });
+}
+
 /** URL の ?view= から表示ビューを復元 (無指定は files)。旧 'git' は 'commit' に読み替え */
 export function viewFromUrl(): MainView {
   const v = new URLSearchParams(location.search).get('view');
@@ -111,7 +120,8 @@ export function viewFromUrl(): MainView {
     v === 'editor' ||
     v === 'diff' ||
     v === 'preview' ||
-    v === 'applog'
+    v === 'applog' ||
+    v === 'codemap'
     ? v
     : 'files';
 }

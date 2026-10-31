@@ -31,6 +31,8 @@ import { DiffTab, useDiffTab, closeDiffTab, diffTargetFromUrl } from './features
 import { ReviewTab } from './features/review/ReviewTab';
 import { MarkdownTab, usePreviewTab, closePreviewTab, previewPathFromUrl } from './features/preview/MarkdownTab';
 import { AppLogTab } from './features/applog/AppLogTab';
+import { CodeMapTab } from './features/codemap/CodeMapTab';
+import { useCodeMap } from './features/codemap/codeMapStore';
 import { ReviewCreateDialog } from './features/review/ReviewCreateDialog';
 import { ReviewExportDialog } from './features/review/ReviewExportDialog';
 import { DualPaneDialog } from './features/transfer/DualPaneDialog';
@@ -88,6 +90,9 @@ export default function App() {
   const diffTarget = useDiffTab((s) => s.current);
   const previewPath = usePreviewTab((s) => s.current);
   const appLogOpened = useAppLog((s) => s.opened);
+  /** コードマップの起点 (開いていなければ null)。タブ名は起点のシンボル名 (調べ終わるまではファイル名) */
+  const codeMapOrigin = useCodeMap((s) => s.origin);
+  const codeMapTitle = useCodeMap((s) => (s.rootId ? s.nodes[s.rootId]?.item.name : null));
   const repoRoot = useGit((s) => s.repoRoot);
   /** コミットタブに出す変更ファイル数 (ステージ済み + 変更 + 未追跡。リポジトリ外では出さない) */
   const changedCount = useGit((s) => s.status?.files.length ?? null);
@@ -274,6 +279,11 @@ export default function App() {
     if (view === 'diff' && !diffTarget) replaceView('files');
   }, [view, diffTarget]);
 
+  // コードマップ: 起点が無いのに view=codemap (リロード直後等) なら files へ
+  useEffect(() => {
+    if (view === 'codemap' && !codeMapOrigin) replaceView('files');
+  }, [view, codeMapOrigin]);
+
   // プレビュータブ: 対象が無いのに view=preview なら files へ
   useEffect(() => {
     if (view === 'preview' && !previewPath) replaceView('files');
@@ -290,11 +300,13 @@ export default function App() {
             ? baseName(previewPath)
             : view === 'applog'
               ? 'アプリログ'
+              : view === 'codemap' && codeMapOrigin
+              ? `参照マップ: ${codeMapTitle ?? baseName(codeMapOrigin.path)}`
               : (isGitView(view) || view === 'review') && repoRoot
               ? baseName(repoRoot) || repoRoot
               : 'Explorer';
     document.title = title;
-  }, [activePath, path, previewPath, repoRoot, tabs, view]);
+  }, [activePath, path, previewPath, repoRoot, tabs, view, codeMapOrigin, codeMapTitle]);
 
   return (
     <div className={cx("app")}>
@@ -370,6 +382,30 @@ export default function App() {
             </span>
           </button>
         )}
+        {codeMapOrigin && (
+          <button
+            className={cx(`view-tab${view === 'codemap' ? ' active' : ''}`)}
+            onClick={() => switchView('codemap')}
+            onMouseDown={(e) => {
+              if (e.button === 1) {
+                e.preventDefault();
+                useCodeMap.getState().close();
+              }
+            }}
+          >
+            🕸 {codeMapTitle ?? baseName(codeMapOrigin.path)}
+            <span
+              className={cx("view-tab-close")}
+              title="参照マップを閉じる"
+              onClick={(e) => {
+                e.stopPropagation();
+                useCodeMap.getState().close();
+              }}
+            >
+              ✕
+            </span>
+          </button>
+        )}
         {diffTarget && (
           <button
             className={cx(`view-tab${view === 'diff' ? ' active' : ''}`)}
@@ -433,6 +469,10 @@ export default function App() {
                 </div>
                 <div className={cx(`main-view${view === 'applog' ? '' : ' hidden'}`)}>
                   {view === 'applog' && <AppLogTab />}
+                </div>
+                <div className={cx(`main-view${view === 'codemap' ? '' : ' hidden'}`)}>
+                  {/* 他のタブへ切り替えても表示位置・展開を保つよう、開いている間はアンマウントしない */}
+                  {codeMapOrigin && <CodeMapTab />}
                 </div>
               </div>
             </Panel>

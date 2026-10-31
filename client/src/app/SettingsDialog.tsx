@@ -12,12 +12,14 @@ import { openAppLog } from '../stores/applog';
 import { backupBranchRegex, DEFAULT_BACKUP_BRANCH_PATTERN } from '../lib/backupBranch';
 import { AiSettingsTab } from './AiSettingsTab';
 import { TerminalSettingsTab } from './TerminalSettingsTab';
+import { CodeMapSettingsTab } from './CodeMapSettingsTab';
 import { useAiChat } from '../features/aichat/aiChatStore';
 import { useTerminal } from '../features/terminal/terminalStore';
 
 const cx = createCssModuleClassNames(styles);
 
-type Tab = 'general' | 'menu' | 'tools' | 'diff' | 'ai' | 'terminal';
+type Tab = 'general' | 'menu' | 'tools' | 'diff' | 'ai' | 'terminal' | 'codemap';
+const TABS: readonly Tab[] = ['general', 'menu', 'tools', 'diff', 'ai', 'terminal', 'codemap'];
 
 /** contextMenu の各キーと日本語ラベル */
 const MENU_ITEMS: { key: string; label: string }[] = [
@@ -259,6 +261,12 @@ export function SettingsDialog() {
 
   useEffect(() => {
     if (!settingsOpen) return;
+    // 他の画面から指定のタブで開かれた (openSettingsTab)
+    const initialTab = useUi.getState().settingsTab;
+    if (initialTab) {
+      if (TABS.includes(initialTab as Tab)) setTab(initialTab as Tab);
+      useUi.setState({ settingsTab: null });
+    }
     setDirty(false);
     setEditingTool(null);
     setEditingDiff(null);
@@ -432,6 +440,7 @@ export function SettingsDialog() {
           {tabBtn('diff', '差分ツール')}
           {tabBtn('ai', 'AI')}
           {tabBtn('terminal', 'ターミナル')}
+          {tabBtn('codemap', 'コード解析')}
         </div>
 
         <div className={cx("settings-body")}>
@@ -734,6 +743,7 @@ export function SettingsDialog() {
 
           {tab === 'ai' && draft && <AiSettingsTab draft={draft} patch={patch} />}
           {tab === 'terminal' && draft && <TerminalSettingsTab draft={draft} patch={patch} />}
+          {tab === 'codemap' && draft && <CodeMapSettingsTab draft={draft} patch={patch} />}
         </div>
 
         <div className={cx("settings-row")}>

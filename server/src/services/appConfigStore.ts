@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { db } from './stateStore.js';
 import { DEFAULT_SHELL_ID } from './terminal.js';
+import { defaultLspServers, sanitizeLspServer, type LspServerDef } from './lspPresets.js';
 
 /**
  * 画面で編集可能な設定 (commitFilesLimit / contextMenu / externalTools / diffTools / extDefaults) を
@@ -47,6 +48,8 @@ export interface AppConfig {
   aiClaudePermission: AiClaudePermission;
   /** アプリ内のターミナルで「＋」から開くシェル (services/terminal.ts の検出結果の id) */
   terminalShell: string;
+  /** コードマップに使う言語サーバ (未設定はプリセット。services/lspPresets.ts) */
+  lspServers: LspServerDef[];
 }
 
 export const AI_CODEX_SANDBOXES = ['read-only', 'workspace-write', 'danger-full-access'] as const;
@@ -175,6 +178,7 @@ export function getAppConfig(): AppConfig {
     aiCodexSandbox: readSetting<AiCodexSandbox>('aiCodexSandbox') ?? 'workspace-write',
     aiClaudePermission: readSetting<AiClaudePermission>('aiClaudePermission') ?? 'acceptEdits',
     terminalShell: readSetting<string>('terminalShell') ?? DEFAULT_SHELL_ID,
+    lspServers: readSetting<LspServerDef[]>('lspServers') ?? defaultLspServers(),
   };
 }
 
@@ -251,6 +255,16 @@ export function saveAppConfig(partial: Partial<Record<AppConfigKey, unknown>>): 
     }
     if (typeof partial.terminalShell === 'string' && /^[\w.-]+$/.test(partial.terminalShell)) {
       writeSetting('terminalShell', partial.terminalShell);
+    }
+    if (Array.isArray(partial.lspServers)) {
+      const servers = partial.lspServers.map(sanitizeLspServer).filter((t): t is LspServerDef => t !== null);
+      // id の重複 (プリセットを 2 回追加した等) は後のものを新しい id にする
+      const seen = new Set<string>();
+      for (const t of servers) {
+        if (seen.has(t.id)) t.id = randomUUID();
+        seen.add(t.id);
+      }
+      writeSetting('lspServers', servers);
     }
   });
   tx();

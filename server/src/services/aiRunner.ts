@@ -1,5 +1,4 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import path from 'node:path';
 import { promisify } from 'node:util';
 import { broadcastEvent } from '../ws/watcher.js';
 import { AI_CLAUDE_PERMISSIONS, AI_CODEX_SANDBOXES } from './appConfigStore.js';
@@ -11,6 +10,7 @@ import {
   type AiTurn,
 } from './aiStore.js';
 import { errorDetail, logger } from './logger.js';
+import { needsShell, which } from './commandPath.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -40,27 +40,6 @@ export const AI_PERMISSIONS: Record<AiAgent, readonly string[]> = {
   codex: AI_CODEX_SANDBOXES,
   claude: AI_CLAUDE_PERMISSIONS,
 };
-
-/** Windows で直接起動できる拡張子 (where は拡張子なしの sh スクリプトも返すので除く) */
-const WIN_EXEC_EXT = ['.exe', '.cmd', '.bat', '.com'];
-
-/** PATH からコマンドを探す。見つからなければ null */
-async function which(cmd: string): Promise<string | null> {
-  try {
-    const finder = process.platform === 'win32' ? 'where.exe' : 'which';
-    const { stdout } = await execFileAsync(finder, [cmd], { windowsHide: true, timeout: 10_000 });
-    const lines = stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    if (process.platform !== 'win32') return lines[0] ?? null;
-    return lines.find((l) => WIN_EXEC_EXT.includes(path.extname(l).toLowerCase())) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** .cmd / .bat は cmd.exe 経由でないと起動できない (Node は shell: true を要求する) */
-function needsShell(file: string): boolean {
-  return process.platform === 'win32' && ['.cmd', '.bat'].includes(path.extname(file).toLowerCase());
-}
 
 async function detect(cmd: AiAgent): Promise<AiAgentInfo> {
   const file = await which(cmd);
@@ -519,10 +498,90 @@ export function cancelTurn(turnId: number): boolean {
   if (!r) return false;
   r.canceled = true;
   const pid = r.child.pid;
+  killTree(r.child);
+  return true;
+}
+
+/** 子プロセスをその子ごと終了させる (Windows の .cmd は cmd.exe の下で動くため taskkill /T) */
+function killTree(child: ChildProcess): void {
+  const pid = child.pid;
   if (process.platform === 'win32' && pid) {
     spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }).on('error', () => {});
   } else {
-    r.child.kill();
+    child.kill();
   }
-  return true;
+}
+
+/**
+ * 会話に残さない 1 回きりの依頼 (コードマップの AI 生成など)。最後の応答の本文を返す。
+ * 読み取り専用で動かす: Claude は Read / Grep / Glob 以外を拒否 (dontAsk)、Codex は read-only サンドボックス。
+ * signal で中断すると子プロセスごと終了させる。
+ */
+export async function runOneShot(
+  agent: AiAgent,
+  opts: { cwd: string; prompt: string; signal?: AbortSignal; timeoutMs?: number },
+): Promise<string> {
+  const info = (await detectAgents())[agent];
+  if (!info.path) throw Object.assign(new Error(`${agent} が PATH に見つかりません`), { status: 400 });
+  const args =
+    agent === 'codex'
+      ? ['exec', '--json', '--skip-git-repo-check', '-c', 'sandbox_mode=read-only', '-']
+      : ['-p', '--output-format', 'json', '--permission-mode', 'dontAsk', '--allowedTools', 'Read,Grep,Glob'];
+  const child = spawn(info.path, args, {
+    cwd: opts.cwd,
+    env: childEnv(),
+    windowsHide: true,
+    shell: needsShell(info.path),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  child.stdin.on('error', () => {});
+  child.stdin.end(opts.prompt);
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (c: string) => (stdout += c));
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (c: string) => (stderr = (stderr + c).slice(-8000)));
+
+  const abort = () => killTree(child);
+  opts.signal?.addEventListener('abort', abort);
+  const timer = setTimeout(abort, opts.timeoutMs ?? 10 * 60_000);
+  const code = await new Promise<number | null>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', resolve);
+  }).finally(() => {
+    clearTimeout(timer);
+    opts.signal?.removeEventListener('abort', abort);
+  });
+  if (opts.signal?.aborted) throw Object.assign(new Error('中断しました'), { status: 499 });
+
+  if (agent === 'claude') {
+    let result: Record<string, unknown> | null = null;
+    try {
+      result = JSON.parse(stdout.trim().split(/\r?\n/).pop() ?? '');
+    } catch {
+      /* 下で失敗として扱う */
+    }
+    if (!result || result.is_error || code !== 0) {
+      throw new Error(str(result?.result) || stderr.trim() || `claude が失敗しました (終了コード ${code})`);
+    }
+    return str(result.result);
+  }
+  // codex: JSONL のうち最後の agent_message
+  let text = '';
+  let failure = '';
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const ev = JSON.parse(line) as Record<string, unknown>;
+      const item = (ev.item ?? {}) as Record<string, unknown>;
+      if (ev.type === 'item.completed' && item.type === 'agent_message') text = str(item.text);
+      else if (ev.type === 'turn.failed') failure = str((ev.error as Record<string, unknown> | undefined)?.message);
+      else if (ev.type === 'error') failure = str(ev.message);
+    } catch {
+      /* JSON 以外の行は無視 */
+    }
+  }
+  if (!text) throw new Error(failure || stderr.trim() || `codex が失敗しました (終了コード ${code})`);
+  return text;
 }

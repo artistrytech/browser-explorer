@@ -1,0 +1,319 @@
+.codemap {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+}
+
+/* 起点のシンボル・調べ方・操作ボタンを 1 行に並べる (狭いときは折り返す) */
+.codemap-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 5px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 上部のバー・お知らせの中のボタン */
+.btn.small {
+  padding: 2px 8px;
+  font-size: 12px;
+  background: var(--bg);
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.codemap-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.codemap-kind {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.codemap-dim {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.codemap-chip {
+  font-size: 11px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.codemap-spacer {
+  flex: 1;
+}
+
+.codemap-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.codemap-legend {
+  display: inline-flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+
+  span::before {
+    content: '';
+    display: inline-block;
+    width: 18px;
+    margin-right: 4px;
+    vertical-align: middle;
+    border-top: 2px solid var(--text-dim);
+  }
+
+  .legend-ref::before {
+    border-top-style: dashed;
+  }
+
+  .legend-type::before {
+    border-top: 3px double var(--accent);
+  }
+}
+
+.codemap-notices {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: var(--line-sel-bg);
+  border-bottom: 1px solid var(--line-sel-border);
+  flex: none;
+  max-height: 96px;
+  overflow: auto;
+
+  ul {
+    flex: 1;
+    margin: 0;
+    padding-left: 16px;
+  }
+}
+
+.codemap-body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.codemap-message {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.codemap-error {
+  color: var(--danger);
+  white-space: pre-wrap;
+  max-width: 720px;
+}
+
+.codemap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.codemap-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: codemap-spin 0.9s linear infinite;
+}
+
+@keyframes codemap-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- ノード --- */
+
+.symbol-node {
+  --kind-color: var(--text-dim);
+  display: flex;
+  align-items: stretch;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--kind-color);
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+  cursor: default;
+
+  &.kind-fn {
+    --kind-color: #8a5cd0;
+  }
+  &.kind-type {
+    --kind-color: #d08a1e;
+  }
+  &.kind-var {
+    --kind-color: #2b8fd6;
+  }
+
+  &.root {
+    border-color: var(--accent);
+    border-left-color: var(--kind-color);
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+
+  &.selected {
+    background: var(--bg-selected);
+  }
+
+  &.external {
+    opacity: 0.6;
+    border-style: dashed;
+  }
+}
+
+.node-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.node-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.node-kind {
+  flex: none;
+  min-width: 16px;
+  padding: 0 3px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: bold;
+  color: #fff;
+  background: var(--kind-color);
+  border-radius: 3px;
+}
+
+.node-name {
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.node-sub {
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.node-expand {
+  flex: none;
+  width: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 10px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--accent);
+  }
+
+  &.open {
+    color: var(--accent);
+  }
+
+  &.busy {
+    cursor: progress;
+  }
+
+  &.left {
+    border-radius: 2px 0 0 2px;
+  }
+  &.right {
+    border-radius: 0 5px 5px 0;
+  }
+}
+
+/* 接続はさせないので、つまみは見せない (エッジの端点としてだけ使う) */
+.node-handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --- エッジ --- */
+
+.edge-ref :global(.react-flow__edge-path) {
+  stroke-dasharray: 6 4;
+}
+
+.edge-type :global(.react-flow__edge-path) {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+:global(.react-flow__edge) {
+  cursor: pointer;
+}

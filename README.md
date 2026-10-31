@@ -79,8 +79,9 @@ Ctrl+T / Ctrl+W が効くのは PWA のウィンドウだけ (通常のブラウ
 config.jsonc     # ポート・API トークン (+ 各設定の初回 seed 値。コメント可)
 data/app.db      # SQLite (設定・外部ツール・ブックマーク等の永続化)
 data/logs.db     # SQLite (アプリログ。保存期間は設定で変更)
+data/lsp/        # 言語サーバ用の作業フォルダ (参照マップ。jdtls など ${dataDir} を使うもの)
 server/          # Express + simple-git + chokidar + better-sqlite3 + node-pty
-client/          # React + Vite + Zustand + Monaco Editor + xterm.js
+client/          # React + Vite + Zustand + Monaco Editor + xterm.js + React Flow (+ dagre)
 ```
 
 ## 主な操作 (Windows 流キーバインド)
@@ -216,6 +217,46 @@ client/          # React + Vite + Zustand + Monaco Editor + xterm.js
 - **インストール**: node-pty は Windows (x64 / arm64)・Mac (Intel / Apple Silicon) のビルド済みのバイナリを同梱しているので、
   ビルドツールは不要 (Linux はインストール時にビルドするため、gcc / make / python が必要)。
   ネイティブモジュールなので、Windows と Mac で `node_modules` を共有せず、それぞれで `npm install` する。
+
+## 参照マップ (コードの静的解析)
+
+エディタでクラス・メソッド・関数の名前にカーソルを置き、右クリック →「参照マップを表示」(または Shift+Alt+H) で、
+そのシンボルを中心に参照元 (左) と参照先 (右) をたどるグラフを「🕸 シンボル名」のタブに開く。
+解析は言語サーバ (LSP) で行う。言語サーバの無い言語は AI (Claude / Codex) に作らせることもできる。
+
+- **調べられる関係**: 呼び出し元 / 呼び出し先 (callHierarchy)、参照元 (references。参照している関数・メソッドごとにまとめる)、
+  親の型 / 子の型 (typeHierarchy)。言語サーバが対応していないものはその旨を表示する
+  (呼び出し階層に対応していないときは、呼び出し元の代わりに参照元を出す)。
+- **操作**: ノードの ◀ / ▶ で参照元 / 参照先を 1 段ずつ展開し、もう一度押すと畳む (クラス・インターフェイス等の ◀ は参照元)。
+  右クリックで展開する関係を選べるほか、「このシンボルを起点に作り直す」「マップから外す」など。
+  ノードのダブルクリックで定義を、エッジのクリックで呼び出し / 参照している箇所を開く (複数あるときはエッジの右クリックで選ぶ)。
+  エッジの「×n」は箇所の数。線は 実線 = 呼び出し / 破線 = 参照 / 太線 = 継承。
+  ライブラリ・標準ライブラリなどプロジェクトの外のシンボルは、既定では隠す (「ライブラリも表示」で出す)。
+  「Mermaid をコピー」で表示中のマップを Mermaid の flowchart としてコピーできる。
+- **言語サーバ**: 設定 → コード解析 で、拡張子ごとに使う言語サーバを指定する (上から順に最初に当てはまる有効なもの)。
+  初期値は次のプリセット。コマンドは PATH と、プロジェクトの `node_modules/.bin` から探す。見つからないものは設定画面にインストール方法を出す。
+
+  | 言語 | コマンド | インストール例 |
+  | --- | --- | --- |
+  | TypeScript / JavaScript | `typescript-language-server --stdio` | `npm install -g typescript-language-server typescript` |
+  | Python | `pyright-langserver --stdio` | `npm install -g pyright` |
+  | Java | `jdtls -data ${dataDir}` | JDK 21 以降 + Eclipse JDT LS |
+  | C# | `csharp-ls` | `dotnet tool install --global csharp-ls` |
+  | Go | `gopls` | `go install golang.org/x/tools/gopls@latest` |
+  | Rust | `rust-analyzer` | `rustup component add rust-analyzer` |
+  | C / C++ | `clangd` | LLVM (compile_commands.json があると正確) |
+  | PHP | `intelephense --stdio` | `npm install -g intelephense` |
+  | Ruby | `ruby-lsp` | `gem install ruby-lsp` |
+  | Kotlin / Swift / Dart / Lua | `kotlin-language-server` / `sourcekit-lsp` / `dart language-server` / `lua-language-server` | 各 SDK・リリース |
+
+  言語サーバは「言語サーバ × プロジェクトのフォルダ」ごとにサーバ側で起動し、30 分使わないと止める (設定画面から止めることもできる)。
+  プロジェクトのフォルダは、ファイルから近い親で目印 (`tsconfig.json`・`pom.xml`・`*.csproj` 等) のあるフォルダ (無ければ Git のリポジトリ)。
+  起動直後はプロジェクトの読み込み (インデックス作成) に時間がかかり、その間は結果が足りないことがある (画面に表示する)。
+  引数の `${root}` はプロジェクトのフォルダ、`${dataDir}` は言語サーバ用の作業フォルダ (`data/lsp/` 配下) に展開する。
+- **AI で作成**: 言語サーバが無いとき (またはタブの「AI で作成 ▾」から)、Claude / Codex の CLI に読み取り専用で依頼し、
+  呼び出し元 / 呼び出し先を JSON で返させてマップにする (Claude は Read / Grep / Glob だけを許可、Codex は read-only サンドボックス)。
+  1 回の依頼に数十秒〜数分かかり、結果は言語サーバほど正確ではない (行番号の単位で、存在しない参照が混ざることもある)。
+  AI チャットの Box には記録しない。
 
 ## アプリログ (動作ログの記録と確認)
 

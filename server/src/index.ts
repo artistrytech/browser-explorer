@@ -10,6 +10,7 @@ import { quickaccessRouter } from './routes/quickaccess.js';
 import { logRouter } from './routes/log.js';
 import { aiRouter } from './routes/ai.js';
 import { terminalRouter } from './routes/terminal.js';
+import { codeMapRouter } from './routes/codemap.js';
 import { attachWatcher } from './ws/watcher.js';
 import {
   getAppConfig,
@@ -104,6 +105,7 @@ app.use('/api/quickaccess', quickaccessRouter);
 app.use('/api/log', logRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/terminal', terminalRouter);
+app.use('/api/codemap', codeMapRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, platform: process.platform });
