@@ -308,6 +308,50 @@
   padding: 2px 6px;
 }
 
+/* 一覧 / ツリーの切り替え */
+.rv-mode {
+  flex: none;
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.rv-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: var(--bg);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.rv-mode-btn + .rv-mode-btn {
+  border-left: 1px solid var(--border);
+}
+
+.rv-mode-btn:hover {
+  background: var(--bg-hover);
+}
+
+.rv-mode-btn.on {
+  background: var(--bg-selected);
+  color: var(--accent);
+}
+
+.rv-mode-icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
 .rv-file-list {
   flex: 1;
   min-height: 0;
@@ -334,6 +378,20 @@
 .rv-file.viewed .rv-file-name {
   opacity: 0.55;
   text-decoration: line-through;
+}
+
+/* ツリー表示のフォルダの行 (配下がすべて確認済みなら薄くする。取り消し線は付けない) */
+.rv-dir {
+  gap: 4px;
+  color: var(--text-dim);
+}
+
+.rv-dir.viewed .rv-file-name {
+  text-decoration: none;
+}
+
+.rv-dir > svg {
+  flex: none;
 }
 
 .rv-viewed {

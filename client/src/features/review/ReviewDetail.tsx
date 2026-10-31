@@ -8,12 +8,17 @@ import { reviewFileFromUrl, WORKTREE_REVIEW_ID } from '../../stores/ui';
 import { toastError, useToast } from '../../stores/toast';
 import {
   loadReviewDiffScroll,
+  loadReviewFileListMode,
   loadReviewView,
   saveReviewDiffScroll,
+  saveReviewFileListMode,
   saveReviewView,
+  type ReviewFileListMode,
 } from '../../lib/reviewViewMemory';
 import { baseName, parentPath } from '../../lib/paths';
+import { Chevron } from '../../app/FolderTree';
 import { ReviewFileDiff } from './ReviewFileDiff';
+import { buildReviewFileTree, filesUnder, flattenReviewFileTree, type ReviewDirNode } from './reviewFileTree';
 import { openReviewExportDialog } from './ReviewExportDialog';
 import type { CommitFile } from '../../types';
 import styles from './Review.module.scss';
@@ -30,11 +35,29 @@ const STATUS_LABEL: Record<string, string> = {
   T: '種別変更',
 };
 
+/** ツリー表示の 1 階層ぶんの字下げ (px) */
+const TREE_INDENT = 16;
+const NO_COLLAPSED: ReadonlySet<string> = new Set();
+
+/** ファイル一覧の表示形式の切り替えボタンのアイコン */
+function ListModeIcon({ mode }: { mode: ReviewFileListMode }) {
+  return (
+    <svg className={cx('rv-mode-icon')} viewBox="0 0 16 16" aria-hidden="true">
+      <path d={mode === 'list' ? 'M2 4h12M2 8h12M2 12h12' : 'M2 3.5h7M4 3.5V12M4 8h3M4 12h3M9 8h5M9 12h5'} />
+    </svg>
+  );
+}
+
 /** レビュー詳細: 左に変更ファイル一覧、右にその差分 (GitHub の PR と同じ構成) */
 export function ReviewDetail({ id }: { id: number }) {
   const detail = useReview((s) => s.detail);
   const loading = useReview((s) => s.detailLoading);
   const [filter, setFilter] = useState(() => loadReviewView(id)?.filter ?? '');
+  const [listMode, setListMode] = useState<ReviewFileListMode>(loadReviewFileListMode);
+  /** ツリー表示で折り畳んだフォルダ (ルートからのパス) */
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
+    () => new Set(loadReviewView(id)?.collapsedDirs ?? []),
+  );
   /** 選択中ファイル。URL (&rfile=) と同期していて、戻る/進むでも変わる */
   const selected = useReview((s) => s.currentFile);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -98,16 +121,42 @@ export function ReviewDetail({ id }: { id: number }) {
     );
   }, [files, filter]);
 
+  const tree = useMemo(() => (listMode === 'tree' ? buildReviewFileTree(filtered) : null), [listMode, filtered]);
+  /** 表示順のファイル (ツリー表示ではフォルダ → ファイルの順に並び替わる。折り畳みは無視) */
+  const ordered = useMemo(
+    () =>
+      tree
+        ? flattenReviewFileTree(tree, NO_COLLAPSED).flatMap((r) => (r.kind === 'file' ? [r.file] : []))
+        : filtered,
+    [tree, filtered],
+  );
+
   // 選択中のファイルが一覧から消えたら先頭を選び直す (ユーザー操作ではないので履歴には積まない)。
   // URL に選択ファイルが無い (sessionStorage から復元した直後) 場合も URL へ反映する
   useEffect(() => {
-    if (filtered.length === 0) return;
-    const target = selected && filtered.some((f) => f.path === selected) ? selected : filtered[0].path;
+    if (ordered.length === 0) return;
+    const target = selected && ordered.some((f) => f.path === selected) ? selected : ordered[0].path;
     if (target !== selected || reviewFileFromUrl() !== target) {
       useReview.getState().selectFile(target, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, selected]);
+  }, [ordered, selected]);
+
+  const changeCollapsed = (next: ReadonlySet<string>) => {
+    setCollapsed(next);
+    saveReviewView(id, { collapsedDirs: [...next] });
+  };
+
+  // 選択中のファイル (戻る/進むで変わった場合も) が折り畳んだフォルダの中にあれば、そのフォルダを開く
+  useEffect(() => {
+    if (!selected || listMode !== 'tree') return;
+    const inside = [...collapsed].filter((d) => selected.startsWith(`${d}/`));
+    if (inside.length === 0) return;
+    const next = new Set(collapsed);
+    for (const d of inside) next.delete(d);
+    changeCollapsed(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, listMode]);
 
   // 別タブから戻った際のファイル一覧のスクロール位置復元 (一覧は detail から同期的に描画される)
   useEffect(() => {
@@ -182,6 +231,73 @@ export function ReviewDetail({ id }: { id: number }) {
   const changeFilter = (v: string) => {
     setFilter(v);
     saveReviewView(id, { filter: v });
+  };
+
+  const changeListMode = (mode: ReviewFileListMode) => {
+    setListMode(mode);
+    saveReviewFileListMode(mode);
+  };
+
+  const toggleDir = (dir: ReviewDirNode) => {
+    const next = new Set(collapsed);
+    if (next.has(dir.path)) next.delete(dir.path);
+    else next.add(dir.path);
+    changeCollapsed(next);
+  };
+
+  /** ファイルの行。ツリー表示 (depth あり) では字下げし、フォルダのパスは出さない */
+  const renderFile = (f: CommitFile, depth: number | null) => {
+    const n = unresolved.get(f.path) ?? 0;
+    const dir = depth === null ? parentPath(f.path) : '';
+    return (
+      <div
+        key={f.path}
+        className={cx(
+          `rv-file${f.path === selected ? ' selected' : ''}${viewedSet.has(f.path) ? ' viewed' : ''}`,
+        )}
+        style={depth === null ? undefined : { paddingLeft: 8 + depth * TREE_INDENT }}
+        onClick={() => selectFile(f)}
+        title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}
+      >
+        <input
+          type="checkbox"
+          className={cx('rv-viewed')}
+          checked={viewedSet.has(f.path)}
+          title="確認済み"
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => void toggleViewed(f, e.target.checked)}
+        />
+        <span className={cx(`rv-st st-${f.status}`)} title={STATUS_LABEL[f.status] ?? f.status}>
+          {f.status}
+        </span>
+        <span className={cx('rv-file-name')}>
+          {baseName(f.path)}
+          {dir && dir !== f.path && <span className={cx('rv-file-dir')}>{dir}</span>}
+        </span>
+        {n > 0 && <span className={cx('rv-file-comments')}>{n}</span>}
+      </div>
+    );
+  };
+
+  /** フォルダの行。クリックで開閉する。折り畳み中は配下の未解決コメント数を出す */
+  const renderDir = (d: ReviewDirNode, depth: number) => {
+    const open = !collapsed.has(d.path);
+    const under = filesUnder(d);
+    const allViewed = under.every((f) => viewedSet.has(f.path));
+    const n = open ? 0 : under.reduce((sum, f) => sum + (unresolved.get(f.path) ?? 0), 0);
+    return (
+      <div
+        key={`dir:${d.path}`}
+        className={cx(`rv-file rv-dir${allViewed ? ' viewed' : ''}`)}
+        style={{ paddingLeft: 8 + depth * TREE_INDENT }}
+        onClick={() => toggleDir(d)}
+        title={d.path}
+      >
+        <Chevron open={open} />
+        <span className={cx('rv-file-name')}>{d.name}</span>
+        {n > 0 && <span className={cx('rv-file-comments')}>{n}</span>}
+      </div>
+    );
   };
 
   const toggleViewed = async (f: CommitFile, next: boolean) => {
@@ -405,6 +521,19 @@ export function ReviewDetail({ id }: { id: number }) {
               <span className={cx('rv-count')}>
                 {filtered.length}/{files.length}
               </span>
+              <span className={cx('rv-mode')}>
+                {(['list', 'tree'] as const).map((m) => (
+                  <button
+                    key={m}
+                    className={cx(`rv-mode-btn${listMode === m ? ' on' : ''}`)}
+                    title={m === 'list' ? '一覧で表示' : 'ツリーで表示'}
+                    aria-pressed={listMode === m}
+                    onClick={() => changeListMode(m)}
+                  >
+                    <ListModeIcon mode={m} />
+                  </button>
+                ))}
+              </span>
             </div>
             <div
               className={cx('rv-file-list')}
@@ -419,38 +548,12 @@ export function ReviewDetail({ id }: { id: number }) {
                       : '変更されたファイルはありません'
                     : '一致するファイルはありません'}
                 </div>
+              ) : tree ? (
+                flattenReviewFileTree(tree, collapsed).map((r) =>
+                  r.kind === 'dir' ? renderDir(r.node, r.depth) : renderFile(r.file, r.depth),
+                )
               ) : (
-                filtered.map((f) => {
-                  const n = unresolved.get(f.path) ?? 0;
-                  const dir = parentPath(f.path);
-                  return (
-                    <div
-                      key={f.path}
-                      className={cx(
-                        `rv-file${f.path === selected ? ' selected' : ''}${viewedSet.has(f.path) ? ' viewed' : ''}`,
-                      )}
-                      onClick={() => selectFile(f)}
-                      title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}
-                    >
-                      <input
-                        type="checkbox"
-                        className={cx('rv-viewed')}
-                        checked={viewedSet.has(f.path)}
-                        title="確認済み"
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => void toggleViewed(f, e.target.checked)}
-                      />
-                      <span className={cx(`rv-st st-${f.status}`)} title={STATUS_LABEL[f.status] ?? f.status}>
-                        {f.status}
-                      </span>
-                      <span className={cx('rv-file-name')}>
-                        {baseName(f.path)}
-                        {dir && dir !== f.path && <span className={cx('rv-file-dir')}>{dir}</span>}
-                      </span>
-                      {n > 0 && <span className={cx('rv-file-comments')}>{n}</span>}
-                    </div>
-                  );
-                })
+                filtered.map((f) => renderFile(f, null))
               )}
             </div>
           </div>
