@@ -14,6 +14,8 @@ import { useUi } from '../../stores/ui';
 
 interface Entry {
   id: number;
+  /** 作ったときのサーバの起動ごとの ID (再起動後の同じ id の別のターミナルにつながないよう、接続時に送る) */
+  instance: string;
   term: Terminal;
   fit: FitAddon;
   /** xterm を描画する要素 (表示中のパネルの中へ付け替える) */
@@ -29,6 +31,8 @@ interface Entry {
 }
 
 const entries = new Map<number, Entry>();
+/** 一覧を最後に読んだサーバの起動ごとの ID */
+let instance: string | null = null;
 /** 次に表示されたときにフォーカスを当てるターミナル */
 let focusPending: number | null = null;
 /** ページ離脱による切断か (再接続を止める) */
@@ -96,7 +100,8 @@ function sendSize(e: Entry): void {
 function connect(e: Entry): void {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(
-    `${proto}://${location.host}/ws/terminal?token=${APP_TOKEN}&session=${getSessionId()}&id=${e.id}`,
+    `${proto}://${location.host}/ws/terminal?token=${APP_TOKEN}&session=${getSessionId()}&id=${e.id}` +
+      `&instance=${encodeURIComponent(e.instance)}`,
   );
   e.ws = ws;
   ws.onopen = () => {
@@ -211,6 +216,7 @@ function create(id: number): Entry {
   el.style.inset = '4px 0 0 8px';
   const e: Entry = {
     id,
+    instance: instance ?? '',
     term,
     fit,
     el,
@@ -298,6 +304,17 @@ function dispose(e: Entry): void {
   e.term.dispose();
   e.el.remove();
   entries.delete(e.id);
+}
+
+/**
+ * サーバの起動ごとの ID を控える。前に読んだときから変わっていれば (サーバが再起動した)、
+ * 再起動前のターミナルの画面と接続を片付けて true を返す
+ */
+export function setTerminalInstance(next: string): boolean {
+  const restarted = instance !== null && instance !== next;
+  instance = next;
+  for (const e of [...entries.values()]) if (e.instance !== next) dispose(e);
+  return restarted;
 }
 
 /** 一覧から消えたセッションの画面と接続を片付ける */

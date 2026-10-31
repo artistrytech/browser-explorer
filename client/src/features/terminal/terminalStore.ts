@@ -2,19 +2,27 @@ import { create } from 'zustand';
 import { api } from '../../api/client';
 import { onWsEvent } from '../../api/ws';
 import { useExplorer } from '../../stores/explorer';
-import { toastError } from '../../stores/toast';
+import { toastError, useToast } from '../../stores/toast';
 import type { TerminalInfo, TerminalShell } from '../../types';
-import { focusTerminal, isTerminalFocused, setTerminalGoneListener, syncTerminals } from './termManager';
+import {
+  focusTerminal,
+  isTerminalFocused,
+  setTerminalGoneListener,
+  setTerminalInstance,
+  syncTerminals,
+} from './termManager';
 
 /**
  * アプリ内のターミナルの状態。セッション (シェル) はサーバにあり、全タブで共有する。
  * 一覧の変化は WS の terminal:list で届く。表示位置は下 / 右のパネルへの固定か、フローティング。
+ * 開いているかどうかはタブごと (sessionStorage) に持ち、読み込み直したときに開き直す。
  */
 
 export type TerminalPosition = 'bottom' | 'right' | 'float';
 
 const POSITION_KEY = 'terminal:position';
 const ACTIVE_KEY = 'terminal:active';
+const OPEN_KEY = 'terminal:open';
 const SIZE_KEYS: Record<'bottom' | 'right', string> = { bottom: 'terminal:bottomSize', right: 'terminal:rightSize' };
 /** パネルの大きさ (下 = メイン領域の高さ、右 = メイン領域全体の幅に対する %) の既定値 */
 const DEFAULT_SIZES: Record<'bottom' | 'right', number> = { bottom: 35, right: 35 };
@@ -26,6 +34,28 @@ function loadPosition(): TerminalPosition {
   } catch {
     return 'bottom';
   }
+}
+
+function loadOpen(): boolean {
+  try {
+    return sessionStorage.getItem(OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveOpen(open: boolean): void {
+  try {
+    if (open) sessionStorage.setItem(OPEN_KEY, '1');
+    else sessionStorage.removeItem(OPEN_KEY);
+  } catch {
+    /* storage full 等は無視 */
+  }
+}
+
+/** サーバが再起動して、このタブで開いていたターミナルが終了したことを知らせる */
+function notifyRestarted(): void {
+  useToast.getState().show('info', 'サーバが再起動したため、ターミナルは終了しました');
 }
 
 function loadActive(): number | null {
@@ -73,6 +103,8 @@ interface TerminalStore {
   /** 「＋」で開くシェル (設定の既定のシェル) */
   defaultShell: string;
   loaded: boolean;
+  /** サーバの起動ごとの ID (再起動すると同じ id でも別のターミナルなので、画面を作り直す) */
+  instance: string | null;
   activeId: number | null;
   setOpen: (open: boolean) => void;
   setPosition: (position: TerminalPosition) => void;
@@ -93,6 +125,7 @@ export const useTerminal = create<TerminalStore>((set, get) => ({
   shells: [],
   defaultShell: '',
   loaded: false,
+  instance: null,
   activeId: loadActive(),
 
   setOpen: (open) => set({ open }),
@@ -112,6 +145,7 @@ export const useTerminal = create<TerminalStore>((set, get) => ({
     try {
       const r = await api.terminals();
       const had = get().terminals.length > 0;
+      if (setTerminalInstance(r.instance) && had) notifyRestarted();
       const { activeId } = get();
       const nextActive = r.terminals.some((t) => t.id === activeId)
         ? activeId
@@ -122,6 +156,7 @@ export const useTerminal = create<TerminalStore>((set, get) => ({
         shells: r.shells,
         defaultShell: r.defaultShell,
         loaded: true,
+        instance: r.instance,
         activeId: nextActive,
         // 最後のターミナルを閉じたら (exit で終了したときも) パネルも閉じる
         open: get().open && !(had && r.terminals.length === 0),
@@ -134,9 +169,16 @@ export const useTerminal = create<TerminalStore>((set, get) => ({
 
   create: async (opts = {}) => {
     try {
-      const t = await api.terminalCreate({ cwd: opts.cwd ?? useExplorer.getState().path, shellId: opts.shellId });
+      const { instance, ...t } = await api.terminalCreate({
+        cwd: opts.cwd ?? useExplorer.getState().path,
+        shellId: opts.shellId,
+      });
+      // 一覧を読んだ後にサーバが再起動していたら、一覧にあったターミナルはもう無い
+      const restarted = setTerminalInstance(instance);
+      if (restarted && get().terminals.length > 0) notifyRestarted();
       set((s) => ({
-        terminals: s.terminals.some((x) => x.id === t.id) ? s.terminals : [...s.terminals, t],
+        terminals: restarted ? [t] : s.terminals.some((x) => x.id === t.id) ? s.terminals : [...s.terminals, t],
+        instance,
       }));
       get().select(t.id);
     } catch (e) {
@@ -177,6 +219,10 @@ export const useTerminal = create<TerminalStore>((set, get) => ({
   },
 }));
 
+useTerminal.subscribe((s, prev) => {
+  if (s.open !== prev.open) saveOpen(s.open);
+});
+
 let subscribed = false;
 
 /** WS の購読 (初めて開いたときに 1 回だけ) */
@@ -203,6 +249,15 @@ export async function openTerminalAt(cwd: string): Promise<void> {
   useTerminal.getState().setOpen(true);
   if (!useTerminal.getState().loaded) await useTerminal.getState().load();
   await useTerminal.getState().create({ cwd });
+}
+
+/** 読み込み直す前にこのタブで開いていたら、ターミナルが残っていれば開き直す (起動時に 1 回) */
+export async function restoreTerminal(): Promise<void> {
+  if (!loadOpen()) return;
+  subscribe();
+  await useTerminal.getState().load();
+  if (useTerminal.getState().terminals.length > 0) useTerminal.getState().setOpen(true);
+  else saveOpen(false);
 }
 
 export function closeTerminal(): void {

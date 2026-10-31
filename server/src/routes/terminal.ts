@@ -8,6 +8,7 @@ import {
   listTerminals,
   renameTerminal,
   setTerminalListListener,
+  TERMINAL_INSTANCE,
 } from '../services/terminal.js';
 import { broadcastEvent } from '../ws/watcher.js';
 
@@ -34,12 +35,14 @@ terminalRouter.get('/', (_req, res) => {
     shells: listShells().map(({ id, label }) => ({ id, label })),
     defaultShell: getAppConfig().terminalShell,
     terminals: listTerminals(),
+    instance: TERMINAL_INSTANCE,
   });
 });
 
 terminalRouter.post('/', (req, res) => {
   const { cwd, shellId, cols, rows } = (req.body ?? {}) as Record<string, unknown>;
-  res.json(createTerminal({ cwd, shellId, cols, rows, defaultShellId: getAppConfig().terminalShell }));
+  const info = createTerminal({ cwd, shellId, cols, rows, defaultShellId: getAppConfig().terminalShell });
+  res.json({ ...info, instance: TERMINAL_INSTANCE });
 });
 
 terminalRouter.patch('/:id', (req, res) => {

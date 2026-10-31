@@ -1,11 +1,11 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { attachTerminal, resizeTerminal, writeTerminal } from '../services/terminal.js';
+import { attachTerminal, resizeTerminal, TERMINAL_INSTANCE, writeTerminal } from '../services/terminal.js';
 import { errorDetail, logger, sanitizeId } from '../services/logger.js';
 
 /**
- * ターミナルの入出力の中継 (/ws/terminal?token=&id=)。ターミナル 1 つにつき接続 1 本。
+ * ターミナルの入出力の中継 (/ws/terminal?token=&id=&instance=)。ターミナル 1 つにつき接続 1 本。
  * サーバ → クライアント: { t: 'r', d } 接続時の直近の出力 / { t: 'o', d } 出力 /
  *   { t: 'e', code } シェルの終了 / { t: 'x' } セッションが無い
  * クライアント → サーバ: { t: 'i', d } 入力 / { t: 's', cols, rows } 画面の大きさ
@@ -48,15 +48,17 @@ function onConnection(ws: WebSocket, req: IncomingMessage): void {
     logger.warn(`terminal ws error: ${err.message}`, { event: 'ws', sessionId, detail: errorDetail(err) });
   });
 
-  const attached = Number.isInteger(id)
-    ? attachTerminal(id, {
-        output: (d) => send(ws, { t: 'o', d }),
-        exit: (code) => {
-          send(ws, { t: 'e', code });
-          ws.close(1000);
-        },
-      })
-    : null;
+  // 再起動前のサーバのターミナル (instance が違う) は、同じ id があってもつながない
+  const attached =
+    Number.isInteger(id) && url.searchParams.get('instance') === TERMINAL_INSTANCE
+      ? attachTerminal(id, {
+          output: (d) => send(ws, { t: 'o', d }),
+          exit: (code) => {
+            send(ws, { t: 'e', code });
+            ws.close(1000);
+          },
+        })
+      : null;
   if (!attached) {
     send(ws, { t: 'x' });
     ws.close(1000);

@@ -242,12 +242,14 @@ function TerminalHost() {
   const idsKey = useTerminal((s) => s.terminals.map((t) => t.id).join(','));
   const activeId = useTerminal((s) => s.activeId);
   const loaded = useTerminal((s) => s.loaded);
+  // サーバが再起動したら、id が同じでも画面を作り直す
+  const instance = useTerminal((s) => s.instance);
   const empty = idsKey === '';
 
   useLayoutEffect(() => {
     if (!ref.current) return;
     mountTerminals(ref.current, idsKey ? idsKey.split(',').map(Number) : [], activeId);
-  }, [idsKey, activeId]);
+  }, [idsKey, activeId, instance]);
 
   // パネルの大きさを変えたら、ターミナルの桁数・行数を合わせる
   useEffect(() => {

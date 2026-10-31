@@ -259,7 +259,7 @@ export const api = {
   terminals: () => get<TerminalListResult>('/api/terminal'),
   /** シェルを起動する (shellId 省略 = 設定の既定のシェル。cwd がファイルならその親のフォルダ) */
   terminalCreate: (body: { cwd: string; shellId?: string; cols?: number; rows?: number }) =>
-    post<TerminalInfo>('/api/terminal', body),
+    post<TerminalInfo & { instance: string }>('/api/terminal', body),
   terminalRename: (id: number, name: string) =>
     request<TerminalInfo>(`/api/terminal/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   terminalKill: (id: number) => del<{ ok: boolean }>(`/api/terminal/${id}`, {}),

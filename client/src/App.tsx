@@ -41,7 +41,7 @@ import { CommandPalette } from './features/palette/CommandPalette';
 import { AiChatDialog, AiChatPanel } from './features/aichat/AiChatDialog';
 import { loadDockSize, saveDockSize, useAiChat } from './features/aichat/aiChatStore';
 import { TerminalPanel, TerminalWindow } from './features/terminal/TerminalPanel';
-import { loadPanelSize, savePanelSize, useTerminal } from './features/terminal/terminalStore';
+import { loadPanelSize, restoreTerminal, savePanelSize, useTerminal } from './features/terminal/terminalStore';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
 import { ToastHost } from './components/ToastHost';
@@ -115,6 +115,8 @@ export default function App() {
     api.osPlatform().then((r) => useUi.getState().setPlatform(r.platform)).catch(() => {});
     // コンテキストメニューの表示設定・外部ツール (設定は DB。初回は config.jsonc から seed)
     void refreshUiConfig();
+    // 読み込み直す前に開いていたターミナルを開き直す
+    void restoreTerminal();
     const initial = pathFromUrl();
     const initialView = viewFromUrl();
     const initialLogFilter = logFilterFromUrl();

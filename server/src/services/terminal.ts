@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -56,6 +57,12 @@ const FLUSH_DELAY = 8;
 
 const sessions = new Map<number, Session>();
 let nextId = 1;
+
+/**
+ * サーバの起動ごとの ID。id は起動ごとに 1 から振り直すので、接続時にこれも照らし合わせ、
+ * 再起動前のターミナルの画面が同じ id の別のターミナルにつながらないようにする
+ */
+export const TERMINAL_INSTANCE = randomUUID();
 
 /** 一覧 (作成・終了・名前の変更) が変わったときの通知先 (routes から WS へ流す) */
 let onListChanged: (() => void) | null = null;

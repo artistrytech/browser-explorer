@@ -318,6 +318,8 @@ export interface TerminalListResult {
   shells: TerminalShell[];
   defaultShell: string;
   terminals: TerminalInfo[];
+  /** サーバの起動ごとの ID (再起動すると変わる。接続時に照らし合わせる) */
+  instance: string;
 }
 
 // --- AI チャット (server/services/aiStore.ts / aiRunner.ts) ---
