@@ -255,3 +255,6 @@
 .sd-added { color: var(--add); }
 
 .sd-deleted { color: var(--danger); }
+
+/* ツリー表示のフォルダ行の合計行数は控えめに出す */
+.sd-dir-total { opacity: 0.6; }

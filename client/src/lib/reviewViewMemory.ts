@@ -78,24 +78,3 @@ export function clearReviewView(id: number): void {
     /* 無視 */
   }
 }
-
-/** ファイル一覧の表示形式 (一覧 / ツリー)。レビューをまたいで共通で、localStorage に保持して次回も引き継ぐ */
-export type ReviewFileListMode = 'list' | 'tree';
-
-const FILE_LIST_MODE_KEY = 'review:fileListMode';
-
-export function loadReviewFileListMode(): ReviewFileListMode {
-  try {
-    return localStorage.getItem(FILE_LIST_MODE_KEY) === 'tree' ? 'tree' : 'list';
-  } catch {
-    return 'list';
-  }
-}
-
-export function saveReviewFileListMode(mode: ReviewFileListMode): void {
-  try {
-    localStorage.setItem(FILE_LIST_MODE_KEY, mode);
-  } catch {
-    /* 無視 */
-  }
-}

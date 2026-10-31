@@ -308,50 +308,6 @@
   padding: 2px 6px;
 }
 
-/* 一覧 / ツリーの切り替え */
-.rv-mode {
-  flex: none;
-  display: flex;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.rv-mode-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  background: var(--bg);
-  color: var(--text-dim);
-  cursor: pointer;
-}
-
-.rv-mode-btn + .rv-mode-btn {
-  border-left: 1px solid var(--border);
-}
-
-.rv-mode-btn:hover {
-  background: var(--bg-hover);
-}
-
-.rv-mode-btn.on {
-  background: var(--bg-selected);
-  color: var(--accent);
-}
-
-.rv-mode-icon {
-  width: 14px;
-  height: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-}
-
 .rv-file-list {
   flex: 1;
   min-height: 0;

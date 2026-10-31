@@ -23,6 +23,8 @@ export interface GitViewRecord {
   filesFilter: string;
   /** コミット差分ファイル一覧のフォーカス行 (マーキングのみ) */
   focusedFile: string | null;
+  /** コミット差分ファイル一覧のツリー表示で折り畳んだフォルダ (選択中のコミットの間だけ) */
+  collapsedFileDirs?: string[];
   /** ブランチ一覧で折りたたんでいる階層キー */
   collapsedBranchGroups: string[];
   /** ブランチ一覧で選択 (フォーカス) 中の行のキー */

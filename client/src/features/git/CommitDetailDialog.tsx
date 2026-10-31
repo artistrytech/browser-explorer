@@ -2,8 +2,26 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
-import type { CommitFilesResult } from '../../types';
+import type { CommitFile, CommitFilesResult } from '../../types';
 import { CommitFileDiff, commitFileLabel } from './CommitFileDiff';
+import {
+  COMMIT_FILE_LIST_MODE_KEY,
+  CommitTreeDirName,
+  CommitTreeFileName,
+  dirChangeTotals,
+  treeCellStyle,
+} from './CommitFileTree';
+import {
+  buildFileTree,
+  filesInTreeOrder,
+  flattenFileTree,
+  loadFileListMode,
+  saveFileListMode,
+  toggleCollapsed,
+  type FileListMode,
+  type FileTreeDir,
+} from '../../lib/fileTree';
+import { FileListModeToggle } from '../../components/FileListModeToggle';
 import styles from './CommitDetailDialog.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 import { useDialogKeys } from '../../lib/dialogKeys';
@@ -54,6 +72,11 @@ const FILE_STATUS: Record<string, { label: string; cls: string }> = {
   C: { label: 'コピー', cls: 'st-add' },
 };
 
+/** 一覧の表示順 (ツリー表示ではフォルダ → ファイルの順に並び替わる) */
+function displayOrder(files: CommitFile[], mode: FileListMode): CommitFile[] {
+  return mode === 'tree' ? filesInTreeOrder(buildFileTree(files)) : files;
+}
+
 interface Store {
   open: boolean;
   repo: string;
@@ -96,6 +119,10 @@ export function CommitDetailDialog() {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const [checked, setChecked] = useState(false);
+  /** 差分ファイル一覧の表示形式 (ログタブと共通。開くたびに読み直す) */
+  const [listMode, setListMode] = useState<FileListMode>('list');
+  /** ツリー表示で折り畳んだフォルダ (開いている間だけ) */
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const listRef = useRef<HTMLDivElement>(null);
 
   /** action = 主ボタンで閉じたか (false なら「閉じる」扱いで null を返す) */
@@ -111,12 +138,16 @@ export function CommitDetailDialog() {
     setDetail(null);
     setSelectedPath(null);
     setFilter('');
+    setCollapsed(new Set());
+    const mode = loadFileListMode(COMMIT_FILE_LIST_MODE_KEY);
+    setListMode(mode);
     api
       .gitCommitFiles(repo, target)
       .then((r) => {
         if (stale) return;
         setDetail(r);
-        setSelectedPath(r.files[0]?.path ?? null); // 先頭行を選択して右に差分を出す
+        // 先頭行を選択して右に差分を出す
+        setSelectedPath(displayOrder(r.files, mode)[0]?.path ?? null);
       })
       .catch((e) => {
         if (!stale) toastError(e);
@@ -155,6 +186,10 @@ export function CommitDetailDialog() {
   const filterText = filter.trim().toLowerCase();
   const files = filterText ? allFiles.filter((f) => matches(f, filterText)) : allFiles;
   const selectedFile = files.find((f) => f.path === selectedPath) ?? null;
+  /** ツリー表示の行 (折り畳んだフォルダの中身は含めない)。一覧表示では null */
+  const treeRows = listMode === 'tree' ? flattenFileTree(buildFileTree(files), collapsed) : null;
+  /** ↑↓ で移る先 = 表示中のファイル行 (折り畳んだフォルダの中は飛ばす) */
+  const navFiles = treeRows ? treeRows.flatMap((r) => (r.kind === 'file' ? [r.file] : [])) : files;
   // 情報欄の「メッセージ」。呼び出し元の指定 (stash の一覧行など) を優先する
   const message = options.message ?? detail?.message ?? '';
   // 差分ヘッダの見出し: 生のハッシュは CommitFileDiff の既定 (先頭 7 桁) に任せ、
@@ -163,10 +198,10 @@ export function CommitDetailDialog() {
 
   /** ↑↓ で選択行を移動する (移動先が隠れていればスクロールして見せる) */
   const moveSelection = (delta: number) => {
-    if (files.length === 0) return;
-    const idx = files.findIndex((f) => f.path === selectedPath);
-    const next = idx < 0 ? 0 : Math.min(files.length - 1, Math.max(0, idx + delta));
-    const path = files[next].path;
+    if (navFiles.length === 0) return;
+    const idx = navFiles.findIndex((f) => f.path === selectedPath);
+    const next = idx < 0 ? 0 : Math.min(navFiles.length - 1, Math.max(0, idx + delta));
+    const path = navFiles[next].path;
     setSelectedPath(path);
     requestAnimationFrame(() => {
       listRef.current
@@ -180,7 +215,55 @@ export function CommitDetailDialog() {
     // 選択行が絞り込みで消えたら先頭を選び直し、右ペインを空のままにしない
     const text = v.trim().toLowerCase();
     const next = text ? allFiles.filter((f) => matches(f, text)) : allFiles;
-    if (!next.some((f) => f.path === selectedPath)) setSelectedPath(next[0]?.path ?? null);
+    if (!next.some((f) => f.path === selectedPath)) {
+      setSelectedPath(displayOrder(next, listMode)[0]?.path ?? null);
+    }
+  };
+
+  const changeListMode = (mode: FileListMode) => {
+    setListMode(mode);
+    saveFileListMode(COMMIT_FILE_LIST_MODE_KEY, mode);
+  };
+
+  /** ファイル行。ツリー表示 (depth あり) ではファイル名だけを字下げして出す */
+  const fileRow = (f: CommitFile, depth: number | null) => {
+    const st = FILE_STATUS[f.status] ?? { label: f.status, cls: 'st-mod' };
+    const label = commitFileLabel(f);
+    return (
+      <tr
+        key={f.path}
+        data-path={f.path}
+        className={cx(selectedPath === f.path ? 'selected' : '')}
+        title={label}
+        onClick={() => setSelectedPath(f.path)}
+      >
+        <td className={cx(`sd-status ${st.cls}`)}>{st.label}</td>
+        {depth === null ? (
+          <td className={cx("sd-path")}>{label}</td>
+        ) : (
+          <td className={cx("sd-path")} style={treeCellStyle(depth)}>
+            <CommitTreeFileName file={f} />
+          </td>
+        )}
+        <td className={cx("num sd-added")}>{f.binary ? '–' : `+${f.added ?? 0}`}</td>
+        <td className={cx("num sd-deleted")}>{f.binary ? '–' : `−${f.deleted ?? 0}`}</td>
+      </tr>
+    );
+  };
+
+  /** フォルダ行。クリックで開閉し、追加 / 削除列には配下の合計を出す */
+  const dirRow = (d: FileTreeDir<CommitFile>, depth: number) => {
+    const total = dirChangeTotals(d);
+    return (
+      <tr key={`dir:${d.path}`} title={d.path} onClick={() => setCollapsed(toggleCollapsed(collapsed, d.path))}>
+        <td className={cx('sd-status')} />
+        <td className={cx('sd-path')} style={treeCellStyle(depth)}>
+          <CommitTreeDirName dir={d} open={!collapsed.has(d.path)} />
+        </td>
+        <td className={cx('num sd-added sd-dir-total')}>+{total.added}</td>
+        <td className={cx('num sd-deleted sd-dir-total')}>−{total.deleted}</td>
+      </tr>
+    );
   };
 
   const listKeyDown = (e: React.KeyboardEvent) => {
@@ -238,6 +321,7 @@ export function CommitDetailDialog() {
                   {files.length}/{allFiles.length} 件
                 </span>
               )}
+              <FileListModeToggle mode={listMode} onChange={changeListMode} />
             </div>
             {loading ? (
               <div className={cx("empty-hint")}>読み込み中…</div>
@@ -262,24 +346,9 @@ export function CommitDetailDialog() {
                     </tr>
                   </thead>
                   <tbody>
-                    {files.map((f) => {
-                      const st = FILE_STATUS[f.status] ?? { label: f.status, cls: 'st-mod' };
-                      const label = commitFileLabel(f);
-                      return (
-                        <tr
-                          key={f.path}
-                          data-path={f.path}
-                          className={cx(selectedPath === f.path ? 'selected' : '')}
-                          title={label}
-                          onClick={() => setSelectedPath(f.path)}
-                        >
-                          <td className={cx(`sd-status ${st.cls}`)}>{st.label}</td>
-                          <td className={cx("sd-path")}>{label}</td>
-                          <td className={cx("num sd-added")}>{f.binary ? '–' : `+${f.added ?? 0}`}</td>
-                          <td className={cx("num sd-deleted")}>{f.binary ? '–' : `−${f.deleted ?? 0}`}</td>
-                        </tr>
-                      );
-                    })}
+                    {treeRows
+                      ? treeRows.map((r) => (r.kind === 'dir' ? dirRow(r.node, r.depth) : fileRow(r.file, r.depth)))
+                      : files.map((f) => fileRow(f, null))}
                   </tbody>
                 </table>
               </div>

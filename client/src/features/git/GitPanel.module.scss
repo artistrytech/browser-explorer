@@ -694,6 +694,9 @@
 
 .cf-deleted { color: var(--danger); }
 
+/* ツリー表示のフォルダ行の合計行数は控えめに出す */
+.cf-dir-total { opacity: 0.6; }
+
 .commit-files-hint {
   padding: 6px 8px;
   color: var(--text-dim);

@@ -1,0 +1,44 @@
+/* 変更ファイル一覧の表示形式 (一覧 / ツリー) の切り替え */
+
+.flm {
+  flex: none;
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.flm-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: var(--bg);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.flm-btn + .flm-btn {
+  border-left: 1px solid var(--border);
+}
+
+.flm-btn:hover {
+  background: var(--bg-hover);
+}
+
+.flm-btn.on {
+  background: var(--bg-selected);
+  color: var(--accent);
+}
+
+.flm-icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}

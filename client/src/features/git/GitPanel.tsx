@@ -40,6 +40,22 @@ import {
 import { openRebaseDialog } from './Rebase';
 import { openCommitDiff } from './DiffTab';
 import { CommitFileDiff, commitFileLabel } from './CommitFileDiff';
+import {
+  COMMIT_FILE_LIST_MODE_KEY,
+  CommitTreeDirName,
+  CommitTreeFileName,
+  dirChangeTotals,
+  treeCellStyle,
+} from './CommitFileTree';
+import {
+  buildFileTree,
+  flattenFileTree,
+  loadFileListMode,
+  saveFileListMode,
+  toggleCollapsed,
+  type FileListMode,
+} from '../../lib/fileTree';
+import { FileListModeToggle } from '../../components/FileListModeToggle';
 import { useRebase } from '../../stores/rebase';
 import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
 import { openInNewTab, wantsNewTab } from '../../lib/appTabs';
@@ -222,6 +238,20 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     setFocusedFileState(p);
     if (repoRoot) saveGitView(repoRoot, { focusedFile: p });
   };
+  /** 差分ファイル一覧の表示形式 (一覧 / ツリー。localStorage に保持し、コミット詳細ダイアログと共通) */
+  const [fileListMode, setFileListModeState] = useState<FileListMode>(() =>
+    loadFileListMode(COMMIT_FILE_LIST_MODE_KEY),
+  );
+  const changeFileListMode = (mode: FileListMode) => {
+    setFileListModeState(mode);
+    saveFileListMode(COMMIT_FILE_LIST_MODE_KEY, mode);
+  };
+  /** ツリー表示で折り畳んだフォルダ (選択中のコミットの間だけ。sessionStorage に保持) */
+  const [collapsedFileDirs, setCollapsedFileDirsState] = useState<ReadonlySet<string>>(new Set());
+  const setCollapsedFileDirs = (next: ReadonlySet<string>) => {
+    setCollapsedFileDirsState(next);
+    if (repoRoot) saveGitView(repoRoot, { collapsedFileDirs: [...next] });
+  };
   /** ログタブの分割レイアウト。方向は再描画が要るので state、サイズはドラッグ中に頻繁に変わるので ref */
   const [initialLogLayout] = useState(loadLogLayout);
   const [logDir, setLogDir] = useState<LogLayoutDir>(initialLogLayout.dir);
@@ -264,9 +294,10 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   /** コミット選択: 詳細を取得しつつ sessionStorage に保持 (タブ復帰時に復元) */
   const selectCommit = (hash: string) => {
     if (!repoRoot) return;
-    // コミットが変われば以前のフォーカスは無効
-    saveGitView(repoRoot, { hash, focusedFile: null });
+    // コミットが変われば以前のフォーカス・フォルダの折り畳みは無効
+    saveGitView(repoRoot, { hash, focusedFile: null, collapsedFileDirs: [] });
     setFocusedFileState(null);
+    setCollapsedFileDirsState(new Set());
     api.gitCommitFiles(repoRoot, hash).then(setCommitDetail).catch(toastError);
   };
 
@@ -278,6 +309,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     const saved = loadGitView(repoRoot);
     setFileFilter(saved?.filesFilter ?? '');
     setFocusedFileState(saved?.focusedFile ?? null);
+    setCollapsedFileDirsState(new Set(saved?.collapsedFileDirs ?? []));
     setCollapsedBranchGroups(new Set(saved?.collapsedBranchGroups ?? []));
     setSelectedBranchKeyState(saved?.selectedBranchKey ?? null);
     setBranchListTabState(saved?.branchListTab ?? 'local');
@@ -574,6 +606,9 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     : [];
   const filesLimit = commitDetail?.limit ?? 100;
   const shownFiles = matchedFiles.slice(0, filesLimit);
+  /** ツリー表示の行 (折り畳んだフォルダの中身は含めない)。一覧表示では null */
+  const fileTreeRows =
+    fileListMode === 'tree' ? flattenFileTree(buildFileTree(shownFiles), collapsedFileDirs) : null;
 
   /**
    * 外部差分ツールで開くメニュー項目 (設定の diffTools)。
@@ -1338,6 +1373,36 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     </>
   );
 
+  /** 差分ファイル一覧のファイル行。ツリー表示 (depth あり) ではファイル名だけを字下げして出す */
+  const commitFileRow = (f: CommitFile, detail: CommitFilesResult, depth: number | null) => {
+    const st = COMMIT_FILE_STATUS[f.status] ?? { label: f.status, cls: 'st-mod' };
+    return (
+      <tr
+        key={f.path}
+        className={cx(focusedFile === f.path ? 'focused' : '')}
+        title={
+          defaultTool >= 0
+            ? `クリックでプレビュー / ダブルクリックで ${diffTools[defaultTool].label} / 右クリックでメニュー`
+            : 'クリックでプレビュー / ダブルクリックで差分を表示 / 右クリックでメニュー'
+        }
+        onClick={() => setFocusedFile(f.path)}
+        onDoubleClick={() => openDefaultCommitDiff(f, detail)}
+        onContextMenu={(e) => commitFileMenu(e, f, detail)}
+      >
+        <td className={cx(`cf-status ${st.cls}`)}>{st.label}</td>
+        {depth === null ? (
+          <td className={cx("cf-path")} title={commitFileLabel(f)}>{commitFileLabel(f)}</td>
+        ) : (
+          <td className={cx("cf-path")} title={commitFileLabel(f)} style={treeCellStyle(depth)}>
+            <CommitTreeFileName file={f} />
+          </td>
+        )}
+        <td className={cx("num cf-added")}>{f.binary ? '–' : `+${f.added ?? 0}`}</td>
+        <td className={cx("num cf-deleted")}>{f.binary ? '–' : `−${f.deleted ?? 0}`}</td>
+      </tr>
+    );
+  };
+
   const commitDetailPane = commitDetail ? (
     <div className={cx("commit-detail")}>
       <div className={cx("commit-detail-head")}>
@@ -1365,6 +1430,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
         <span className={cx("cf-count")}>
           {matchedFiles.length}/{commitDetail.files.length} 件
         </span>
+        <FileListModeToggle mode={fileListMode} onChange={changeFileListMode} />
       </div>
       {/* 差分ファイル一覧: クリックでプレビュー、ダブルクリックで 2 ペイン差分タブ、右クリックでメニュー */}
       <table className={cx("commit-files")}>
@@ -1377,28 +1443,27 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           </tr>
         </thead>
         <tbody>
-          {shownFiles.map((f) => {
-            const st = COMMIT_FILE_STATUS[f.status] ?? { label: f.status, cls: 'st-mod' };
-            return (
-              <tr
-                key={f.path}
-                className={cx(focusedFile === f.path ? 'focused' : '')}
-                title={
-                  defaultTool >= 0
-                    ? `クリックでプレビュー / ダブルクリックで ${diffTools[defaultTool].label} / 右クリックでメニュー`
-                    : 'クリックでプレビュー / ダブルクリックで差分を表示 / 右クリックでメニュー'
-                }
-                onClick={() => setFocusedFile(f.path)}
-                onDoubleClick={() => openDefaultCommitDiff(f, commitDetail)}
-                onContextMenu={(e) => commitFileMenu(e, f, commitDetail)}
-              >
-                <td className={cx(`cf-status ${st.cls}`)}>{st.label}</td>
-                <td className={cx("cf-path")} title={commitFileLabel(f)}>{commitFileLabel(f)}</td>
-                <td className={cx("num cf-added")}>{f.binary ? '–' : `+${f.added ?? 0}`}</td>
-                <td className={cx("num cf-deleted")}>{f.binary ? '–' : `−${f.deleted ?? 0}`}</td>
-              </tr>
-            );
-          })}
+          {fileTreeRows
+            ? fileTreeRows.map((r) => {
+                if (r.kind === 'file') return commitFileRow(r.file, commitDetail, r.depth);
+                const open = !collapsedFileDirs.has(r.node.path);
+                const total = dirChangeTotals(r.node);
+                return (
+                  <tr
+                    key={`dir:${r.node.path}`}
+                    title={r.node.path}
+                    onClick={() => setCollapsedFileDirs(toggleCollapsed(collapsedFileDirs, r.node.path))}
+                  >
+                    <td className={cx('cf-status')} />
+                    <td className={cx('cf-path')} style={treeCellStyle(r.depth)}>
+                      <CommitTreeDirName dir={r.node} open={open} />
+                    </td>
+                    <td className={cx('num cf-added cf-dir-total')}>+{total.added}</td>
+                    <td className={cx('num cf-deleted cf-dir-total')}>−{total.deleted}</td>
+                  </tr>
+                );
+              })
+            : shownFiles.map((f) => commitFileRow(f, commitDetail, null))}
         </tbody>
       </table>
       {commitDetail.files.length === 0 && <div className={cx("empty-hint")}>変更ファイルはありません</div>}

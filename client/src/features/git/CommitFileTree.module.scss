@@ -1,0 +1,17 @@
+/* コミットの差分ファイル一覧のツリー表示 (ファイル列の中身) */
+
+.ct-dir {
+  color: var(--text-dim);
+}
+
+/* 開閉アイコンは文字に揃えて行内に置く (td の省略表示を効かせるため flex にしない) */
+.ct-dir > svg {
+  vertical-align: -4px;
+  margin-right: 4px;
+}
+
+.ct-old {
+  margin-left: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+}

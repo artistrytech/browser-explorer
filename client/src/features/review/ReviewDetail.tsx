@@ -8,17 +8,25 @@ import { reviewFileFromUrl, WORKTREE_REVIEW_ID } from '../../stores/ui';
 import { toastError, useToast } from '../../stores/toast';
 import {
   loadReviewDiffScroll,
-  loadReviewFileListMode,
   loadReviewView,
   saveReviewDiffScroll,
-  saveReviewFileListMode,
   saveReviewView,
-  type ReviewFileListMode,
 } from '../../lib/reviewViewMemory';
 import { baseName, parentPath } from '../../lib/paths';
+import {
+  buildFileTree,
+  filesInTreeOrder,
+  filesUnder,
+  flattenFileTree,
+  loadFileListMode,
+  saveFileListMode,
+  toggleCollapsed,
+  type FileListMode,
+  type FileTreeDir,
+} from '../../lib/fileTree';
 import { Chevron } from '../../app/FolderTree';
+import { FileListModeToggle } from '../../components/FileListModeToggle';
 import { ReviewFileDiff } from './ReviewFileDiff';
-import { buildReviewFileTree, filesUnder, flattenReviewFileTree, type ReviewDirNode } from './reviewFileTree';
 import { openReviewExportDialog } from './ReviewExportDialog';
 import type { CommitFile } from '../../types';
 import styles from './Review.module.scss';
@@ -37,23 +45,15 @@ const STATUS_LABEL: Record<string, string> = {
 
 /** ツリー表示の 1 階層ぶんの字下げ (px) */
 const TREE_INDENT = 16;
-const NO_COLLAPSED: ReadonlySet<string> = new Set();
-
-/** ファイル一覧の表示形式の切り替えボタンのアイコン */
-function ListModeIcon({ mode }: { mode: ReviewFileListMode }) {
-  return (
-    <svg className={cx('rv-mode-icon')} viewBox="0 0 16 16" aria-hidden="true">
-      <path d={mode === 'list' ? 'M2 4h12M2 8h12M2 12h12' : 'M2 3.5h7M4 3.5V12M4 8h3M4 12h3M9 8h5M9 12h5'} />
-    </svg>
-  );
-}
+/** ファイル一覧の表示形式 (localStorage)。レビューをまたいで共通 */
+const FILE_LIST_MODE_KEY = 'review:fileListMode';
 
 /** レビュー詳細: 左に変更ファイル一覧、右にその差分 (GitHub の PR と同じ構成) */
 export function ReviewDetail({ id }: { id: number }) {
   const detail = useReview((s) => s.detail);
   const loading = useReview((s) => s.detailLoading);
   const [filter, setFilter] = useState(() => loadReviewView(id)?.filter ?? '');
-  const [listMode, setListMode] = useState<ReviewFileListMode>(loadReviewFileListMode);
+  const [listMode, setListMode] = useState<FileListMode>(() => loadFileListMode(FILE_LIST_MODE_KEY));
   /** ツリー表示で折り畳んだフォルダ (ルートからのパス) */
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
     () => new Set(loadReviewView(id)?.collapsedDirs ?? []),
@@ -121,15 +121,9 @@ export function ReviewDetail({ id }: { id: number }) {
     );
   }, [files, filter]);
 
-  const tree = useMemo(() => (listMode === 'tree' ? buildReviewFileTree(filtered) : null), [listMode, filtered]);
+  const tree = useMemo(() => (listMode === 'tree' ? buildFileTree(filtered) : null), [listMode, filtered]);
   /** 表示順のファイル (ツリー表示ではフォルダ → ファイルの順に並び替わる。折り畳みは無視) */
-  const ordered = useMemo(
-    () =>
-      tree
-        ? flattenReviewFileTree(tree, NO_COLLAPSED).flatMap((r) => (r.kind === 'file' ? [r.file] : []))
-        : filtered,
-    [tree, filtered],
-  );
+  const ordered = useMemo(() => (tree ? filesInTreeOrder(tree) : filtered), [tree, filtered]);
 
   // 選択中のファイルが一覧から消えたら先頭を選び直す (ユーザー操作ではないので履歴には積まない)。
   // URL に選択ファイルが無い (sessionStorage から復元した直後) 場合も URL へ反映する
@@ -233,16 +227,9 @@ export function ReviewDetail({ id }: { id: number }) {
     saveReviewView(id, { filter: v });
   };
 
-  const changeListMode = (mode: ReviewFileListMode) => {
+  const changeListMode = (mode: FileListMode) => {
     setListMode(mode);
-    saveReviewFileListMode(mode);
-  };
-
-  const toggleDir = (dir: ReviewDirNode) => {
-    const next = new Set(collapsed);
-    if (next.has(dir.path)) next.delete(dir.path);
-    else next.add(dir.path);
-    changeCollapsed(next);
+    saveFileListMode(FILE_LIST_MODE_KEY, mode);
   };
 
   /** ファイルの行。ツリー表示 (depth あり) では字下げし、フォルダのパスは出さない */
@@ -280,7 +267,7 @@ export function ReviewDetail({ id }: { id: number }) {
   };
 
   /** フォルダの行。クリックで開閉する。折り畳み中は配下の未解決コメント数を出す */
-  const renderDir = (d: ReviewDirNode, depth: number) => {
+  const renderDir = (d: FileTreeDir<CommitFile>, depth: number) => {
     const open = !collapsed.has(d.path);
     const under = filesUnder(d);
     const allViewed = under.every((f) => viewedSet.has(f.path));
@@ -290,7 +277,7 @@ export function ReviewDetail({ id }: { id: number }) {
         key={`dir:${d.path}`}
         className={cx(`rv-file rv-dir${allViewed ? ' viewed' : ''}`)}
         style={{ paddingLeft: 8 + depth * TREE_INDENT }}
-        onClick={() => toggleDir(d)}
+        onClick={() => changeCollapsed(toggleCollapsed(collapsed, d.path))}
         title={d.path}
       >
         <Chevron open={open} />
@@ -521,19 +508,7 @@ export function ReviewDetail({ id }: { id: number }) {
               <span className={cx('rv-count')}>
                 {filtered.length}/{files.length}
               </span>
-              <span className={cx('rv-mode')}>
-                {(['list', 'tree'] as const).map((m) => (
-                  <button
-                    key={m}
-                    className={cx(`rv-mode-btn${listMode === m ? ' on' : ''}`)}
-                    title={m === 'list' ? '一覧で表示' : 'ツリーで表示'}
-                    aria-pressed={listMode === m}
-                    onClick={() => changeListMode(m)}
-                  >
-                    <ListModeIcon mode={m} />
-                  </button>
-                ))}
-              </span>
+              <FileListModeToggle mode={listMode} onChange={changeListMode} />
             </div>
             <div
               className={cx('rv-file-list')}
@@ -549,7 +524,7 @@ export function ReviewDetail({ id }: { id: number }) {
                     : '一致するファイルはありません'}
                 </div>
               ) : tree ? (
-                flattenReviewFileTree(tree, collapsed).map((r) =>
+                flattenFileTree(tree, collapsed).map((r) =>
                   r.kind === 'dir' ? renderDir(r.node, r.depth) : renderFile(r.file, r.depth),
                 )
               ) : (
