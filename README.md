@@ -79,8 +79,8 @@ Ctrl+T / Ctrl+W が効くのは PWA のウィンドウだけ (通常のブラウ
 config.jsonc     # ポート・API トークン (+ 各設定の初回 seed 値。コメント可)
 data/app.db      # SQLite (設定・外部ツール・ブックマーク等の永続化)
 data/logs.db     # SQLite (アプリログ。保存期間は設定で変更)
-server/          # Express + simple-git + chokidar + better-sqlite3
-client/          # React + Vite + Zustand + Monaco Editor
+server/          # Express + simple-git + chokidar + better-sqlite3 + node-pty
+client/          # React + Vite + Zustand + Monaco Editor + xterm.js
 ```
 
 ## 主な操作 (Windows 流キーバインド)
@@ -94,6 +94,7 @@ client/          # React + Vite + Zustand + Monaco Editor
 | Delete / Shift+Delete | ゴミ箱へ / 完全削除 |
 | Ctrl+S / Ctrl+Shift+S | 保存 / すべて保存 (エディタ) |
 | Ctrl+Shift+P (mac は ⌘+Shift+P) | コマンドパレット |
+| Ctrl+` (日本語キーボードは Ctrl+@ も) | ターミナルの表示 / 非表示 |
 
 - エンコーディング (UTF-8 / Shift_JIS / EUC-JP / UTF-16)・改行 (CRLF/LF/CR)・BOM は
   ステータスバーから切替。「再読込」で開き直し、Ctrl+S で変換保存。
@@ -107,6 +108,7 @@ client/          # React + Vite + Zustand + Monaco Editor
 - 設定・ブックマーク・リポジトリ一覧は SQLite に永続化。設定画面からエクスポート / インポート可。
 - OS 連携: フォルダ/空白の右クリックに「Explorer(Finder)で開く」
   「コマンドプロンプト(ターミナル)で開く」(ホスト OS に応じて自動切替)。
+  「アプリ内のターミナルで開く」もある (下記「ターミナル」)。
 
 ## 追加機能
 
@@ -118,6 +120,7 @@ client/          # React + Vite + Zustand + Monaco Editor
   - レビュー (未コミット): レビュータブの「未コミットの変更」を開く
   - コミット: コミットタブを開いてメッセージ欄にフォーカスする
   - AI チャット: AI チャットのウィンドウを開く
+  - ターミナル: アプリ内のターミナルを開く / 新しいターミナル: 表示中のフォルダで新しいターミナルを開く
   - ↑↓ で選択、Enter で実行、Esc で閉じる。一覧を選んだ後は入力が空の Backspace でコマンドの一覧へ戻る
 - **ログを表示**: Git 管理下のファイル/フォルダを右クリック → 対象パスで絞り込んだ履歴
   (ファイルはリネーム追跡 `--follow`)。「絞り込み解除」で全体表示へ。
@@ -187,6 +190,33 @@ client/          # React + Vite + Zustand + Monaco Editor
     依頼ごとの指定は送信欄で行う。
 - 保存先: `data/app.db` の `ai_boxes` / `ai_turns`。CLI 側の会話の記録は各 CLI の保存先 (`~/.codex` / `~/.claude`) に残る。
 
+## ターミナル
+
+ツールバーのターミナルのアイコン (またはコマンドパレットの「ターミナル」、Ctrl+`) で、画面の中にターミナルを開く。
+シェルはサーバ側で疑似端末 (node-pty。Windows は ConPTY) として起動し、入出力を WebSocket (`/ws/terminal`) で中継する。
+画面の描画は xterm.js。
+
+- **表示位置**: タイトルバーのボタンで「下パネルに固定」「右パネルに固定」「フローティング」を切り替える。
+  パネルの高さ・幅は境界のドラッグで変えられ、表示位置・大きさ (フローティングは位置とサイズ) は次に開いたときも引き継ぐ。
+  切り替えても画面の内容と実行中のコマンドはそのまま。
+- **タブ**: 複数のターミナルをタブで開ける。「＋」で既定のシェル、隣の「▾」でシェルを選んで開く。作業フォルダはファイル一覧で
+  表示中のフォルダ (フォルダの右クリック「アプリ内のターミナルで開く」ならそのフォルダ)。タブ名は作業フォルダ名で、
+  ダブルクリック (または右クリック) で変えられる。タブの ✕・中クリックでシェルを終了する (シェルから起動したプロセスも終了する)。
+  最後のタブを閉じる (または `exit` で終了する) とパネルも閉じる。
+- **シェル**: Windows はコマンドプロンプト / PowerShell / PowerShell 7 / Git Bash / WSL のうち見つかったもの、
+  Mac / Linux はログインシェル (`$SHELL -l`) と `/etc/shells` のシェル。既定は 設定 → ターミナル で選ぶ
+  (初期値は Windows がコマンドプロンプト、それ以外がログインシェル)。
+- **コピー / 貼り付け**: 文字を選択して Ctrl+C (Mac は ⌘C) でコピー (選択が無ければシェルへの Ctrl+C = 中断)。
+  Ctrl+V (⌘V) で貼り付け。Ctrl+Shift+C / V も使える。右クリックのメニューにコピー / 貼り付け / すべて選択 / 画面をクリア。
+- **共有と復元**: ターミナルはサーバのメモリにあり、全タブで共有する (複数のタブで同じターミナルを開いたときは、
+  最後に操作したタブの大きさに合わせる)。画面を読み込み直しても、直近の出力 (最大 512K 文字) から表示を復元する。
+  サーバを再起動するとターミナルはすべて終了する。
+- **注意**: このサーバにつながるものは任意のコマンドを実行できる。サーバは 127.0.0.1 だけで待ち受け、
+  ターミナルの接続にはトークンに加えて Host / Origin が localhost であることを求める。
+- **インストール**: node-pty は Windows (x64 / arm64)・Mac (Intel / Apple Silicon) のビルド済みのバイナリを同梱しているので、
+  ビルドツールは不要 (Linux はインストール時にビルドするため、gcc / make / python が必要)。
+  ネイティブモジュールなので、Windows と Mac で `node_modules` を共有せず、それぞれで `npm install` する。
+
 ## アプリログ (動作ログの記録と確認)
 
 サーバ・クライアントの動作ログを `data/logs.db` (SQLite。設定用の `app.db` とは別) に記録し、
@@ -209,6 +239,7 @@ client/          # React + Vite + Zustand + Monaco Editor
 ## セキュリティ (plan §2.2)
 
 - 127.0.0.1 のみで待受、Host/Origin 検証、`x-app-token` によるトークン必須。
+- アプリ内のターミナル (`/ws/terminal`) は任意のコマンドを実行できるため、トークンに加えて Host / Origin も検証する。
 - 削除は既定でゴミ箱送り (完全削除は確認付きの明示操作のみ)。
 
 ## メモ

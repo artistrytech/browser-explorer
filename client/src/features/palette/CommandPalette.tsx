@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { useContextMenu } from '../../components/ContextMenu';
 import { useCommitDraft } from '../../stores/commitDraft';
 import { useConflictResolver } from '../../stores/conflict';
+import { useExplorer } from '../../stores/explorer';
 import { useGit } from '../../stores/git';
 import { useRebase } from '../../stores/rebase';
 import { useReview } from '../../stores/review';
@@ -13,6 +14,7 @@ import { openSyncDialog, openSyncDialogTab, type SyncTab } from '../git/SyncDial
 import { useRebaseDialog } from '../git/Rebase';
 import { openRepoGroupsDialog } from '../../app/RepoGroupsDialog';
 import { openAiChat } from '../aichat/aiChatStore';
+import { openTerminal, openTerminalAt } from '../terminal/terminalStore';
 import { appTabId, isCommandPaletteKey, type AppTabWindow } from '../../lib/appTabs';
 import { isDialogOpen } from '../../lib/dialogKeys';
 import { matchText } from '../../lib/fuzzyMatch';
@@ -144,6 +146,14 @@ function buildCommands(inRepo: boolean): PaletteItem[] {
       },
     },
     { key: 'ai', label: 'AI チャット', detail: 'AI Chat: Codex / Claude', run: openAiChat },
+    { key: 'terminal', label: 'ターミナル', detail: 'Terminal', run: () => void openTerminal() },
+    {
+      // 表示中のフォルダで開く
+      key: 'terminal.new',
+      label: '新しいターミナル',
+      detail: 'Terminal: New',
+      run: () => void openTerminalAt(useExplorer.getState().path),
+    },
   ];
   return commands.map((c) => ({ ...c, matchDetail: true }));
 }

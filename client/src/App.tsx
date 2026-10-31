@@ -38,6 +38,8 @@ import { TransferConfirmDialog } from './features/transfer/TransferConfirmDialog
 import { CommandPalette } from './features/palette/CommandPalette';
 import { AiChatDialog, AiChatPanel } from './features/aichat/AiChatDialog';
 import { loadDockSize, saveDockSize, useAiChat } from './features/aichat/aiChatStore';
+import { TerminalPanel, TerminalWindow } from './features/terminal/TerminalPanel';
+import { loadPanelSize, savePanelSize, useTerminal } from './features/terminal/terminalStore';
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
 import { ToastHost } from './components/ToastHost';
@@ -72,6 +74,11 @@ const cx = createCssModuleClassNames(styles);
 /** AI チャットの右パネルの幅 (メイン領域全体に対する %) */
 const AI_DOCK_MIN = 18;
 const AI_DOCK_MAX = 70;
+/** ターミナルの下パネルの高さ (メイン領域に対する %) と右パネルの幅 (メイン領域全体に対する %) */
+const TERM_BOTTOM_MIN = 10;
+const TERM_BOTTOM_MAX = 85;
+const TERM_RIGHT_MIN = 18;
+const TERM_RIGHT_MAX = 70;
 
 export default function App() {
   const path = useExplorer((s) => s.path);
@@ -89,6 +96,8 @@ export default function App() {
   const reviewDetailOpen = useReview((s) => s.currentId !== null);
   /** AI チャットを右パネルに固定して開いているか */
   const aiDocked = useAiChat((s) => s.open && s.docked);
+  /** ターミナルを固定して開いている位置 (フローティング・非表示は null) */
+  const termDock = useTerminal((s) => (s.open && s.position !== 'float' ? s.position : null));
   const theme = useSettings((s) => s.settings.theme);
   const loaded = useSettings((s) => s.loaded);
   const refreshTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -388,48 +397,83 @@ export default function App() {
         )}
       </div>
       <PanelGroup direction="horizontal" className={cx("main-split")}>
-        {/* AI チャットの右パネルを出し入れするので、各パネルに id / order を付ける */}
+        {/* AI チャット・ターミナルの右パネルを出し入れするので、各パネルに id / order を付ける */}
         <Panel id="sidebar" order={1} ref={sidebarPanel} collapsible defaultSize={18} minSize={12} maxSize={40}>
           <Sidebar />
         </Panel>
         <PanelResizeHandle className={cx("resize-handle")} />
         <Panel id="main" order={2}>
-          <div className={cx("main-area")}>
-            <div className={cx(`main-view${view === 'files' ? '' : ' hidden'}`)}>
-              {/* リポジトリ内ならファイルタブにも Git のツールバー (ブランチ・同期・Stash 等) を出す */}
-              <GitToolbar />
-              <GitMergeBanner />
-              <FileList />
-            </div>
-            <div className={cx(`main-view${view === 'editor' ? '' : ' hidden'}`)}>
-              {tabs.length > 0 && <EditorPane />}
-            </div>
-            <div className={cx(`main-view${isGitView(view) ? '' : ' hidden'}`)}>
-              {/* コミット/ログ/ブランチ間の切替では GitPanel をアンマウントせず状態を保つ */}
-              {isGitView(view) && (
-                <GitPanel tab={view === 'commit' ? 'changes' : view === 'log' ? 'log' : 'branches'} />
-              )}
-            </div>
-            <div className={cx(`main-view${view === 'review' ? '' : ' hidden'}`)}>
-              {view === 'review' && <ReviewTab />}
-            </div>
-            <div className={cx(`main-view${view === 'diff' ? '' : ' hidden'}`)}>
-              {view === 'diff' && <DiffTab />}
-            </div>
-            <div className={cx(`main-view${view === 'preview' ? '' : ' hidden'}`)}>
-              {view === 'preview' && <MarkdownTab />}
-            </div>
-            <div className={cx(`main-view${view === 'applog' ? '' : ' hidden'}`)}>
-              {view === 'applog' && <AppLogTab />}
-            </div>
-          </div>
+          {/* ターミナルの下パネルを出し入れしてもメインの表示を作り直さないよう、縦の分割は常に置く */}
+          <PanelGroup direction="vertical">
+            <Panel id="main-view" order={1}>
+              <div className={cx("main-area")}>
+                <div className={cx(`main-view${view === 'files' ? '' : ' hidden'}`)}>
+                  {/* リポジトリ内ならファイルタブにも Git のツールバー (ブランチ・同期・Stash 等) を出す */}
+                  <GitToolbar />
+                  <GitMergeBanner />
+                  <FileList />
+                </div>
+                <div className={cx(`main-view${view === 'editor' ? '' : ' hidden'}`)}>
+                  {tabs.length > 0 && <EditorPane />}
+                </div>
+                <div className={cx(`main-view${isGitView(view) ? '' : ' hidden'}`)}>
+                  {/* コミット/ログ/ブランチ間の切替では GitPanel をアンマウントせず状態を保つ */}
+                  {isGitView(view) && (
+                    <GitPanel tab={view === 'commit' ? 'changes' : view === 'log' ? 'log' : 'branches'} />
+                  )}
+                </div>
+                <div className={cx(`main-view${view === 'review' ? '' : ' hidden'}`)}>
+                  {view === 'review' && <ReviewTab />}
+                </div>
+                <div className={cx(`main-view${view === 'diff' ? '' : ' hidden'}`)}>
+                  {view === 'diff' && <DiffTab />}
+                </div>
+                <div className={cx(`main-view${view === 'preview' ? '' : ' hidden'}`)}>
+                  {view === 'preview' && <MarkdownTab />}
+                </div>
+                <div className={cx(`main-view${view === 'applog' ? '' : ' hidden'}`)}>
+                  {view === 'applog' && <AppLogTab />}
+                </div>
+              </div>
+            </Panel>
+            {termDock === 'bottom' && (
+              <>
+                <PanelResizeHandle className={cx("resize-handle-row")} />
+                <Panel
+                  id="terminal-bottom"
+                  order={2}
+                  defaultSize={loadPanelSize('bottom', TERM_BOTTOM_MIN, TERM_BOTTOM_MAX)}
+                  minSize={TERM_BOTTOM_MIN}
+                  maxSize={TERM_BOTTOM_MAX}
+                  onResize={(size) => savePanelSize('bottom', size)}
+                >
+                  <TerminalPanel />
+                </Panel>
+              </>
+            )}
+          </PanelGroup>
         </Panel>
+        {termDock === 'right' && (
+          <>
+            <PanelResizeHandle className={cx("resize-handle")} />
+            <Panel
+              id="terminal-right"
+              order={3}
+              defaultSize={loadPanelSize('right', TERM_RIGHT_MIN, TERM_RIGHT_MAX)}
+              minSize={TERM_RIGHT_MIN}
+              maxSize={TERM_RIGHT_MAX}
+              onResize={(size) => savePanelSize('right', size)}
+            >
+              <TerminalPanel />
+            </Panel>
+          </>
+        )}
         {aiDocked && (
           <>
             <PanelResizeHandle className={cx("resize-handle")} />
             <Panel
               id="aichat"
-              order={3}
+              order={4}
               defaultSize={loadDockSize(AI_DOCK_MIN, AI_DOCK_MAX)}
               minSize={AI_DOCK_MIN}
               maxSize={AI_DOCK_MAX}
@@ -443,6 +487,8 @@ export default function App() {
       <StatusBar />
       {/* AI チャット (フローティング時)。モードレスで、モーダルのダイアログ・コンテキストメニューより下に出す */}
       <AiChatDialog />
+      {/* ターミナル (フローティング時)。AI チャットと同じくモードレス */}
+      <TerminalWindow />
       <ContextMenuHost />
       <DialogHost />
       <ToastHost />

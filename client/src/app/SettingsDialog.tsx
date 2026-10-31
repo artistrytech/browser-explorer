@@ -11,11 +11,13 @@ import { useDialogKeys } from '../lib/dialogKeys';
 import { openAppLog } from '../stores/applog';
 import { backupBranchRegex, DEFAULT_BACKUP_BRANCH_PATTERN } from '../lib/backupBranch';
 import { AiSettingsTab } from './AiSettingsTab';
+import { TerminalSettingsTab } from './TerminalSettingsTab';
 import { useAiChat } from '../features/aichat/aiChatStore';
+import { useTerminal } from '../features/terminal/terminalStore';
 
 const cx = createCssModuleClassNames(styles);
 
-type Tab = 'general' | 'menu' | 'tools' | 'diff' | 'ai';
+type Tab = 'general' | 'menu' | 'tools' | 'diff' | 'ai' | 'terminal';
 
 /** contextMenu の各キーと日本語ラベル */
 const MENU_ITEMS: { key: string; label: string }[] = [
@@ -27,6 +29,7 @@ const MENU_ITEMS: { key: string; label: string }[] = [
   { key: 'openDualPane', label: '  2 画面で整理…' },
   { key: 'osFileManager', label: '  Explorer / Finder で開く' },
   { key: 'osTerminal', label: '  コマンドプロンプト / ターミナルで開く' },
+  { key: 'appTerminal', label: '  アプリ内のターミナルで開く' },
   { key: 'pin', label: 'クイックアクセスにピン止め / 解除' },
   { key: 'copy', label: 'コピー' },
   { key: 'cut', label: '切り取り' },
@@ -292,6 +295,8 @@ export function SettingsDialog() {
       await refreshUiConfig(); // 再起動なしでメニュー等に即時反映
       // AI チャットを開いていれば、選べるモデルを入れ替える
       if (useAiChat.getState().open) void useAiChat.getState().refreshAgents();
+      // ターミナルの「＋」で開くシェルを入れ替える
+      if (useTerminal.getState().loaded) void useTerminal.getState().load();
       useToast.getState().show('success', '設定を保存しました');
     } catch (e) {
       toastError(e);
@@ -426,6 +431,7 @@ export function SettingsDialog() {
           {tabBtn('tools', '外部ツール')}
           {tabBtn('diff', '差分ツール')}
           {tabBtn('ai', 'AI')}
+          {tabBtn('terminal', 'ターミナル')}
         </div>
 
         <div className={cx("settings-body")}>
@@ -727,6 +733,7 @@ export function SettingsDialog() {
           )}
 
           {tab === 'ai' && draft && <AiSettingsTab draft={draft} patch={patch} />}
+          {tab === 'terminal' && draft && <TerminalSettingsTab draft={draft} patch={patch} />}
         </div>
 
         <div className={cx("settings-row")}>

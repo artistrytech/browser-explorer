@@ -44,6 +44,17 @@
   background: var(--accent);
 }
 
+/* 縦に並べたパネル (メイン領域とターミナルの下パネル) の境界 */
+.resize-handle-row {
+  height: 4px;
+  background: var(--bg-alt);
+  cursor: row-resize;
+}
+
+.resize-handle-row:hover {
+  background: var(--accent);
+}
+
 .main-area {
   height: 100%;
   position: relative;

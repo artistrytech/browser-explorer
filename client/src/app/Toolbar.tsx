@@ -4,6 +4,8 @@ import { useUi } from '../stores/ui';
 import { openAppLog } from '../stores/applog';
 import { openDualPane } from '../features/transfer/DualPaneDialog';
 import { toggleAiChat, useAiChat } from '../features/aichat/aiChatStore';
+import { toggleTerminal, useTerminal } from '../features/terminal/terminalStore';
+import { TerminalIcon } from '../components/DockIcons';
 import { breadcrumbs, parentPath, isRootPath } from '../lib/paths';
 import styles from './Toolbar.module.scss';
 import { createCssModuleClassNames } from '../lib/cssModule';
@@ -14,6 +16,7 @@ export function Toolbar() {
   const { path, navigate, runSearch, searchQuery, clearSearch } = useExplorer();
   const setSettingsOpen = useUi((s) => s.setSettingsOpen);
   const aiChatOpen = useAiChat((s) => s.open);
+  const terminalOpen = useTerminal((s) => s.open);
   const [editing, setEditing] = useState(false);
   const [addressValue, setAddressValue] = useState(path);
   const [search, setSearch] = useState('');
@@ -125,6 +128,14 @@ export function Toolbar() {
         onClick={() => openDualPane()}
       >
         ⧉
+      </button>
+      <button
+        className={cx(`tool-btn${terminalOpen ? ' active' : ''}`)}
+        title={`ターミナルを${terminalOpen ? '隠す' : '表示'} (Ctrl+\`)`}
+        aria-pressed={terminalOpen}
+        onClick={toggleTerminal}
+      >
+        <TerminalIcon size={15} />
       </button>
       <button
         className={cx(`tool-btn${aiChatOpen ? ' active' : ''}`)}

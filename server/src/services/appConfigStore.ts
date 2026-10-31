@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { db } from './stateStore.js';
+import { DEFAULT_SHELL_ID } from './terminal.js';
 
 /**
  * 画面で編集可能な設定 (commitFilesLimit / contextMenu / externalTools / diffTools / extDefaults) を
@@ -44,6 +45,8 @@ export interface AppConfig {
   aiCodexSandbox: AiCodexSandbox;
   /** Claude の権限モード (claude -p の --permission-mode) */
   aiClaudePermission: AiClaudePermission;
+  /** アプリ内のターミナルで「＋」から開くシェル (services/terminal.ts の検出結果の id) */
+  terminalShell: string;
 }
 
 export const AI_CODEX_SANDBOXES = ['read-only', 'workspace-write', 'danger-full-access'] as const;
@@ -171,6 +174,7 @@ export function getAppConfig(): AppConfig {
     aiModels: getAiModels(),
     aiCodexSandbox: readSetting<AiCodexSandbox>('aiCodexSandbox') ?? 'workspace-write',
     aiClaudePermission: readSetting<AiClaudePermission>('aiClaudePermission') ?? 'acceptEdits',
+    terminalShell: readSetting<string>('terminalShell') ?? DEFAULT_SHELL_ID,
   };
 }
 
@@ -244,6 +248,9 @@ export function saveAppConfig(partial: Partial<Record<AppConfigKey, unknown>>): 
     }
     if (AI_CLAUDE_PERMISSIONS.includes(partial.aiClaudePermission as AiClaudePermission)) {
       writeSetting('aiClaudePermission', partial.aiClaudePermission);
+    }
+    if (typeof partial.terminalShell === 'string' && /^[\w.-]+$/.test(partial.terminalShell)) {
+      writeSetting('terminalShell', partial.terminalShell);
     }
   });
   tx();

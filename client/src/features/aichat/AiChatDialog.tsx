@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { FloatingWindow } from '../../components/FloatingWindow';
+import { DockRightIcon, FloatIcon } from '../../components/DockIcons';
 import { PenIcon } from '../../components/PenIcon';
 import { useContextMenu } from '../../components/ContextMenu';
 import { confirmDialog } from '../../stores/dialog';
@@ -70,26 +71,6 @@ export function AiChatPanel() {
       </div>
       <ChatContent />
     </div>
-  );
-}
-
-/** 右パネルに固定するアイコン (枠の右側を塗る) */
-function DockRightIcon() {
-  return (
-    <svg width={14} height={14} viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" />
-      <rect x="9" y="3" width="5" height="10" fill="currentColor" />
-    </svg>
-  );
-}
-
-/** フローティングに戻すアイコン (重なった 2 枚の枠) */
-function FloatIcon() {
-  return (
-    <svg width={14} height={14} viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor">
-      <rect x="1.5" y="5.5" width="9" height="8" rx="1" />
-      <path d="M5.5 5.5V2.5h9v8h-4" />
-    </svg>
   );
 }
 

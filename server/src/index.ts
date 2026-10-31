@@ -9,6 +9,7 @@ import { osRouter } from './routes/os.js';
 import { quickaccessRouter } from './routes/quickaccess.js';
 import { logRouter } from './routes/log.js';
 import { aiRouter } from './routes/ai.js';
+import { terminalRouter } from './routes/terminal.js';
 import { attachWatcher } from './ws/watcher.js';
 import {
   getAppConfig,
@@ -102,6 +103,7 @@ app.use('/api/os', osRouter);
 app.use('/api/quickaccess', quickaccessRouter);
 app.use('/api/log', logRouter);
 app.use('/api/ai', aiRouter);
+app.use('/api/terminal', terminalRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, platform: process.platform });

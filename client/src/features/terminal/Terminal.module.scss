@@ -1,0 +1,202 @@
+/* 固定したパネルの中でも、フローティングの本体 (flex) の中でも高さいっぱいに広げる */
+.panel {
+  height: 100%;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* タブ・＋・表示位置・閉じるを 1 行に並べる */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  flex: none;
+  padding: 0 4px 0 6px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.bar-icon {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+  color: var(--text-dim);
+}
+
+.bar-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--border);
+  flex: none;
+}
+
+.tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  height: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  flex: 0 1 auto;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 0 4px 0 10px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+}
+
+.tab:hover {
+  background: var(--bg-hover);
+}
+
+.tab.active {
+  border-bottom-color: var(--accent);
+  background: var(--bg);
+}
+
+.tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab.active .tab-name {
+  font-weight: 600;
+}
+
+.tab-shell {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.tab-close {
+  border: none;
+  background: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 11px;
+  /* 選択中とホバー中のタブだけに出す */
+  visibility: hidden;
+}
+
+.tab.active .tab-close,
+.tab:hover .tab-close {
+  visibility: visible;
+}
+
+.tab-close:hover {
+  background: var(--bg-selected);
+  color: var(--danger);
+}
+
+.tab-rename {
+  width: 140px;
+  font: inherit;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.new-btns {
+  display: inline-flex;
+  flex: none;
+  /* タブの右に寄せ、残りの幅を空ける */
+  margin-right: auto;
+}
+
+.positions {
+  display: inline-flex;
+  flex: none;
+}
+
+.title-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-dim);
+  flex: none;
+}
+
+.title-btn.narrow {
+  width: 18px;
+  font-size: 13px;
+}
+
+.title-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.title-btn.active {
+  color: var(--accent);
+  background: var(--bg-selected);
+}
+
+.title-btn.close:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* xterm の要素 (termManager.ts) を重ねて置く */
+.host {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+.empty-btn {
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  color: var(--text);
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.empty-btn:hover {
+  background: var(--bg-hover);
+}

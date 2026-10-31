@@ -13,6 +13,7 @@ import { saveEnteredChild } from './focusMemory';
 import { parentPath, baseName } from './paths';
 import type { MenuItem } from '../components/ContextMenu';
 import { openInNewTab, wantsNewTab } from './appTabs';
+import { openTerminalAt } from '../features/terminal/terminalStore';
 
 /** contextMenu 設定 (id) を持てるメニュー項目 */
 export type CfgMenuItem = Omit<MenuItem, 'submenu'> & { id?: string; submenu?: CfgMenuItem[] };
@@ -54,7 +55,7 @@ export function pruneMenuItems(items: CfgMenuItem[], menuConfig: Record<string, 
 }
 
 /**
- * OS 連携項目 (ファイルマネージャ / ターミナル)。
+ * OS 連携項目 (ファイルマネージャ / ターミナル) と、アプリ内のターミナル。
  * フォルダはそのフォルダを、ファイルは親フォルダを開く
  * (ファイルマネージャはそのファイルを選択した状態で開く → サーバ側で /select, や -R を使う)。
  */
@@ -70,6 +71,12 @@ export function osMenuItems(targetPath: string, platform: string): CfgMenuItem[]
       id: 'osTerminal',
       label: labels.terminal,
       action: () => void api.osOpenTerminal(targetPath).catch(toastError),
+    },
+    {
+      // アプリ内のターミナル (ファイルならその親のフォルダで開く。サーバ側で判定)
+      id: 'appTerminal',
+      label: 'アプリ内のターミナルで開く',
+      action: () => void openTerminalAt(targetPath),
     },
   ];
 }

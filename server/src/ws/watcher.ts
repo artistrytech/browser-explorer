@@ -4,6 +4,7 @@ import chokidar, { FSWatcher } from 'chokidar';
 import { norm } from '../services/fsService.js';
 import { config } from '../config.js';
 import { errorDetail, logger, sanitizeId } from '../services/logger.js';
+import { handleTerminalUpgrade } from './terminal.js';
 
 interface ClientState {
   watcher: FSWatcher | null;
@@ -34,9 +35,15 @@ export function attachWatcher(server: Server): void {
     // 切断 (ECONNRESET 等) で未処理の 'error' が投げられないようにしておく
     socket.on('error', () => {});
     const url = new URL(req.url ?? '/', 'http://localhost');
-    if (url.pathname !== '/ws' || url.searchParams.get('token') !== config.token) {
+    const isTerminal = url.pathname === '/ws/terminal';
+    if ((url.pathname !== '/ws' && !isTerminal) || url.searchParams.get('token') !== config.token) {
       logger.warn(`ws upgrade rejected: ${url.pathname}`, { event: 'ws' });
       socket.destroy();
+      return;
+    }
+    // ターミナルの入出力は専用の接続 (ws/terminal.ts)
+    if (isTerminal) {
+      handleTerminalUpgrade(req, socket, head);
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));

@@ -291,6 +291,31 @@ export interface AppSettings {
   aiCodexSandbox: 'read-only' | 'workspace-write' | 'danger-full-access';
   /** Claude の権限モード (claude -p の --permission-mode) */
   aiClaudePermission: 'acceptEdits' | 'auto' | 'plan' | 'dontAsk' | 'manual' | 'bypassPermissions';
+  /** アプリ内のターミナルで開くシェル (TerminalShell.id) */
+  terminalShell: string;
+}
+
+// --- アプリ内のターミナル (server/services/terminal.ts) ---
+
+export interface TerminalShell {
+  id: string;
+  label: string;
+}
+
+export interface TerminalInfo {
+  id: number;
+  /** 表示名 (空 = 作業フォルダ名) */
+  name: string;
+  shellId: string;
+  shellLabel: string;
+  cwd: string;
+  createdAt: number;
+}
+
+export interface TerminalListResult {
+  shells: TerminalShell[];
+  defaultShell: string;
+  terminals: TerminalInfo[];
 }
 
 // --- AI チャット (server/services/aiStore.ts / aiRunner.ts) ---
