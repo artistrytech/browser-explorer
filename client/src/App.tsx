@@ -87,6 +87,7 @@ export default function App() {
   const navigate = useExplorer((s) => s.navigate);
   const tabs = useEditor((s) => s.tabs);
   const activePath = useEditor((s) => s.activePath);
+  const editorRestoring = useEditor((s) => s.restoring);
   const diffTarget = useDiffTab((s) => s.current);
   const previewPath = usePreviewTab((s) => s.current);
   const appLogOpened = useAppLog((s) => s.opened);
@@ -115,8 +116,9 @@ export default function App() {
     api.osPlatform().then((r) => useUi.getState().setPlatform(r.platform)).catch(() => {});
     // コンテキストメニューの表示設定・外部ツール (設定は DB。初回は config.jsonc から seed)
     void refreshUiConfig();
-    // 読み込み直す前に開いていたターミナルを開き直す
+    // 読み込み直す前に開いていたターミナル・エディタのファイルを開き直す
     void restoreTerminal();
+    void useEditor.getState().restore();
     const initial = pathFromUrl();
     const initialView = viewFromUrl();
     const initialLogFilter = logFilterFromUrl();
@@ -271,10 +273,11 @@ export default function App() {
     else if (panel.isCollapsed()) panel.expand();
   }, [view, reviewDetailOpen]);
 
-  // エディタタブが無くなったら files へ (履歴は積まず URL のみ整合させる)
+  // エディタタブが無くなったら files へ (履歴は積まず URL のみ整合させる)。
+  // 読み込み直した直後はファイルを開き直し終わるまで待つ
   useEffect(() => {
-    if (view === 'editor' && tabs.length === 0) replaceView('files');
-  }, [view, tabs.length, setView]);
+    if (view === 'editor' && tabs.length === 0 && !editorRestoring) replaceView('files');
+  }, [view, tabs.length, editorRestoring, setView]);
 
   // 差分タブ: 対象が無いのに view=diff (リロード直後等) なら files へ
   useEffect(() => {

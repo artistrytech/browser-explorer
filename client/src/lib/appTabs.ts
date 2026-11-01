@@ -79,8 +79,11 @@ export function clearTabSession(id: string): void {
   }
 }
 
-/** 新しいタブへ引き継がない記憶 (セッション ID はタブごとに振り直す。lib/session.ts の KEY) */
-const NOT_INHERITED = new Set(['appSessionId']);
+/**
+ * 新しいタブへ引き継がない記憶。セッション ID はタブごとに振り直す (lib/session.ts の KEY)。
+ * エディタで開いているファイルは開き元のタブだけで開き直す (lib/editorTabsMemory.ts の EDITOR_TABS_KEY)
+ */
+const NOT_INHERITED = new Set(['appSessionId', 'editor:tabs']);
 
 /**
  * タブの sessionStorage を別タブへ複製する。

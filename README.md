@@ -98,7 +98,10 @@ client/          # React + Vite + Zustand + Monaco Editor + xterm.js + React Flo
 | Ctrl+` (日本語キーボードは Ctrl+@ も) | ターミナルの表示 / 非表示 |
 
 - エンコーディング (UTF-8 / Shift_JIS / EUC-JP / UTF-16)・改行 (CRLF/LF/CR)・BOM は
-  ステータスバーから切替。「再読込」で開き直し、Ctrl+S で変換保存。
+  ステータスバーから切替。エディタ上部の「再読込」(保存の左) で開き直し、Ctrl+S で変換保存。
+  未保存の編集がある状態で「再読込」を押したときは確認する。
+- エディタで開いているファイルはタブごと (sessionStorage) に覚え、画面を読み込み直しても開き直す
+  (内容はファイルから読み直すので、未保存の編集は引き継がない)。
 - Git はシステムの git を使用。push/pull の認証は git 側 (credential helper / SSH agent) に委譲。
   HTTPS の認証で失敗した場合は、結果ダイアログの「サインインして再試行」で Git Credential Manager の
   サインイン画面 (ブラウザ / コード / トークン) を開いて再実行できる。

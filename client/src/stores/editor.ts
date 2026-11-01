@@ -5,6 +5,7 @@ import { confirmDialog } from './dialog';
 import { switchView, replaceView } from './ui';
 import { useSettings } from './settings';
 import { baseName } from '../lib/paths';
+import { loadEditorTabs, saveEditorTabs } from '../lib/editorTabsMemory';
 import type { Eol } from '../types';
 
 export interface EditorTab {
@@ -25,8 +26,12 @@ interface EditorStore {
   cursor: { line: number; col: number };
   /** 開いた後にカーソルを移す位置 (1 始まり)。EditorPane が反映して消す */
   reveal: { path: string; line: number; column: number } | null;
+  /** 読み込み直す前に開いていたファイルを開き直している途中か (その間は view=editor のままにする) */
+  restoring: boolean;
 
   open: (path: string) => Promise<void>;
+  /** 読み込み直す前に開いていたファイル (sessionStorage) を開き直す。起動時に 1 回呼ぶ */
+  restore: () => Promise<void>;
   /** ファイルを開いて指定の位置 (1 始まり) を表示する */
   openAt: (path: string, line: number, column: number) => Promise<void>;
   clearReveal: () => void;
@@ -62,11 +67,29 @@ export function relocatedPath(p: string, from: string, to: string): string | nul
 const ownSaves = new Map<string, number>();
 const OWN_SAVE_GRACE_MS = 2000;
 
+/** 起動時に開き直すファイル (読み込み直す前に開いていたもの) */
+const restoreRecord = loadEditorTabs();
+
+function tabFromRead(r: Awaited<ReturnType<typeof api.read>>): EditorTab {
+  return {
+    path: r.path,
+    name: baseName(r.path),
+    content: r.content,
+    savedContent: r.content,
+    encoding: r.encoding,
+    eol: r.eol,
+    bom: r.bom,
+    dirty: false,
+    mtime: r.mtime,
+  };
+}
+
 export const useEditor = create<EditorStore>((set, get) => ({
   tabs: [],
   activePath: null,
   cursor: { line: 1, col: 1 },
   reveal: null,
+  restoring: restoreRecord !== null,
 
   open: async (path) => {
     const existing = get().tabs.find((t) => t.path === path);
@@ -77,17 +100,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
     }
     try {
       const r = await api.read(path);
-      const tab: EditorTab = {
-        path: r.path,
-        name: baseName(r.path),
-        content: r.content,
-        savedContent: r.content,
-        encoding: r.encoding,
-        eol: r.eol,
-        bom: r.bom,
-        dirty: false,
-        mtime: r.mtime,
-      };
+      const tab = tabFromRead(r);
       set((s) => ({ tabs: [...s.tabs, tab], activePath: r.path }));
       // ファイル編集開始も履歴に積み、ブラウザバックで「ファイル」タブへ戻れるようにする
       switchView('editor');
@@ -95,6 +108,20 @@ export const useEditor = create<EditorStore>((set, get) => ({
     } catch (e) {
       toastError(e);
     }
+  },
+
+  restore: async () => {
+    if (!restoreRecord || !get().restoring) return;
+    // 消えた・読めなくなったファイルは黙って外す
+    const results = await Promise.allSettled(restoreRecord.paths.map((p) => api.read(p)));
+    const restored = results.flatMap((r) => (r.status === 'fulfilled' ? [tabFromRead(r.value)] : []));
+    set((s) => {
+      // 開き直している間にユーザーが開いたファイルはそのまま残し、後ろに並べる
+      const tabs = [...restored.filter((t) => !s.tabs.some((x) => x.path === t.path)), ...s.tabs];
+      const active =
+        s.activePath ?? tabs.find((t) => t.path === restoreRecord.active)?.path ?? tabs[0]?.path ?? null;
+      return { tabs, activePath: active, restoring: false };
+    });
   },
 
   openAt: async (path, line, column) => {
@@ -281,3 +308,15 @@ export const useEditor = create<EditorStore>((set, get) => ({
     });
   },
 }));
+
+// 開いているファイルの並び・表示中のファイルが変わったら sessionStorage へ控える (編集内容の変化では書かない)。
+// 開き直している途中は控えず、読み込み直す前の記録を残しておく
+let savedTabsKey = '';
+useEditor.subscribe((s) => {
+  if (s.restoring) return;
+  const paths = s.tabs.map((t) => t.path);
+  const key = JSON.stringify([paths, s.activePath]);
+  if (key === savedTabsKey) return;
+  savedTabsKey = key;
+  saveEditorTabs({ paths, active: s.activePath });
+});

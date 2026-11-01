@@ -18,7 +18,7 @@ export function StatusBar() {
   const showHidden = useSettings((s) => s.settings.showHidden);
   const status = useGit((s) => s.status);
   const view = useUi((s) => s.view);
-  const { tabs, activePath, cursor, setEncoding, setEol, setBom, reload } = useEditor();
+  const { tabs, activePath, cursor, setEncoding, setEol, setBom } = useEditor();
   const tab = tabs.find((t) => t.path === activePath);
 
   const visible = (searchResults ?? entries).filter((e) => showHidden || !e.hidden);
@@ -41,7 +41,7 @@ export function StatusBar() {
           </span>
           <select
             className={cx("status-select")}
-            title="エンコーディング (変更後「再読込」でこのエンコで開き直し / Ctrl+S でこのエンコに変換保存)"
+            title="エンコーディング (変更後エディタ上部の「再読込」でこのエンコで開き直し / Ctrl+S でこのエンコに変換保存)"
             value={tab.encoding}
             onChange={(e) => setEncoding(tab.path, e.target.value)}
           >
@@ -51,13 +51,6 @@ export function StatusBar() {
               </option>
             ))}
           </select>
-          <button
-            className={cx("status-btn")}
-            title="選択中のエンコーディングでファイルを開き直す"
-            onClick={() => void reload(tab.path, tab.encoding)}
-          >
-            再読込
-          </button>
           <select
             className={cx("status-select")}
             title="改行コード"

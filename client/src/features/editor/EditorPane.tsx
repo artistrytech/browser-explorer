@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { monaco, languageForPath } from './monacoSetup';
 import { useEditor } from '../../stores/editor';
 import { useSettings } from '../../stores/settings';
-import { promptDialog } from '../../stores/dialog';
+import { confirmDialog, promptDialog } from '../../stores/dialog';
 import { useToast, toastError } from '../../stores/toast';
 import { useUi } from '../../stores/ui';
 import { useContextMenu, type MenuItem } from '../../components/ContextMenu';
@@ -71,7 +71,7 @@ async function openTabMenu(e: React.MouseEvent, path: string): Promise<void> {
 }
 
 export function EditorPane() {
-  const { tabs, activePath, activate, close, updateContent, save, saveAll, saveAs, setCursor } =
+  const { tabs, activePath, activate, close, updateContent, save, saveAll, saveAs, reload, setCursor } =
     useEditor();
   const settings = useSettings((s) => s.settings);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -210,6 +210,19 @@ export function EditorPane() {
     if (name) await saveAs(activeTab.path, name.replace(/\\/g, '/'));
   };
 
+  // 保存の隣にあって押し間違えやすいので、編集内容を捨てるときは確認する
+  // (エンコーディング・改行・BOM の切り替えだけなら、選んだエンコーディングで開き直すための操作なので確認しない)
+  const doReload = async () => {
+    if (!activeTab) return;
+    if (
+      activeTab.content !== activeTab.savedContent &&
+      !(await confirmDialog('再読込', `${activeTab.name} の未保存の変更を破棄して読み込み直しますか?`, true))
+    ) {
+      return;
+    }
+    await reload(activeTab.path, activeTab.encoding);
+  };
+
   return (
     <div className={cx("editor-pane")}>
       <div className={cx("editor-tabs")}>
@@ -240,6 +253,13 @@ export function EditorPane() {
           </div>
         ))}
         <span className={cx("editor-tab-actions")}>
+          <button
+            className={cx("status-btn")}
+            title="ファイルを開き直す (ステータスバーで選んだエンコーディングで読み込む)"
+            onClick={() => void doReload()}
+          >
+            再読込
+          </button>
           <button className={cx("status-btn")} title="上書き保存 (Ctrl+S)" onClick={() => void save()}>
             保存
           </button>
