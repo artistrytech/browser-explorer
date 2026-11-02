@@ -12,6 +12,7 @@ import {
   homeDir,
 } from '../services/fsService.js';
 import { decodeBuffer, encodeContent, isProbablyBinary, Eol } from '../services/encoding.js';
+import { listNewFileExts, addNewFileExt } from '../services/stateStore.js';
 
 const MAX_READ_SIZE = 20 * 1024 * 1024; // 20MB
 
@@ -142,10 +143,25 @@ fsRouter.post('/mkdir', async (req, res) => {
   res.json({ ok: true, path: norm(p) });
 });
 
+/** ファイル名の拡張子 (小文字・先頭の '.' 無し)。拡張子が無い / ドットファイル (.gitignore 等) は null */
+function extOf(p: string): string | null {
+  const name = path.basename(p);
+  const i = name.lastIndexOf('.');
+  return i > 0 && i < name.length - 1 ? name.slice(i + 1).toLowerCase() : null;
+}
+
+/** recordExt を付けると、作成したファイルの拡張子を「新規ファイル」の候補として記録する */
 fsRouter.post('/create', async (req, res) => {
   const p = reqPath(req.body.path);
   await fs.writeFile(p, '', { flag: 'wx' }); // 既存があれば失敗
+  const ext = req.body.recordExt === true ? extOf(p) : null;
+  if (ext) addNewFileExt(ext);
   res.json({ ok: true, path: norm(p) });
+});
+
+/** 「新規ファイル」で作成した拡張子 (新しい順) */
+fsRouter.get('/new-file-exts', (_req, res) => {
+  res.json({ exts: listNewFileExts() });
 });
 
 fsRouter.post('/rename', async (req, res) => {

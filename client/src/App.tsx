@@ -70,6 +70,7 @@ import { saveCachedTheme } from './lib/themeCache';
 import { parentPath, isRootPath, baseName } from './lib/paths';
 import styles from './App.module.scss';
 import { createCssModuleClassNames } from './lib/cssModule';
+import { loadNewFileExts } from './lib/newFileExts';
 
 const cx = createCssModuleClassNames(styles);
 
@@ -116,6 +117,8 @@ export default function App() {
     api.osPlatform().then((r) => useUi.getState().setPlatform(r.platform)).catch(() => {});
     // コンテキストメニューの表示設定・外部ツール (設定は DB。初回は config.jsonc から seed)
     void refreshUiConfig();
+    // 「新規ファイル」の拡張子の候補 (作成した拡張子の履歴は DB)
+    void loadNewFileExts();
     // 読み込み直す前に開いていたターミナル・エディタのファイル・AI チャットを開き直す
     void restoreTerminal();
     restoreAiChat();

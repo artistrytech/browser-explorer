@@ -8,6 +8,7 @@ import { confirmDialog, promptDialog } from '../stores/dialog';
 import { isMarkdownPath, openMarkdownPreview } from '../features/preview/MarkdownTab';
 import { joinPath, baseName, formatSize, formatDate, parentPath } from './paths';
 import { saveEnteredChild } from './focusMemory';
+import { loadNewFileExts } from './newFileExts';
 import type { FsEntry } from '../types';
 
 /** サブフォルダへ入る直前に親パスの focus を「今入る子」に更新 (002.md §6.3) */
@@ -141,25 +142,38 @@ export async function deleteSelection(permanent: boolean, paths?: string[]): Pro
   }
 }
 
-export async function createFolder(): Promise<void> {
+/** dir (省略時は一覧で表示中のフォルダ) に新規フォルダを作る */
+export async function createFolder(dir?: string): Promise<void> {
   const ex = useExplorer.getState();
   const name = await promptDialog('新規フォルダ', '新しいフォルダ');
   if (!name) return;
   try {
-    await api.mkdir(joinPath(ex.path, name));
+    await api.mkdir(joinPath(dir ?? ex.path, name));
     await ex.refresh();
+    // プロジェクトツリーは Git の状態の更新を契機に中身を取り直す
+    void useGit.getState().refreshStatus();
   } catch (e) {
     toastError(e);
   }
 }
 
-export async function createFile(): Promise<void> {
+/**
+ * dir (省略時は一覧で表示中のフォルダ) に拡張子 ext (先頭の '.' 無し) の新規ファイルを作る。
+ * ext を省略すると拡張子も名前と一緒に入力してもらう。
+ * 作成したファイルの拡張子は「新規ファイル」の候補として記録する (名前の入力で拡張子を変えたらその拡張子)
+ */
+export async function createFile(dir?: string, ext?: string): Promise<void> {
   const ex = useExplorer.getState();
-  const name = await promptDialog('新規ファイル', '新規テキスト.txt', { selectStem: true });
+  const name = await promptDialog('新規ファイル', ext ? `新規ファイル.${ext}` : '新規ファイル', {
+    selectStem: true,
+    message: ext ? undefined : '拡張子も付けて入力してください (例: memo.md)',
+  });
   if (!name) return;
   try {
-    await api.create(joinPath(ex.path, name));
+    await api.create(joinPath(dir ?? ex.path, name), true);
+    void loadNewFileExts();
     await ex.refresh();
+    void useGit.getState().refreshStatus();
   } catch (e) {
     toastError(e);
   }

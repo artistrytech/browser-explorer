@@ -8,7 +8,7 @@ import { useUi } from '../stores/ui';
 import { usePreviewTab } from '../features/preview/MarkdownTab';
 import { useContextMenu } from '../components/ContextMenu';
 import { openWithDefault, renameEntry } from '../lib/fileOps';
-import { entryMenuItems } from '../lib/entryMenu';
+import { entryMenuItems, folderMenuItems } from '../lib/entryMenu';
 import { openDirInNewWindow } from '../lib/openMenu';
 import { promptDialog } from '../stores/dialog';
 import { sortEntries } from '../lib/entrySort';
@@ -57,6 +57,25 @@ function parentRel(rel: string): string {
   return rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
 }
 
+/**
+ * ファイルタブの表示中のフォルダを dir にする。ファイルタブ以外 (エディタ・ログ等) を開いているときは
+ * タブを切り替えず、履歴にも積まずに URL の path だけ差し替える
+ */
+function syncExplorerFolder(dir: string): void {
+  const ex = useExplorer.getState();
+  if (ex.path === dir) return;
+  if (useUi.getState().view === 'files') {
+    void ex.navigate(dir);
+    return;
+  }
+  void ex.navigate(dir, false).then(() => {
+    const path = useExplorer.getState().path;
+    const params = new URLSearchParams(location.search);
+    params.set('path', path);
+    history.replaceState({ ...history.state, path }, '', `${location.pathname}?${params}`);
+  });
+}
+
 /** すべて折りたたむ (VS Code の同名ボタンと同じ図案) */
 function CollapseAllIcon() {
   return (
@@ -78,7 +97,9 @@ function RefreshIcon() {
 
 /**
  * プロジェクトツリー (VS Code のエクスプローラ相当)。リポジトリのルート配下のファイル / フォルダを表示する。
- * - フォルダのクリックは開閉のみ、ファイルのクリックでそのファイルを開く (一覧のダブルクリックと同じ既定の開き方)
+ * - フォルダのクリック (Enter) は開閉して、ファイルタブの表示中のフォルダもそのフォルダにする (タブは切り替えない)。
+ *   ファイルのクリックでそのファイルを開く (一覧のダブルクリックと同じ既定の開き方)
+ * - 右クリックはファイルタブと同じメニュー。行以外の空白ではリポジトリのルートを対象にする
  * - Git の状態はファイル一覧と同じマーク (✔ ● ＋ ？ ⚠ －) をアイコンの右下に重ねて表示する
  * - ↑↓ で選択の移動、→ / ← で展開 / 折り畳み (親へ移動)、Enter で開く
  */
@@ -258,13 +279,17 @@ export function ProjectTree({ repoRoot }: { repoRoot: string }) {
 
   const activate = (entry: FsEntry, rel: string) => {
     setSelected(rel);
-    if (entry.type === 'dir') setOpen(rel, !expanded.has(rel));
-    else openWithDefault(entry);
+    if (entry.type === 'dir') {
+      setOpen(rel, !expanded.has(rel));
+      syncExplorerFolder(entry.path);
+    } else openWithDefault(entry);
   };
 
   /** 行の右クリックメニュー。ファイルタブの一覧と同じ項目を、右クリックした項目 1 件を対象に出す */
   const openRowMenu = (e: React.MouseEvent, entry: FsEntry, rel: string, dirCode: OverlayCode | undefined) => {
     e.preventDefault();
+    // 空白のメニュー (openRootMenu) へバブリングさせない
+    e.stopPropagation();
     setSelected(rel);
     const dir = parentPath(entry.path);
     const items = entryMenuItems({
@@ -335,10 +360,17 @@ export function ProjectTree({ repoRoot }: { repoRoot: string }) {
     void refreshStatus();
   };
 
+  /** 行以外の空白の右クリックメニュー。ファイルタブの空白と同じ項目を、リポジトリのルートを対象に出す */
+  const openRootMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const items = folderMenuItems({ dir: repoRoot, openInNewWindow: openDirInNewWindow, refresh });
+    useContextMenu.getState().open(e.clientX, e.clientY, items);
+  };
+
   const label = repoLabel || baseName(repoRoot) || repoRoot;
 
   return (
-    <div className={cx('project')}>
+    <div className={cx('project')} onContextMenu={openRootMenu}>
       <div className={cx('project-head')}>
         <span className={cx('project-title')} title={repoRoot}>
           {label}

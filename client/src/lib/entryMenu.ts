@@ -1,5 +1,5 @@
 /**
- * ファイル / フォルダの右クリックメニュー (出し分けは 002.md §8)。
+ * ファイル / フォルダと空白の右クリックメニュー (出し分けは 002.md §8)。
  * ファイル一覧 (ファイルタブ) とプロジェクトツリー (左パネル) で同じ項目・同じ並び・
  * 同じ表示設定 (contextMenu の id) を使うためにここへ集約する。
  */
@@ -20,6 +20,8 @@ import { wantsNewTab } from './appTabs';
 import { copyPathItems } from './copyPath';
 import {
   copySelection,
+  createFile,
+  createFolder,
   cutSelection,
   deleteSelection,
   openEntry,
@@ -30,7 +32,9 @@ import {
 } from './fileOps';
 import { downloadArchive } from './gitArchive';
 import { excludeUntracked } from './gitExclude';
+import { newFileExts } from './newFileExts';
 import { osMenuItems, pruneMenuItems, toolMatches, type CfgMenuItem } from './openMenu';
+import { baseName } from './paths';
 import { pinFolder, unpinFolder } from './quickaccessOps';
 
 /** 絶対パス → リポジトリルート相対 (repo 外は null) */
@@ -140,6 +144,25 @@ export function gitContextItems(targetPath: string, isFile: boolean, isDir: bool
   return items;
 }
 
+/**
+ * 「追加」系統: dir に新規ファイル / 新規フォルダを作る。
+ * 新規ファイルの拡張子は作成した履歴からサブメニューで選ぶ (「その他…」は拡張子を名前と一緒に入力する)
+ */
+function addGroupItems(dir: string): CfgMenuItem[] {
+  return [
+    {
+      id: 'newFile',
+      label: '📄新規ファイル',
+      submenu: [
+        ...newFileExts().map((ext) => ({ label: `.${ext}`, action: () => void createFile(dir, ext) })),
+        { separator: true },
+        { label: 'その他…', action: () => void createFile(dir) },
+      ],
+    },
+    { id: 'newFolder', label: '📁新規フォルダ', action: () => void createFolder(dir) },
+  ];
+}
+
 export interface EntryMenuOptions {
   /** 右クリックした項目 */
   entry: FsEntry;
@@ -242,6 +265,7 @@ export function entryMenuItems(opts: EntryMenuOptions): MenuItem[] {
 
   const items: CfgMenuItem[] = [
     { id: 'groupOpen', label: '開く', submenu: openGroup },
+    ...(isDir ? [{ id: 'groupAdd', label: '追加', submenu: addGroupItems(entry.path) }] : []),
     // ピン止め / 解除のトグル (002.md §7.2)。解除は確認フローへ
     ...(isDir
       ? [
@@ -274,6 +298,52 @@ export function entryMenuItems(opts: EntryMenuOptions): MenuItem[] {
     ...tools.rest(),
     { separator: true },
     { id: 'properties', label: 'プロパティ', action: () => void showProperties(entry), disabled: !single },
+  ];
+  return pruneMenuItems(items, menuConfig);
+}
+
+export interface FolderMenuOptions {
+  /** 対象のフォルダ (ファイル一覧では表示中のフォルダ、プロジェクトツリーではリポジトリのルート) */
+  dir: string;
+  /** 「別ウィンドウで開く」: dir をブラウザの別タブで開く */
+  openInNewWindow: (dir: string) => void;
+  /** 「最新の情報に更新」 */
+  refresh: () => void;
+}
+
+/** 空白の右クリックメニュー (対象はフォルダ dir。002.md §4.1 / §8)。contextMenu 設定で間引いた結果を返す */
+export function folderMenuItems({ dir, openInNewWindow, refresh }: FolderMenuOptions): MenuItem[] {
+  const pinned = useSettings.getState().isPinned(dir);
+  const { clipboard } = useExplorer.getState();
+  const { platform, menuConfig } = useUi.getState();
+  // 外部ツールは対象フォルダを引数に起動 (対象はフォルダ 1 件)
+  const tools = toolItems([dir], [{ kind: 'dir', ext: '' }]);
+
+  const openGroup: CfgMenuItem[] = [
+    { id: 'openNewWindow', label: '別ウィンドウで開く', newTab: true, action: () => openInNewWindow(dir) },
+    { id: 'openDualPane', label: '2 画面で整理…', action: () => openDualPane({ left: dir }) },
+    { separator: true },
+    ...osMenuItems(dir, platform),
+    ...tools.take('開く'),
+  ];
+  const gitGroup: CfgMenuItem[] = [...gitContextItems(dir, false, true), ...tools.take('Git')];
+
+  const items: CfgMenuItem[] = [
+    { id: 'groupAdd', label: '追加', submenu: addGroupItems(dir) },
+    { separator: true },
+    { id: 'groupOpen', label: '開く', submenu: openGroup },
+    { separator: true },
+    { id: 'paste', label: '貼り付け', action: () => void paste(dir), disabled: !clipboard },
+    { separator: true },
+    pinned
+      ? { id: 'pin', label: 'ピン止めを解除', action: () => void unpinFolder(dir, baseName(dir)) }
+      : { id: 'pin', label: 'クイックアクセスにピン止め', action: () => void pinFolder(dir, baseName(dir)) },
+    { separator: true },
+    { id: 'groupGit', label: 'Git', submenu: gitGroup },
+    { separator: true },
+    ...tools.rest(),
+    { separator: true },
+    { id: 'refresh', label: '最新の情報に更新', action: refresh },
   ];
   return pruneMenuItems(items, menuConfig);
 }

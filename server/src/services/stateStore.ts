@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS commit_messages (
   created_at TEXT NOT NULL,
   PRIMARY KEY (repo, message)
 );
+-- 「新規ファイル」で作成したファイルの拡張子 (メニューの候補)。拡張子で一意、再作成時は日時を更新する
+CREATE TABLE IF NOT EXISTS new_file_exts (ext TEXT PRIMARY KEY, created_at TEXT NOT NULL);
 -- アプリ起点のリベースセッション (repo 単位)。この行の存在が「リベース中ロック」を表す。
 -- バックアップブランチ名や成功時削除フラグ等、git 自身の状態には無いメタデータを保持する。
 CREATE TABLE IF NOT EXISTS rebase_sessions (
@@ -225,6 +227,35 @@ export function addCommitMessage(message: string, repo = ''): void {
          SELECT message FROM commit_messages WHERE repo = ? ORDER BY created_at DESC LIMIT 50
        )`,
     ).run(repo, repo);
+  });
+  tx();
+}
+
+// --- 「新規ファイル」の拡張子の履歴 ---
+
+/** 新規ファイルの拡張子の保持件数 (メニューに出すのはこの件数まで) */
+const NEW_FILE_EXTS_LIMIT = 10;
+
+/** 「新規ファイル」で作成した拡張子 (先頭の '.' 無し) を新しい順に返す */
+export function listNewFileExts(): string[] {
+  const rows = db
+    .prepare('SELECT ext FROM new_file_exts ORDER BY created_at DESC LIMIT ?')
+    .all(NEW_FILE_EXTS_LIMIT) as { ext: string }[];
+  return rows.map((r) => r.ext);
+}
+
+/** 「新規ファイル」で作成した拡張子を記録する。既にあれば日時だけ更新し、保持件数を超えた古いものは消す */
+export function addNewFileExt(ext: string): void {
+  const tx = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO new_file_exts (ext, created_at) VALUES (?, ?)
+       ON CONFLICT(ext) DO UPDATE SET created_at = excluded.created_at`,
+    ).run(ext, new Date().toISOString());
+    db.prepare(
+      `DELETE FROM new_file_exts WHERE ext NOT IN (
+         SELECT ext FROM new_file_exts ORDER BY created_at DESC LIMIT ?
+       )`,
+    ).run(NEW_FILE_EXTS_LIMIT);
   });
   tx();
 }

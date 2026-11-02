@@ -32,6 +32,9 @@ const MENU_ITEMS: { key: string; label: string }[] = [
   { key: 'osFileManager', label: '  Explorer / Finder で開く' },
   { key: 'osTerminal', label: '  コマンドプロンプト / ターミナルで開く' },
   { key: 'appTerminal', label: '  アプリ内のターミナルで開く' },
+  { key: 'groupAdd', label: '「追加」サブメニュー (フォルダ / 空白右クリック)' },
+  { key: 'newFile', label: '  新規ファイル' },
+  { key: 'newFolder', label: '  新規フォルダ' },
   { key: 'pin', label: 'クイックアクセスにピン止め / 解除' },
   { key: 'copy', label: 'コピー' },
   { key: 'cut', label: '切り取り' },
@@ -51,8 +54,6 @@ const MENU_ITEMS: { key: string; label: string }[] = [
   { key: 'gitDiscard', label: '  変更を破棄' },
   { key: 'gitExclude', label: '  未追跡ファイルを除外する' },
   { key: 'properties', label: 'プロパティ' },
-  { key: 'newFolder', label: '新規フォルダ (空白右クリック)' },
-  { key: 'newFile', label: '新規ファイル (空白右クリック)' },
   { key: 'refresh', label: '最新の情報に更新 (空白右クリック)' },
 ];
 

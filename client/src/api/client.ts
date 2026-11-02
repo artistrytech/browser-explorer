@@ -170,7 +170,11 @@ export const api = {
   write: (body: { path: string; content: string; encoding?: string; eol?: Eol; bom?: boolean }) =>
     post<{ ok: true; size: number; mtime: number }>('/api/fs/write', body),
   mkdir: (path: string) => post<{ ok: true; path: string }>('/api/fs/mkdir', { path }),
-  create: (path: string) => post<{ ok: true; path: string }>('/api/fs/create', { path }),
+  /** recordExt: 作成したファイルの拡張子を「新規ファイル」の候補として記録する */
+  create: (path: string, recordExt = false) =>
+    post<{ ok: true; path: string }>('/api/fs/create', { path, recordExt }),
+  /** 「新規ファイル」で作成した拡張子 (先頭の '.' 無し・新しい順) */
+  newFileExts: () => get<{ exts: string[] }>('/api/fs/new-file-exts'),
   rename: (path: string, newName: string) =>
     post<{ ok: true; path: string }>('/api/fs/rename', { path, newName }),
   move: (src: string[], destDir: string) =>

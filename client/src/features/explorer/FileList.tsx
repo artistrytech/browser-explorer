@@ -10,25 +10,19 @@ import {
 } from '../../stores/settings';
 import { useGit, OverlayCode } from '../../stores/git';
 import { GitOverlay } from '../../components/GitOverlay';
-import { useUi } from '../../stores/ui';
-import { useContextMenu, MenuItem } from '../../components/ContextMenu';
+import { useContextMenu } from '../../components/ContextMenu';
 import {
   openWithDefault,
   copySelection,
   cutSelection,
   paste,
   deleteSelection,
-  createFolder,
-  createFile,
   renameEntry,
 } from '../../lib/fileOps';
-import { osMenuItems, pruneMenuItems, type CfgMenuItem } from '../../lib/openMenu';
-import { entryMenuItems, gitContextItems, toolItems } from '../../lib/entryMenu';
+import { entryMenuItems, folderMenuItems } from '../../lib/entryMenu';
 import { formatSize, formatDate, kindLabel, fileIcon, baseName } from '../../lib/paths';
 import { sortEntries } from '../../lib/entrySort';
-import { pinFolder, unpinFolder } from '../../lib/quickaccessOps';
 import { saveFocus, loadFocus, saveEnteredChild } from '../../lib/focusMemory';
-import { openDualPane } from '../transfer/DualPaneDialog';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
 import type { FsEntry, SortKey } from '../../types';
@@ -62,7 +56,6 @@ export function FileList() {
   } = useExplorer();
   const { settings, update } = useSettings();
   const repoRoot = useGit((s) => s.repoRoot);
-  const platform = useUi((s) => s.platform);
   const openMenu = useContextMenu((s) => s.open);
   const containerRef = useRef<HTMLDivElement>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -258,11 +251,6 @@ export function FileList() {
   };
 
   // --- コンテキストメニュー (出し分けは 002.md §8。項目は lib/entryMenu.ts でプロジェクトツリーと共通) ---
-  const menuConfig = useUi((s) => s.menuConfig);
-
-  /** contextMenu 設定 (false で非表示、未設定は表示) で間引く */
-  const pruneMenu = (items: CfgMenuItem[]): MenuItem[] => pruneMenuItems(items, menuConfig);
-
   /**
    * 「別ウィンドウで開く」: 指定フォルダをブラウザの別タブで開く。
    * focusName を渡すとそのエントリにフォーカスを当てる
@@ -274,9 +262,6 @@ export function FileList() {
     }
     openInNewTab(`${location.pathname}?path=${encodeURIComponent(dir)}`);
   };
-
-  /** OS 連携項目 (002.md §4)。ファイルを渡すと親フォルダを開く (対象は選択状態になる) */
-  const osItems = (targetPath: string): CfgMenuItem[] => osMenuItems(targetPath, platform);
 
   const entryMenu =(e: React.MouseEvent, entry: FsEntry) => {
     e.preventDefault();
@@ -303,43 +288,12 @@ export function FileList() {
     e.preventDefault();
     setSelection([]);
     // 空白 = カレントフォルダを対象とする (002.md §4.1 / §8)
-    const currentPinned = useSettings.getState().isPinned(path);
-    // 選択が無い場合は表示中のフォルダを引数に起動 (対象はフォルダ 1 件)
-    const tools = toolItems([path], [{ kind: 'dir', ext: '' }]);
-
-    const openGroup: CfgMenuItem[] = [
-      // フォーカス無し: 表示中のフォルダを別ウィンドウで開く
-      { id: 'openNewWindow', label: '別ウィンドウで開く', newTab: true, action: () => openInNewWindow(path) },
-      { id: 'openDualPane', label: '2 画面で整理…', action: () => openDualPane() },
-      { separator: true },
-      ...osItems(path),
-      ...tools.take('開く'),
-    ];
-    const gitGroup: CfgMenuItem[] = [...gitContextItems(path, false, true), ...tools.take('Git')];
-
-    const items: CfgMenuItem[] = [
-      { id: 'newFolder', label: '📁新規フォルダ', action: () => void createFolder() },
-      { id: 'newFile', label: '📄新規ファイル', action: () => void createFile() },
-      { separator: true },
-      { id: 'groupOpen', label: '開く', submenu: openGroup },
-      { separator: true },
-      { id: 'paste', label: '貼り付け', action: () => void paste(), disabled: !clipboard },
-      { separator: true },
-      currentPinned
-        ? { id: 'pin', label: 'ピン止めを解除', action: () => void unpinFolder(path, baseName(path)) }
-        : {
-            id: 'pin',
-            label: 'クイックアクセスにピン止め',
-            action: () => void pinFolder(path, baseName(path)),
-          },
-      { separator: true },
-      { id: 'groupGit', label: 'Git', submenu: gitGroup },
-      { separator: true },
-      ...tools.rest(),
-      { separator: true },
-      { id: 'refresh', label: '最新の情報に更新', action: () => void useExplorer.getState().refresh() },
-    ];
-    openMenu(e.clientX, e.clientY, pruneMenu(items));
+    const items = folderMenuItems({
+      dir: path,
+      openInNewWindow,
+      refresh: () => void useExplorer.getState().refresh(),
+    });
+    openMenu(e.clientX, e.clientY, items);
   };
 
   // --- ドラッグ & ドロップ (Ctrl でコピー、通常は移動) ---
