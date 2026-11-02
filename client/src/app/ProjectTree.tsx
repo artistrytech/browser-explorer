@@ -6,9 +6,13 @@ import { useGit, type OverlayCode } from '../stores/git';
 import { useSettings } from '../stores/settings';
 import { useUi } from '../stores/ui';
 import { usePreviewTab } from '../features/preview/MarkdownTab';
-import { openWithDefault } from '../lib/fileOps';
+import { useContextMenu } from '../components/ContextMenu';
+import { openWithDefault, renameEntry } from '../lib/fileOps';
+import { entryMenuItems } from '../lib/entryMenu';
+import { openDirInNewWindow } from '../lib/openMenu';
+import { promptDialog } from '../stores/dialog';
 import { sortEntries } from '../lib/entrySort';
-import { baseName, fileIcon } from '../lib/paths';
+import { baseName, fileIcon, parentPath } from '../lib/paths';
 import { loadProjectExpanded, saveProjectExpanded } from '../lib/sidebarMemory';
 import { GitOverlay } from '../components/GitOverlay';
 import { Chevron } from './FolderTree';
@@ -258,6 +262,27 @@ export function ProjectTree({ repoRoot }: { repoRoot: string }) {
     else openWithDefault(entry);
   };
 
+  /** 行の右クリックメニュー。ファイルタブの一覧と同じ項目を、右クリックした項目 1 件を対象に出す */
+  const openRowMenu = (e: React.MouseEvent, entry: FsEntry, rel: string, dirCode: OverlayCode | undefined) => {
+    e.preventDefault();
+    setSelected(rel);
+    const dir = parentPath(entry.path);
+    const items = entryMenuItems({
+      entry,
+      targets: [entry],
+      fileDir: dir,
+      untracked: dirCode === 'untracked' || useGit.getState().overlay[entry.path] === 'untracked',
+      openInNewWindow: openDirInNewWindow,
+      dualPaneLeft: dir,
+      rename: () => {
+        void promptDialog('名前の変更', entry.name, { selectStem: entry.type !== 'dir' }).then((name) => {
+          if (name && name !== entry.name) void renameEntry(entry.path, name);
+        });
+      },
+    });
+    useContextMenu.getState().open(e.clientX, e.clientY, items);
+  };
+
   const select = (rel: string) => {
     setSelected(rel);
     pendingScroll.current = true;
@@ -361,6 +386,7 @@ export function ProjectTree({ repoRoot }: { repoRoot: string }) {
               style={{ paddingLeft: indent }}
               title={entry.path}
               onClick={() => activate(entry, rel)}
+              onContextMenu={(e) => openRowMenu(e, entry, rel, dirCode)}
             >
               <span className={cx(`tree-twisty${isDir ? '' : ' leaf'}`)}>
                 <Chevron open={isOpen} />

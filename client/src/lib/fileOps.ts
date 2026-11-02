@@ -78,15 +78,18 @@ export function openEntry(entry: FsEntry): void {
   }
 }
 
-export function copySelection(): void {
-  const { selection, setClipboard } = useExplorer.getState();
+/** paths を省略すると一覧の選択をコピーする (プロジェクトツリーなど一覧の外からは対象を渡す) */
+export function copySelection(paths?: string[]): void {
+  const { setClipboard } = useExplorer.getState();
+  const selection = paths ?? useExplorer.getState().selection;
   if (selection.length === 0) return;
   setClipboard({ op: 'copy', paths: [...selection] });
   useToast.getState().show('info', `${selection.length} 項目をコピーしました`);
 }
 
-export function cutSelection(): void {
-  const { selection, setClipboard } = useExplorer.getState();
+export function cutSelection(paths?: string[]): void {
+  const { setClipboard } = useExplorer.getState();
+  const selection = paths ?? useExplorer.getState().selection;
   if (selection.length === 0) return;
   setClipboard({ op: 'cut', paths: [...selection] });
   useToast.getState().show('info', `${selection.length} 項目を切り取りました`);
@@ -111,11 +114,13 @@ export async function paste(destDir?: string): Promise<void> {
   }
 }
 
-export async function deleteSelection(permanent: boolean): Promise<void> {
+/** paths を省略すると一覧の選択を削除する */
+export async function deleteSelection(permanent: boolean, paths?: string[]): Promise<void> {
   const ex = useExplorer.getState();
-  if (ex.selection.length === 0) return;
-  const names = ex.selection.map(baseName).slice(0, 5).join(', ');
-  const suffix = ex.selection.length > 5 ? ` ほか ${ex.selection.length - 5} 項目` : '';
+  const selection = paths ?? ex.selection;
+  if (selection.length === 0) return;
+  const names = selection.map(baseName).slice(0, 5).join(', ');
+  const suffix = selection.length > 5 ? ` ほか ${selection.length - 5} 項目` : '';
   if (permanent) {
     const ok = await confirmDialog(
       '完全に削除',
@@ -125,7 +130,7 @@ export async function deleteSelection(permanent: boolean): Promise<void> {
     if (!ok) return;
   }
   try {
-    await api.delete(ex.selection, permanent);
+    await api.delete(selection, permanent);
     useToast
       .getState()
       .show('success', permanent ? '完全に削除しました' : 'ゴミ箱に移動しました');

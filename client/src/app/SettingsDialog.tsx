@@ -36,6 +36,7 @@ const MENU_ITEMS: { key: string; label: string }[] = [
   { key: 'copy', label: 'コピー' },
   { key: 'cut', label: '切り取り' },
   { key: 'paste', label: '貼り付け' },
+  { key: 'groupCopyPath', label: '「パスをコピー」サブメニュー' },
   { key: 'rename', label: '名前の変更 (F2)' },
   { key: 'groupDelete', label: '「削除」サブメニュー' },
   { key: 'delete', label: '  ゴミ箱に移動' },

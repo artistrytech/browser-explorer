@@ -13,9 +13,7 @@ import { GitOverlay } from '../../components/GitOverlay';
 import { useUi } from '../../stores/ui';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import {
-  openEntry,
   openWithDefault,
-  runExternalTool,
   copySelection,
   cutSelection,
   paste,
@@ -23,23 +21,18 @@ import {
   createFolder,
   createFile,
   renameEntry,
-  showProperties,
 } from '../../lib/fileOps';
-import { toolMatches, osMenuItems, pruneMenuItems, type CfgMenuItem } from '../../lib/openMenu';
+import { osMenuItems, pruneMenuItems, type CfgMenuItem } from '../../lib/openMenu';
+import { entryMenuItems, gitContextItems, toolItems } from '../../lib/entryMenu';
 import { formatSize, formatDate, kindLabel, fileIcon, baseName } from '../../lib/paths';
 import { sortEntries } from '../../lib/entrySort';
 import { pinFolder, unpinFolder } from '../../lib/quickaccessOps';
 import { saveFocus, loadFocus, saveEnteredChild } from '../../lib/focusMemory';
-import { excludeUntracked } from '../../lib/gitExclude';
-import { downloadArchive } from '../../lib/gitArchive';
-import { openCloneDialog } from '../git/CloneDialog';
-import { isMarkdownPath, openMarkdownPreview } from '../preview/MarkdownTab';
 import { openDualPane } from '../transfer/DualPaneDialog';
-import { openConflictResolver } from '../../stores/conflict';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
 import type { FsEntry, SortKey } from '../../types';
-import { openInNewTab, wantsNewTab } from '../../lib/appTabs';
+import { openInNewTab } from '../../lib/appTabs';
 import styles from './FileList.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -69,7 +62,6 @@ export function FileList() {
   } = useExplorer();
   const { settings, update } = useSettings();
   const repoRoot = useGit((s) => s.repoRoot);
-  const mergeState = useGit((s) => s.mergeState);
   const platform = useUi((s) => s.platform);
   const openMenu = useContextMenu((s) => s.open);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -82,10 +74,6 @@ export function FileList() {
     if (abs === repoRoot) return '';
     return abs.startsWith(`${repoRoot}/`) ? abs.slice(repoRoot.length + 1) : null;
   };
-
-  /** 指定フォルダ (repo 相対) 配下に競合ファイルがあるか (002.md §2.2) */
-  const conflictsUnder = (relDir: string): boolean =>
-    mergeState.conflicted.some((c) => relDir === '' || c === relDir || c.startsWith(`${relDir}/`));
 
   // 表示中フォルダ直下の「無視 (.gitignore) / Git 管理外」判定 (abs path → code)
   const [dirOverlay, setDirOverlay] = useState<Record<string, OverlayCode>>({});
@@ -269,44 +257,11 @@ export function FileList() {
     }
   };
 
-  // --- コンテキストメニュー (出し分けは 002.md §8) ---
+  // --- コンテキストメニュー (出し分けは 002.md §8。項目は lib/entryMenu.ts でプロジェクトツリーと共通) ---
   const menuConfig = useUi((s) => s.menuConfig);
-  const externalTools = useUi((s) => s.externalTools);
 
   /** contextMenu 設定 (false で非表示、未設定は表示) で間引く */
   const pruneMenu = (items: CfgMenuItem[]): MenuItem[] => pruneMenuItems(items, menuConfig);
-
-  /**
-   * カスタム項目 (設定の externalTools) を group ごとに振り分ける。
-   * group が既定グループ名 (開く/削除/Git) ならそのサブメニューに合流し、
-   * それ以外の名前なら同名のサブメニューを新設する。group 無しはメニュー直下。
-   * targets の種別/拡張子が全て一致するツールだけを表示する。
-   */
-  const toolItems = (paths: string[], targets: { kind: 'file' | 'dir'; ext: string }[]) => {
-    const byGroup = new Map<string, MenuItem[]>();
-    const ungrouped: MenuItem[] = [];
-    externalTools.forEach((t) => {
-      if (!t.label || !toolMatches(t, targets)) return;
-      const item: MenuItem = {
-        label: t.label,
-        action: () => void runExternalTool(t, paths),
-      };
-      if (t.group) byGroup.set(t.group, [...(byGroup.get(t.group) ?? []), item]);
-      else ungrouped.push(item);
-    });
-    /** 既定グループに合流する項目を取り出す (取り出したグループは新設対象から外れる) */
-    const take = (group: string): MenuItem[] => {
-      const items = byGroup.get(group) ?? [];
-      byGroup.delete(group);
-      return items;
-    };
-    /** 既定グループに属さなかったカスタム項目 (新設サブメニュー + group 無しの項目) */
-    const rest = (): CfgMenuItem[] => [
-      ...[...byGroup.entries()].map(([label, submenu]) => ({ label, submenu })),
-      ...ungrouped,
-    ];
-    return { take, rest };
-  };
 
   /**
    * 「別ウィンドウで開く」: 指定フォルダをブラウザの別タブで開く。
@@ -323,88 +278,6 @@ export function FileList() {
   /** OS 連携項目 (002.md §4)。ファイルを渡すと親フォルダを開く (対象は選択状態になる) */
   const osItems = (targetPath: string): CfgMenuItem[] => osMenuItems(targetPath, platform);
 
-  /** Git 系のリポジトリ操作 (選択パスに対するステージ/解除/破棄) */
-  const gitRepoItems = (sel: string[]): CfgMenuItem[] => {
-    if (!repoRoot || !sel.every((p) => p.startsWith(`${repoRoot}/`))) return [];
-    const rel = sel.map((p) => p.slice(repoRoot.length + 1));
-    return [
-      {
-        id: 'gitStage',
-        label: 'ステージ',
-        action: () =>
-          void api
-            .gitStage(repoRoot, rel)
-            .then(() => useGit.getState().refreshStatus())
-            .catch(toastError),
-      },
-      {
-        id: 'gitUnstage',
-        label: 'ステージ解除',
-        action: () =>
-          void api
-            .gitUnstage(repoRoot, rel)
-            .then(() => useGit.getState().refreshStatus())
-            .catch(toastError),
-      },
-      {
-        id: 'gitDiscard',
-        label: '変更を破棄',
-        danger: true,
-        action: () =>
-          void api
-            .gitDiscard(repoRoot, rel)
-            .then(() => Promise.all([useGit.getState().refreshStatus(), useExplorer.getState().refresh()]))
-            .catch(toastError),
-      },
-    ];
-  };
-
-  /** Git 系の文脈依存項目 (ログを表示 / 競合を解消 / Git Clone…) */
-  const gitContextItems = (targetPath: string, isFile: boolean, isDir: boolean): CfgMenuItem[] => {
-    const rel = relOf(targetPath);
-    const items: CfgMenuItem[] = [];
-    if (rel !== null) {
-      // Git 管理下: パス絞り込みログ (002.md §1)。Ctrl+クリック (mac は ⌘) / 中クリックは別タブで開く
-      items.push({
-        id: 'gitLog',
-        label: 'Gitログ',
-        newTab: true,
-        action: (e) => useGit.getState().showLogFor(rel, isFile, { newTab: wantsNewTab(e) }),
-      });
-      // HEAD 時点の内容を zip でダウンロード (対象がフォルダなら配下、ファイルならそのファイル)
-      items.push({ id: 'gitArchive', label: 'アーカイブ', action: () => void downloadArchive(repoRoot!, rel) });
-      // 配下に競合あり → 競合を解消 (002.md §2)。
-      // stash の復元や cherry-pick --no-commit では進行中フラグが残らないので、競合の有無で判定する
-      if (isDir && mergeState.conflicted.length > 0 && conflictsUnder(rel)) {
-        items.push({ id: 'resolveConflict', label: '競合を解消…', action: () => openConflictResolver(rel) });
-      }
-    } else if (isDir) {
-      // Git 管理外のフォルダ → Git Clone… (002.md §3)
-      items.push({ id: 'gitClone', label: 'Git Clone…', action: () => openCloneDialog(targetPath) });
-    }
-    return items;
-  };
-
-  /**
-   * 未追跡のエントリ (1 件選択時) を .git/info/exclude に追加する項目。
-   * 追跡済み / 無視済みのエントリや複数選択では出さない
-   */
-  const gitExcludeItems = (entry: FsEntry, single: boolean): CfgMenuItem[] => {
-    const rel = relOf(entry.path);
-    if (!repoRoot || !single || !rel) return [];
-    const untracked =
-      useGit.getState().overlay[entry.path] === 'untracked' || dirOverlay[entry.path] === 'untracked';
-    if (!untracked) return [];
-    return [
-      { separator: true },
-      {
-        id: 'gitExclude',
-        label: '未追跡ファイルを除外する',
-        action: () => void excludeUntracked(repoRoot, rel, entry.type === 'dir'),
-      },
-    ];
-  };
-
   const entryMenu =(e: React.MouseEvent, entry: FsEntry) => {
     e.preventDefault();
     // コンテナの backgroundMenu へバブリングさせない (背景メニューで上書きされるのを防ぐ)
@@ -415,95 +288,15 @@ export function FileList() {
     else setSelection(selection, entry.path);
     containerRef.current?.focus();
     const sel = selectedSet.has(entry.path) ? selection : [entry.path];
-    const single = sel.length === 1;
-    const pinned = useSettings.getState().isPinned(entry.path);
-    const isDir = entry.type === 'dir';
-    // 外部ツール: 選択中のパス群 (複数可) を引数に起動。group 指定のものは各グループへ合流。
-    // 表示条件用に選択エントリの種別/拡張子を渡す
-    const selEntriesForTools = displayed.filter((d) => sel.includes(d.path));
-    const tools = toolItems(
-      sel,
-      selEntriesForTools.map((d) => ({ kind: d.type === 'dir' ? 'dir' : 'file', ext: d.ext })),
-    );
-
-    // 「開く」系統をサブメニューにまとめる
-    const openGroup: CfgMenuItem[] = [
-      { id: 'open', label: '開く', action: () => selEntriesForTools.forEach(openWithDefault) },
-      ...(isDir
-        ? [
-            // フォルダ: 対象フォルダ自体を別ウィンドウ (ブラウザの別タブ) で開く
-            { id: 'openNewWindow', label: '別ウィンドウで開く', newTab: true, action: () => openInNewWindow(entry.path) },
-            // 表示中のフォルダ (左) とこのフォルダ (右) を並べて整理する
-            { id: 'openDualPane', label: '2 画面で整理…', action: () => openDualPane({ right: entry.path }) },
-            { separator: true },
-            ...osItems(entry.path),
-          ]
-        : [
-            { id: 'openEditor', label: 'エディタで開く', action: () => openEntry(entry) },
-            // Markdown はダブルクリックの既定がプレビューなので、明示的に選べる項目も出す
-            ...(isMarkdownPath(entry.path)
-              ? [{ id: 'openPreview', label: 'プレビューで開く', action: () => openMarkdownPreview(entry.path) }]
-              : []),
-            // ファイル: 同じフォルダを別ウィンドウで開いて対象にフォーカス
-            { id: 'openNewWindow', label: '別ウィンドウで開く', newTab: true, action: () => openInNewWindow(path, entry.name) },
-            { id: 'openDualPane', label: '2 画面で整理…', action: () => openDualPane() },
-            { separator: true },
-            // ファイルも OS 側で開ける (親フォルダを開き、そのファイルを選択した状態にする)
-            ...osItems(entry.path),
-          ]),
-      ...tools.take('開く'),
-    ];
-
-    // 「削除」系統
-    const deleteGroup: CfgMenuItem[] = [
-      { id: 'delete', label: 'ゴミ箱に移動', action: () => void deleteSelection(false) },
-      { id: 'deletePermanent', label: '完全に削除', action: () => void deleteSelection(true), danger: true },
-      ...tools.take('削除'),
-    ];
-
-    // 「Git」系統 (文脈依存項目 + リポジトリ操作)
-    const gitGroup: CfgMenuItem[] = [
-      ...gitContextItems(entry.path, !isDir, isDir),
-      ...gitRepoItems(sel),
-      ...gitExcludeItems(entry, single),
-      ...tools.take('Git'),
-    ];
-
-    const items: CfgMenuItem[] = [
-      { id: 'groupOpen', label: '開く', submenu: openGroup },
-      // ピン止め / 解除のトグル (002.md §7.2)。解除は確認フローへ
-      ...(isDir
-        ? [
-            pinned
-              ? { id: 'pin', label: 'ピン止めを解除', action: () => void unpinFolder(entry.path, entry.name) }
-              : {
-                  id: 'pin',
-                  label: 'クイックアクセスにピン止め',
-                  action: () => void pinFolder(entry.path, entry.name),
-                },
-          ]
-        : []),
-      { separator: true },
-      { id: 'copy', label: 'コピー', action: copySelection },
-      { id: 'cut', label: '切り取り', action: cutSelection },
-      {
-        id: 'paste',
-        label: '貼り付け',
-        action: () => void paste(isDir ? entry.path : undefined),
-        disabled: !clipboard,
-      },
-      { separator: true },
-      { id: 'rename', label: '名前の変更 (F2)', action: () => setRenaming(entry.path), disabled: !single },
-      { id: 'groupDelete', label: '削除', submenu: deleteGroup },
-      { separator: true },
-      { id: 'groupGit', label: 'Git', submenu: gitGroup },
-      { separator: true },
-      // 既定グループに属さないカスタム項目 (独自グループ / group 無し)
-      ...tools.rest(),
-      { separator: true },
-      { id: 'properties', label: 'プロパティ', action: () => void showProperties(entry), disabled: !single },
-    ];
-    openMenu(e.clientX, e.clientY, pruneMenu(items));
+    const items = entryMenuItems({
+      entry,
+      targets: displayed.filter((d) => sel.includes(d.path)),
+      fileDir: path,
+      untracked: useGit.getState().overlay[entry.path] === 'untracked' || dirOverlay[entry.path] === 'untracked',
+      openInNewWindow,
+      rename: () => setRenaming(entry.path),
+    });
+    openMenu(e.clientX, e.clientY, items);
   };
 
   const backgroundMenu = (e: React.MouseEvent) => {
