@@ -20,11 +20,11 @@ function relativeTo(p: string, root: string): string | null {
   return fold(p).startsWith(fold(prefix)) ? p.slice(prefix.length) : null;
 }
 
-/** タブ名の右クリックメニュー。リポジトリ内のファイルなら相対パスのコピーも出す */
+/** タブ名の右クリックメニュー。リポジトリ内のファイルなら相対パスのコピーも (先に) 出す */
 async function openTabMenu(e: React.MouseEvent, path: string): Promise<void> {
   e.preventDefault();
   const { clientX, clientY } = e;
-  const items: MenuItem[] = copyPathItems('パスをコピー', path);
+  const items: MenuItem[] = [];
   try {
     const { isRepo, root } = await api.isRepo(parentPath(path));
     const rel = isRepo && root ? relativeTo(path, root) : null;
@@ -32,6 +32,7 @@ async function openTabMenu(e: React.MouseEvent, path: string): Promise<void> {
   } catch {
     // リポジトリか判定できなければ「パスをコピー」のみ出す
   }
+  items.push(...copyPathItems('パスをコピー', path));
   useContextMenu.getState().open(clientX, clientY, items);
 }
 

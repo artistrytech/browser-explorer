@@ -207,11 +207,11 @@ export function entryMenuItems(opts: EntryMenuOptions): MenuItem[] {
     ...tools.take('開く'),
   ];
 
-  // 「パスをコピー」系統 (リポジトリ内なら相対パスも)
+  // 「パスをコピー」系統 (リポジトリ内なら相対パスを先に出す)
   const rels = sel.map(repoRelOf);
   const copyPathGroup: CfgMenuItem[] = [
-    ...copyPathItems('パスをコピー', sel),
     ...(rels.every((r) => r) ? copyPathItems('リポジトリの相対パスをコピー', rels as string[]) : []),
+    ...copyPathItems('パスをコピー', sel),
   ];
 
   // 「削除」系統
