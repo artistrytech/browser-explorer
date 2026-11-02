@@ -470,7 +470,14 @@ export default function App() {
                   {view === 'diff' && <DiffTab />}
                 </div>
                 <div className={cx(`main-view${view === 'preview' ? '' : ' hidden'}`)}>
-                  {view === 'preview' && <MarkdownTab />}
+                  {/* ファイルタブと同じく、リポジトリ内なら Git のツールバーを出す */}
+                  {view === 'preview' && (
+                    <>
+                      <GitToolbar />
+                      <GitMergeBanner />
+                      <MarkdownTab />
+                    </>
+                  )}
                 </div>
                 <div className={cx(`main-view${view === 'applog' ? '' : ' hidden'}`)}>
                   {view === 'applog' && <AppLogTab />}
