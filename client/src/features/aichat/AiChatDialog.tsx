@@ -104,11 +104,18 @@ function MainArea() {
   const creating = useAiChat((s) => s.creating);
   const box = useAiChat((s) => s.boxes.find((b) => b.id === s.selectedId) ?? null);
   const loaded = useAiChat((s) => s.boxesLoaded);
+  const hasBoxes = useAiChat((s) => s.boxes.length > 0);
   if (creating) return <NewBoxForm />;
   if (!box) {
+    if (!loaded) return <div className={cx('empty')}>読み込み中…</div>;
+    // 表示中のフォルダ (リポジトリ) の Box が無い
     return (
       <div className={cx('empty')}>
-        {loaded ? 'Box を選ぶか、新規 Box を作成してください' : '読み込み中…'}
+        <p>会話履歴はありません</p>
+        <button className={cx('btn primary')} onClick={() => useAiChat.getState().setCreating(true)}>
+          ＋ 新規 Box
+        </button>
+        {hasBoxes && <p className={cx('hint')}>他のフォルダの Box は上のドロップダウンから選べます</p>}
       </div>
     );
   }
@@ -383,7 +390,6 @@ function RenameInput({ box, onDone }: { box: AiBox; onDone: () => void }) {
 // --- 新しい Box ---
 
 function NewBoxForm() {
-  const hasBoxes = useAiChat((s) => s.boxes.length > 0);
   const [stamp] = useState(() => timestampName());
   const [name, setName] = useState(stamp);
   /** 名前を手で書き換えたら、ベースフォルダを変えても既定名で上書きしない */
@@ -459,11 +465,9 @@ function NewBoxForm() {
         <button className={cx('btn primary')} disabled={busy || !cwd.trim()} onClick={() => void create()}>
           作成
         </button>
-        {hasBoxes && (
-          <button className={cx('btn')} onClick={() => useAiChat.getState().setCreating(false)}>
-            キャンセル
-          </button>
-        )}
+        <button className={cx('btn')} onClick={() => useAiChat.getState().setCreating(false)}>
+          キャンセル
+        </button>
       </div>
     </div>
   );

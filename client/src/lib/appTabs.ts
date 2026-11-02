@@ -81,9 +81,10 @@ export function clearTabSession(id: string): void {
 
 /**
  * 新しいタブへ引き継がない記憶。セッション ID はタブごとに振り直す (lib/session.ts の KEY)。
- * エディタで開いているファイルは開き元のタブだけで開き直す (lib/editorTabsMemory.ts の EDITOR_TABS_KEY)
+ * エディタで開いているファイルと AI チャットは開き元のタブだけで開き直す
+ * (lib/editorTabsMemory.ts の EDITOR_TABS_KEY、features/aichat/aiChatStore.ts の OPEN_KEY)
  */
-const NOT_INHERITED = new Set(['appSessionId', 'editor:tabs']);
+const NOT_INHERITED = new Set(['appSessionId', 'editor:tabs', 'aichat:open']);
 
 /**
  * タブの sessionStorage を別タブへ複製する。

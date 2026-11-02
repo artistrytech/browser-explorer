@@ -39,7 +39,7 @@ import { DualPaneDialog } from './features/transfer/DualPaneDialog';
 import { TransferConfirmDialog } from './features/transfer/TransferConfirmDialog';
 import { CommandPalette } from './features/palette/CommandPalette';
 import { AiChatDialog, AiChatPanel } from './features/aichat/AiChatDialog';
-import { loadDockSize, saveDockSize, useAiChat } from './features/aichat/aiChatStore';
+import { loadDockSize, restoreAiChat, saveDockSize, useAiChat } from './features/aichat/aiChatStore';
 import { TerminalPanel, TerminalWindow } from './features/terminal/TerminalPanel';
 import { loadPanelSize, restoreTerminal, savePanelSize, useTerminal } from './features/terminal/terminalStore';
 import { ContextMenuHost } from './components/ContextMenu';
@@ -116,8 +116,9 @@ export default function App() {
     api.osPlatform().then((r) => useUi.getState().setPlatform(r.platform)).catch(() => {});
     // コンテキストメニューの表示設定・外部ツール (設定は DB。初回は config.jsonc から seed)
     void refreshUiConfig();
-    // 読み込み直す前に開いていたターミナル・エディタのファイルを開き直す
+    // 読み込み直す前に開いていたターミナル・エディタのファイル・AI チャットを開き直す
     void restoreTerminal();
+    restoreAiChat();
     void useEditor.getState().restore();
     const initial = pathFromUrl();
     const initialView = viewFromUrl();

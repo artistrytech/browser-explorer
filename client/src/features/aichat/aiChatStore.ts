@@ -5,6 +5,7 @@ import { confirmDialog } from '../../stores/dialog';
 import { useExplorer } from '../../stores/explorer';
 import { toastError } from '../../stores/toast';
 import { baseName } from '../../lib/paths';
+import { tabSession } from '../../lib/appTabs';
 import type { AiAgent, AiAgentsResult, AiBox, AiBoxPrefs, AiTurn } from '../../types';
 
 /**
@@ -63,6 +64,26 @@ function saveSelectedBox(id: number | null): void {
   try {
     if (id === null) localStorage.removeItem(BOX_KEY);
     else localStorage.setItem(BOX_KEY, String(id));
+  } catch {
+    /* storage full 等は無視 */
+  }
+}
+
+/** 開いているかはタブごと (sessionStorage) に持ち、読み込み直したときに開き直す (別タブへは引き継がない) */
+const OPEN_KEY = 'aichat:open';
+
+function loadOpen(): boolean {
+  try {
+    return tabSession.getItem(OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveOpen(open: boolean): void {
+  try {
+    if (open) tabSession.setItem(OPEN_KEY, '1');
+    else tabSession.removeItem(OPEN_KEY);
   } catch {
     /* storage full 等は無視 */
   }
@@ -132,17 +153,29 @@ function containsPath(dir: string, path: string): boolean {
   return path === dir || path.startsWith(dir.endsWith('/') ? dir : `${dir}/`);
 }
 
+/** dir を含むリポジトリのルート (リポジトリ外・存在しないフォルダは null) */
+async function repoRootOf(dir: string): Promise<string | null> {
+  try {
+    const r = await api.isRepo(dir);
+    return r.isRepo && r.root ? r.root : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * cwd を開くときに選ぶ Box。ベースフォルダが cwd か、その親のフォルダの Box のうち、
- * 最も近いフォルダ (cwd に一致するものが最優先) の、最後に使ったもの
+ * 最も近いフォルダ (cwd に一致するものが最優先) の、最後に使ったもの。
+ * 無ければ、リポジトリ内 (repoRoot 以下) の他のフォルダの Box のうち最後に使ったもの
  */
-function latestBoxFor(boxes: AiBox[], cwd: string): AiBox | null {
+function latestBoxFor(boxes: AiBox[], cwd: string, repoRoot: string | null): AiBox | null {
   const target = pathKey(cwd);
+  const root = repoRoot ? pathKey(repoRoot) : null;
   let best: { box: AiBox; depth: number } | null = null;
   for (const b of boxes) {
     const dir = pathKey(b.cwd);
-    if (!containsPath(dir, target)) continue;
-    const depth = dir.length;
+    const depth = containsPath(dir, target) ? dir.length : root && containsPath(root, dir) ? 0 : -1;
+    if (depth < 0) continue;
     if (!best || depth > best.depth || (depth === best.depth && b.lastActiveAt > best.box.lastActiveAt)) {
       best = { box: b, depth };
     }
@@ -191,7 +224,10 @@ interface AiChatStore {
   setDocked: (docked: boolean) => void;
   setCreating: (creating: boolean) => void;
   refreshAgents: (force?: boolean) => Promise<void>;
-  /** Box の一覧を読み込む。cwd を渡すと、そのフォルダの最後に使った Box があれば選ぶ */
+  /**
+   * Box の一覧を読み込む。cwd を渡すと、そのフォルダ (またはリポジトリ) の最後に使った Box を選び、無ければ選択を外す。
+   * 渡さなければ選択中のままにする (選択中の Box が消えたら、表示中のフォルダの Box を選び直す)
+   */
   loadBoxes: (opts?: { cwd?: string }) => Promise<void>;
   select: (id: number | null) => void;
   /** 最新の会話を読み込み直す (開閉の状態も既定に戻す) */
@@ -229,7 +265,10 @@ export const useAiChat = create<AiChatStore>((set, get) => ({
   prefs: loadPrefs(),
   composerHeight: loadComposerHeight(),
 
-  setOpen: (open) => set({ open }),
+  setOpen: (open) => {
+    set({ open });
+    saveOpen(open);
+  },
 
   setDocked: (docked) => {
     set({ docked });
@@ -254,11 +293,11 @@ export const useAiChat = create<AiChatStore>((set, get) => ({
     try {
       const { boxes } = await api.aiBoxes();
       const { selectedId } = get();
-      // 指定のフォルダ (またはその親のフォルダ) の Box を優先し、無ければ選択中のまま (消えていたら先頭を選ぶ)
-      const preferred = opts.cwd ? latestBoxFor(boxes, opts.cwd) : null;
-      const next =
-        preferred?.id ?? (boxes.some((b) => b.id === selectedId) ? selectedId : (boxes[0]?.id ?? null));
-      set({ boxes, boxesLoaded: true, creating: get().creating || boxes.length === 0 });
+      const gone = selectedId !== null && !boxes.some((b) => b.id === selectedId);
+      const cwd = opts.cwd ?? (gone ? useExplorer.getState().path : undefined);
+      // フォルダの Box が無ければ何も選ばず、「会話履歴はありません」を表示する
+      const next = cwd ? (latestBoxFor(boxes, cwd, await repoRootOf(cwd))?.id ?? null) : selectedId;
+      set({ boxes, boxesLoaded: true });
       if (next !== selectedId) get().select(next);
       else if (next !== null && !get().turns[next]) void get().loadTurns(next);
     } catch (e) {
@@ -384,8 +423,13 @@ export function openAiChat(): void {
   // 開き直したときも、最新以外は折り畳んだ状態から表示する
   if (s.selectedId !== null) s.resetCollapsed(s.selectedId);
   void s.refreshAgents();
-  // 表示中のフォルダ (無ければその親のフォルダ) で最後に使った Box を開く (無ければ前回の Box のまま)
+  // 表示中のフォルダ (無ければその親のフォルダ・同じリポジトリのフォルダ) で最後に使った Box を開く
   void s.loadBoxes({ cwd: useExplorer.getState().path });
+}
+
+/** 読み込み直す前にこのタブで開いていたら開き直す (起動時に 1 回) */
+export function restoreAiChat(): void {
+  if (loadOpen()) openAiChat();
 }
 
 export function closeAiChat(): void {
@@ -426,13 +470,8 @@ export function timestampName(d = new Date()): string {
 
 /** 既定の Box 名: フォルダ名 (リポジトリ内ならリポジトリのルートのフォルダ名) + 作成日時 */
 export async function defaultBoxName(cwd: string, stamp: string): Promise<string> {
-  let dir = cwd.trim();
-  try {
-    const r = await api.isRepo(dir);
-    if (r.isRepo && r.root) dir = r.root;
-  } catch {
-    /* 存在しないフォルダ等はそのままの名前を使う */
-  }
+  // 存在しないフォルダ等はそのままの名前を使う
+  const dir = (await repoRootOf(cwd.trim())) ?? cwd.trim();
   const folder = baseName(dir.replace(/\\/g, '/'));
   return folder ? `${folder} ${stamp}` : stamp;
 }
