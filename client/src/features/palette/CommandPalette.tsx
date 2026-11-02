@@ -12,14 +12,18 @@ import { useSettings } from '../../stores/settings';
 import { switchView, WORKTREE_REVIEW_ID } from '../../stores/ui';
 import { openSyncDialog, openSyncDialogTab, type SyncTab } from '../git/SyncDialog';
 import { useRebaseDialog } from '../git/Rebase';
+import { openBackupBranchDialog, openCreateBranchDialog, openRenameBranchDialog } from '../git/BranchDialog';
+import { runGitCommands } from '../git/GitCommandDialog';
 import { openRepoGroupsDialog } from '../../app/RepoGroupsDialog';
 import { openAiChat } from '../aichat/aiChatStore';
 import { openTerminal, openTerminalAt } from '../terminal/terminalStore';
 import { appTabId, isCommandPaletteKey, type AppTabWindow } from '../../lib/appTabs';
+import { backupBranchRegex } from '../../lib/backupBranch';
 import { isDialogOpen } from '../../lib/dialogKeys';
 import { matchText } from '../../lib/fuzzyMatch';
 import { openLocation } from '../../lib/openLocation';
 import { baseName } from '../../lib/paths';
+import type { GitBranch } from '../../types';
 import styles from './CommandPalette.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -27,12 +31,13 @@ const cx = createCssModuleClassNames(styles);
 
 /**
  * コマンドパレット (VSCode と同じく Ctrl+Shift+P / ⌘+Shift+P)。
- * コマンドの一覧から選んで実行する。「リポジトリ」「クイックアクセス」は続けて開く先を選ぶ。
+ * コマンドの一覧から選んで実行する。「リポジトリ」「クイックアクセス」は続けて開く先を、
+ * 「ブランチ切り替え」は続けて切り替え先のブランチを選ぶ。
  * コマンドは日本語名のほか英語名 (右側に薄く出す) でも絞り込める。
  */
 
-/** 表示中の一覧: コマンド / リポジトリ / クイックアクセス (newTab は別タブで開く) */
-type Page = { kind: 'commands' } | { kind: 'repos' | 'quick'; newTab: boolean };
+/** 表示中の一覧: コマンド / リポジトリ / クイックアクセス (newTab は別タブで開く) / 切り替え先のブランチ */
+type Page = { kind: 'commands' } | { kind: 'branches' } | { kind: 'repos' | 'quick'; newTab: boolean };
 
 interface PaletteItem {
   key: string;
@@ -94,7 +99,8 @@ export function openCommandPalette(): void {
 
 const NEED_REPO = 'Git リポジトリ内でのみ使えます';
 
-function buildCommands(inRepo: boolean): PaletteItem[] {
+/** currentBranch は現在のブランチ (detached HEAD なら null) */
+function buildCommands(inRepo: boolean, currentBranch: string | null): PaletteItem[] {
   const repoOnly = inRepo ? undefined : NEED_REPO;
   const sync = (tab: SyncTab, label: string, en: string): PaletteItem => ({
     key: `sync.${tab}`,
@@ -111,6 +117,35 @@ function buildCommands(inRepo: boolean): PaletteItem[] {
     sync('fetch', 'Fetch', 'Fetch'),
     sync('bulk', '一括', 'Bulk Update'),
     sync('remote', 'リモート', 'Remotes'),
+    {
+      key: 'branch.checkout',
+      label: 'ブランチ切り替え',
+      detail: 'Git: Checkout to Branch',
+      disabled: repoOnly,
+      next: { kind: 'branches' },
+    },
+    // 以下 3 つはブランチタブのヘッダのボタンと同じ
+    {
+      key: 'branch.create',
+      label: 'ブランチ作成',
+      detail: 'Git: Create Branch',
+      disabled: repoOnly,
+      run: () => openCreateBranchDialog(),
+    },
+    {
+      key: 'branch.rename',
+      label: 'ブランチ名変更',
+      detail: 'Git: Rename Branch',
+      disabled: repoOnly ?? (currentBranch ? undefined : 'ブランチをチェックアウトしていません (detached HEAD)'),
+      run: () => currentBranch && openRenameBranchDialog(currentBranch),
+    },
+    {
+      key: 'branch.backup',
+      label: 'ブランチのバックアップ',
+      detail: 'Git: Backup Branch',
+      disabled: repoOnly,
+      run: () => openBackupBranchDialog(currentBranch ?? ''),
+    },
     { key: 'repo', label: 'リポジトリ', detail: 'Repository: Open', next: { kind: 'repos', newTab: false } },
     {
       key: 'repo.newtab',
@@ -162,13 +197,49 @@ const PLACEHOLDER: Record<Page['kind'], string> = {
   commands: 'コマンドを入力 (英語名でも絞り込めます)',
   repos: '開くリポジトリを選択 (名前で絞り込み)',
   quick: '開くフォルダを選択 (名前で絞り込み)',
+  branches: '切り替えるブランチを選択 (名前で絞り込み)',
 };
 
 const EMPTY: Record<Page['kind'], string> = {
   commands: '一致するコマンドはありません',
   repos: '一致するリポジトリはありません',
   quick: '一致する項目はありません',
+  branches: '一致するブランチはありません',
 };
+
+const TITLE: Record<Exclude<Page['kind'], 'commands'>, string> = {
+  repos: 'リポジトリ',
+  quick: 'クイックアクセス',
+  branches: 'ブランチ切り替え',
+};
+
+/**
+ * 切り替え先のローカルブランチ (バックアップブランチは除く)。
+ * 他のワークツリーでチェックアウト中のブランチは git が切替を拒否するので、選んだらそのワークツリーを開く
+ */
+function buildBranchItems(repo: string, branches: GitBranch[], backupPattern: string): PaletteItem[] {
+  const backupRe = backupBranchRegex(backupPattern);
+  return branches
+    .filter((b) => !b.name.startsWith('remotes/') && !backupRe?.test(b.name))
+    .map((b) => {
+      const worktree = b.worktree;
+      if (b.current) return { key: b.name, label: b.name, disabled: '現在のブランチ' };
+      if (worktree) {
+        return {
+          key: b.name,
+          label: b.name,
+          detail: `他のワークツリーで使用中 (選ぶとそのワークツリーを開く): ${worktree}`,
+          run: () => openLocation(worktree, { keepView: true }),
+        };
+      }
+      return {
+        key: b.name,
+        label: b.name,
+        detail: b.upstream,
+        run: () => void runGitCommands(repo, [['checkout', b.name]], 'ブランチ切替'),
+      };
+    });
+}
 
 /** 一致した文字を強調する */
 function Highlight({ text, indices }: { text: string; indices: number[] }) {
@@ -206,15 +277,20 @@ export function CommandPalette() {
 
   if (!open) return null;
   // 一覧を切り替えたら入力と選択を初期化する
-  return <PaletteBody key={page.kind === 'commands' ? 'commands' : `${page.kind}:${page.newTab}`} page={page} />;
+  return <PaletteBody key={'newTab' in page ? `${page.kind}:${page.newTab}` : page.kind} page={page} />;
 }
 
 function PaletteBody({ page }: { page: Page }) {
   const repoRoot = useGit((s) => s.repoRoot);
+  const currentBranch = useGit((s) => s.status?.branch ?? null);
   const repositories = useSettings((s) => s.repositories);
   const repoLabels = useSettings((s) => s.settings.repoLabels);
   const favorites = useSettings((s) => s.favorites);
+  const backupPattern = useSettings((s) => s.settings.backupBranchPattern);
   const [home, setHome] = useState('');
+  /** ブランチの一覧 (読み込み中は null) */
+  const [branches, setBranches] = useState<GitBranch[] | null>(null);
+  const [branchError, setBranchError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -231,8 +307,25 @@ function PaletteBody({ page }: { page: Page }) {
       .catch(() => {});
   }, [page.kind]);
 
+  useEffect(() => {
+    if (page.kind !== 'branches' || !repoRoot) return;
+    let cancelled = false;
+    api
+      .gitBranches(repoRoot)
+      .then((r) => {
+        if (!cancelled) setBranches(r.branches);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setBranchError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [page.kind, repoRoot]);
+
   const items = useMemo<PaletteItem[]>(() => {
-    if (page.kind === 'commands') return buildCommands(repoRoot !== null);
+    if (page.kind === 'commands') return buildCommands(repoRoot !== null, currentBranch);
+    if (page.kind === 'branches') return repoRoot ? buildBranchItems(repoRoot, branches ?? [], backupPattern) : [];
     const { newTab } = page;
     if (page.kind === 'repos') {
       return repositories.map((r) => ({
@@ -249,7 +342,7 @@ function PaletteBody({ page }: { page: Page }) {
       detail: f.path,
       run: () => openLocation(f.path, { newTab }),
     }));
-  }, [page, repoRoot, repositories, repoLabels, favorites, home]);
+  }, [page, repoRoot, currentBranch, repositories, repoLabels, favorites, home, branches, backupPattern]);
 
   /** 絞り込み結果 (一致の強い順。同点は元の並び) */
   const rows = useMemo(() => {
@@ -323,9 +416,18 @@ function PaletteBody({ page }: { page: Page }) {
   };
 
   const title =
-    page.kind === 'commands'
-      ? null
-      : `${page.kind === 'repos' ? 'リポジトリ' : 'クイックアクセス'}${page.newTab ? ' (別タブで開く)' : ''}`;
+    page.kind === 'commands' ? null : `${TITLE[page.kind]}${'newTab' in page && page.newTab ? ' (別タブで開く)' : ''}`;
+
+  const emptyText = () => {
+    if (page.kind === 'branches') {
+      if (branchError) return `ブランチの一覧を取得できませんでした: ${branchError}`;
+      if (!branches) return '読み込み中…';
+    }
+    if (items.length > 0) return EMPTY[page.kind];
+    if (page.kind === 'repos') return '登録されたリポジトリはありません';
+    if (page.kind === 'branches') return 'ブランチはありません';
+    return '項目はありません';
+  };
 
   return (
     <div className={cx('cp-layer')} onMouseDown={cancel}>
@@ -375,15 +477,7 @@ function PaletteBody({ page }: { page: Page }) {
               {item.disabled && <span className={cx('cp-reason')}>{item.disabled}</span>}
             </div>
           ))}
-          {rows.length === 0 && (
-            <div className={cx('cp-empty')}>
-              {items.length === 0
-                ? page.kind === 'repos'
-                  ? '登録されたリポジトリはありません'
-                  : '項目はありません'
-                : EMPTY[page.kind]}
-            </div>
-          )}
+          {rows.length === 0 && <div className={cx('cp-empty')}>{emptyText()}</div>}
         </div>
       </div>
     </div>
