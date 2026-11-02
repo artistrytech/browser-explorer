@@ -28,6 +28,7 @@ import {
   listCodexModels,
   runTurn,
 } from '../services/aiRunner.js';
+import { listSkills } from '../services/aiSkills.js';
 import { broadcastEvent } from '../ws/watcher.js';
 
 /**
@@ -137,6 +138,14 @@ aiRouter.get('/boxes/:id', (req, res) => {
   const before = Number.isInteger(b) && b > 0 ? b : undefined;
   const { turns, hasMore } = listTurns(box.id, { limit, before });
   res.json({ box: withRunning(box), turns, hasMore });
+});
+
+/** Box のベースフォルダで agent が使えるスキル (送信欄のスキルの選択用) */
+aiRouter.get('/boxes/:id/skills', async (req, res) => {
+  const box = mustGetBox(req.params.id);
+  const { agent } = req.query;
+  if (!isAiAgent(agent)) badRequest('AI の種類が不正です');
+  res.json({ skills: await listSkills(agent, box.cwd) });
 });
 
 /**

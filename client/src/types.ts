@@ -343,6 +343,14 @@ export interface AiAgentsResult {
   defaultPermissions: Record<AiAgent, string>;
 }
 
+/** 送信欄で選べるスキル (Claude は /名前、Codex は $名前 で依頼に書く) */
+export interface AiSkill {
+  name: string;
+  description: string;
+  /** project = ベースフォルダ (〜リポジトリのルート)、user = ホーム、system = Codex の同梱 */
+  source: 'project' | 'user' | 'system';
+}
+
 /** 「続ける」の対象 (AI ごとに最後の会話)。sessionId は CLI から受け取るまで null */
 export interface AiSession {
   thread: number;

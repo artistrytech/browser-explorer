@@ -3,6 +3,7 @@ import type {
   AiAgentsResult,
   AiBox,
   AiBoxPrefs,
+  AiSkill,
   AiTurn,
   AppSettings,
   CodexModelInfo,
@@ -211,6 +212,9 @@ export const api = {
   aiAgents: (refresh = false) => get<AiAgentsResult>(`/api/ai/agents${refresh ? '?refresh=1' : ''}`),
   aiCodexModels: () => get<{ models: CodexModelInfo[] }>('/api/ai/codex-models'),
   aiBoxes: () => get<{ boxes: AiBox[] }>('/api/ai/boxes'),
+  /** Box のベースフォルダで agent が使えるスキル */
+  aiSkills: (boxId: number, agent: AiAgent) =>
+    get<{ skills: AiSkill[] }>(`/api/ai/boxes/${boxId}/skills?agent=${agent}`),
   /** Box と会話 (新しい方から limit 件。before を付けるとそれより古いもの) */
   aiBox: (id: number, opts: { limit?: number; before?: number } = {}) =>
     get<{ box: AiBox; turns: AiTurn[]; hasMore: boolean }>(

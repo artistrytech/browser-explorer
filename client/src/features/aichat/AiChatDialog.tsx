@@ -7,7 +7,7 @@ import { useContextMenu } from '../../components/ContextMenu';
 import { confirmDialog } from '../../stores/dialog';
 import { useExplorer } from '../../stores/explorer';
 import { toastError } from '../../stores/toast';
-import type { AiAgent, AiBox } from '../../types';
+import type { AiAgent, AiBox, AiSkill } from '../../types';
 import { AiTurnView } from './AiTurnView';
 import {
   AI_LABELS,
@@ -29,6 +29,9 @@ const AGENTS: AiAgent[] = ['codex', 'claude'];
 /** 境界のドラッグで送信欄の高さを変えるとき、入力欄 / 会話の部分に最低限残す高さ (px。CSS と合わせる) */
 const TEXTAREA_MIN_HEIGHT = 40;
 const TIMELINE_MIN_HEIGHT = 80;
+
+/** ページを開いてから最初に表示する送信欄か (前回の会話を続けず、「新規」から始める) */
+let firstComposer = true;
 
 /**
  * AI チャット (VSCode の拡張機能のような Codex / Claude との対話)。
@@ -720,15 +723,20 @@ function Composer({ box }: { box: AiBox }) {
   const agent = prefs.agent;
   const session = box.sessions[agent];
   const canContinue = !!session?.sessionId;
-  const [mode, setMode] = useState<'continue' | 'new'>(canContinue ? 'continue' : 'new');
+  const [mode, setMode] = useState<'continue' | 'new'>(() => (canContinue && !firstComposer ? 'continue' : 'new'));
   const [sending, setSending] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   // 続けられる会話が無くなったら (AI の切替・ベースフォルダの変更) 新しい会話に、
-  // 新しい会話を始めた直後は次から続けるのを既定にする
+  // 新しい会話を始めた直後は次から続けるのを既定にする (表示した直後は初期値のまま)
+  const modeKey = `${canContinue}:${agent}:${session?.thread ?? ''}`;
+  const prevModeKey = useRef(modeKey);
   useEffect(() => {
+    firstComposer = false;
+    if (prevModeKey.current === modeKey) return;
+    prevModeKey.current = modeKey;
     setMode(canContinue ? 'continue' : 'new');
-  }, [canContinue, agent, session?.thread]);
+  }, [modeKey, canContinue]);
 
   const info = agents?.agents[agent];
   const models = agents?.models[agent] ?? [];
@@ -761,6 +769,32 @@ function Composer({ box }: { box: AiBox }) {
       setSending(false);
       textRef.current?.focus();
     }
+  };
+
+  /**
+   * スキルを依頼に入れる。Claude は /名前 を依頼の先頭に書く (先頭にあるスキルは置き換える)。
+   * Codex は $名前 を依頼のどこに書いてもよいので、カーソルの位置に入れる
+   */
+  const insertSkill = (name: string) => {
+    const el = textRef.current;
+    let next: string;
+    let caret: number;
+    if (agent === 'claude') {
+      const head = `/${name} `;
+      next = head + draft.replace(/^\/\S*\s*/, '');
+      caret = head.length;
+    } else {
+      const start = el?.selectionStart ?? draft.length;
+      const before = draft.slice(0, start);
+      const token = `${before && !/\s$/.test(before) ? ' ' : ''}$${name} `;
+      next = before + token + draft.slice(el?.selectionEnd ?? start);
+      caret = start + token.length;
+    }
+    useAiChat.getState().setDraft(box.id, next);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
   };
 
   const stop = async () => {
@@ -887,6 +921,7 @@ function Composer({ box }: { box: AiBox }) {
         }}
       />
       <div className={cx('composer-row')}>
+        <SkillPicker box={box} agent={agent} onPick={insertSkill} />
         <span className={cx('hint')}>
           {mode === 'continue' && canContinue
             ? `${AI_LABELS[agent]} の会話 #${session!.thread} の続きとして送ります`
@@ -903,6 +938,149 @@ function Composer({ box }: { box: AiBox }) {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+const SKILL_SOURCES: Record<AiSkill['source'], string> = { project: 'プロジェクト', user: 'ユーザー', system: '同梱' };
+
+/**
+ * 使えるスキルを選ぶドロップダウン (名前で絞り込み)。開くたびに Box のベースフォルダのスキルを読み直す。
+ * ↑↓ で選んで Enter (またはクリック) で onPick にスキル名を渡す
+ */
+function SkillPicker({ box, agent, onPick }: { box: AiBox; agent: AiAgent; onPick: (name: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [skills, setSkills] = useState<AiSkill[] | null>(null);
+  const [query, setQuery] = useState('');
+  const [active, setActive] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const q = query.trim().toLowerCase();
+  const rows = (q ? skills?.filter((s) => s.name.toLowerCase().includes(q)) : skills) ?? [];
+
+  // 開いたら絞り込みを空にして、スキルを読み直す
+  useEffect(() => {
+    if (!open) return;
+    setQuery('');
+    setActive(0);
+    setSkills(null);
+    inputRef.current?.focus();
+    let canceled = false;
+    api
+      .aiSkills(box.id, agent)
+      .then((r) => {
+        if (!canceled) setSkills(r.skills);
+      })
+      .catch((e) => {
+        if (canceled) return;
+        setSkills([]);
+        toastError(e);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [open, box.id, box.cwd, agent]);
+
+  // 外側のクリックで閉じる
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  useEffect(() => {
+    const el = listRef.current?.children[active];
+    if (el instanceof HTMLElement) el.scrollIntoView({ block: 'nearest' });
+  }, [active, skills]);
+
+  const choose = (s: AiSkill | undefined) => {
+    if (!s) return;
+    setOpen(false);
+    onPick(s.name);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    const move = (delta: number) => {
+      e.preventDefault();
+      if (rows.length > 0) setActive((i) => (i + delta + rows.length) % rows.length);
+    };
+    if (e.key === 'ArrowDown') move(1);
+    else if (e.key === 'ArrowUp') move(-1);
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      choose(rows[active]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div ref={rootRef}>
+      <button
+        className={cx('btn small')}
+        title={`${AI_LABELS[agent]} のスキルを依頼に入れる (${agent === 'claude' ? '/' : '$'}スキル名)`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        スキル ▾
+      </button>
+      {open && (
+        <div className={cx('picker-pop skill-pop')}>
+          <input
+            ref={inputRef}
+            className={cx('input picker-filter')}
+            value={query}
+            placeholder="スキル名で絞り込み"
+            spellCheck={false}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="aichat-skill-list"
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActive(0);
+            }}
+            onKeyDown={onKeyDown}
+          />
+          <div ref={listRef} id="aichat-skill-list" className={cx('picker-list')} role="listbox">
+            {rows.map((s, i) => (
+              <div
+                key={s.name}
+                role="option"
+                aria-selected={i === active}
+                className={cx(`picker-item${i === active ? ' active' : ''}`)}
+                title={s.description ? `${s.name}\n${s.description}` : s.name}
+                onMouseMove={() => i !== active && setActive(i)}
+                onClick={() => choose(s)}
+              >
+                <span className={cx('picker-item-main')}>
+                  <span className={cx('picker-item-name')}>
+                    {s.name}
+                    <span className={cx('skill-source')}>{SKILL_SOURCES[s.source]}</span>
+                  </span>
+                  {s.description && <span className={cx('skill-desc')}>{s.description}</span>}
+                </span>
+              </div>
+            ))}
+            {rows.length === 0 && (
+              <div className={cx('picker-empty')}>
+                {skills === null
+                  ? '読み込み中…'
+                  : skills.length === 0
+                    ? `${AI_LABELS[agent]} のスキルが見つかりません`
+                    : '一致するスキルはありません'}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

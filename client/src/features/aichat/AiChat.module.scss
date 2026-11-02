@@ -297,6 +297,31 @@
   color: var(--text-dim);
 }
 
+/* スキルの選択は送信欄 (.composer) の上に開く */
+.picker-pop.skill-pop {
+  top: auto;
+  bottom: 100%;
+  max-height: min(360px, 60vh);
+}
+
+.skill-source {
+  flex: none;
+  font-size: 10px;
+  font-weight: normal;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+.skill-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .picker-new {
   flex: none;
   border: none;
@@ -761,6 +786,7 @@
 /* --- 送信欄 --- */
 
 .composer {
+  position: relative;
   flex: none;
   border-top: 1px solid var(--border);
   padding: 8px 10px;
