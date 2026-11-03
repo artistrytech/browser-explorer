@@ -28,7 +28,9 @@
 .editor-pane {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  /* 上に Git のツールバーが並ぶので、残りの高さを使う */
+  flex: 1;
+  min-height: 0;
 }
 
 .editor-tabs {

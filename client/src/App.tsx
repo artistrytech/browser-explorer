@@ -421,6 +421,13 @@ export default function App() {
                   <FileList />
                 </div>
                 <div className={cx(`main-view${view === 'editor' ? '' : ' hidden'}`)}>
+                  {/* ファイルタブと同じく、リポジトリ内なら Git のツールバーを出す (表示中だけ。エディタ本体は保ったまま) */}
+                  {view === 'editor' && (
+                    <>
+                      <GitToolbar />
+                      <GitMergeBanner />
+                    </>
+                  )}
                   {tabs.length > 0 && <EditorPane />}
                 </div>
                 <div className={cx(`main-view${isGitView(view) ? '' : ' hidden'}`)}>
