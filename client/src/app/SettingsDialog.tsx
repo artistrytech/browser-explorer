@@ -48,6 +48,7 @@ const MENU_ITEMS: { key: string; label: string }[] = [
   { key: 'gitLog', label: '  Git ログ' },
   { key: 'gitArchive', label: '  アーカイブ' },
   { key: 'resolveConflict', label: '  競合を解消…' },
+  { key: 'gitInit', label: '  Git init…' },
   { key: 'gitClone', label: '  Git Clone…' },
   { key: 'gitStage', label: '  ステージ' },
   { key: 'gitUnstage', label: '  ステージ解除' },

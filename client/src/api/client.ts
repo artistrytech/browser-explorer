@@ -392,7 +392,16 @@ export const api = {
   gitMerge: (repo: string, branch: string) => post<{ ok: true }>('/api/git/merge', { repo, branch }),
   gitStash: (repo: string, action: 'save' | 'pop' | 'list') =>
     post<{ ok: true; list?: unknown[] }>('/api/git/stash', { repo, action }),
-  gitInit: (path: string) => post<{ ok: true }>('/api/git/init', { path }),
+  gitInit: (
+    path: string,
+    opts: { defaultBranch?: string; userName?: string; userEmail?: string } = {},
+  ) => post<{ ok: true }>('/api/git/init', { path, ...opts }),
+  /** git init ダイアログの初期値: 親の設定と、登録済みのリポジトリで使っているユーザ名 / メールアドレス */
+  gitInitOptions: (path: string, repos: string[]) =>
+    post<{
+      parent: { name: string; email: string; defaultBranch: string };
+      candidates: { name: string; email: string; repo: string }[];
+    }>('/api/git/init-options', { path, repos }),
   /** git コマンド実行: 非 0 終了でも HTTP 200 で ok:false が返る */
   // --- リポジトリ単位の認証設定 (鍵のパス等の参照のみ保存。秘密情報は保持しない) ---
   gitAuthGet: (repo: string) =>

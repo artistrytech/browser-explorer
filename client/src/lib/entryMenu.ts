@@ -7,6 +7,7 @@
 import { api } from '../api/client';
 import type { MenuItem } from '../components/ContextMenu';
 import { openCloneDialog } from '../features/git/CloneDialog';
+import { openGitInitDialog } from '../features/git/GitInitDialog';
 import { isMarkdownPath, openMarkdownPreview } from '../features/preview/MarkdownPreview';
 import { openDualPane } from '../features/transfer/DualPaneDialog';
 import { openConflictResolver } from '../stores/conflict';
@@ -114,7 +115,7 @@ function gitRepoItems(sel: string[]): CfgMenuItem[] {
   ];
 }
 
-/** Git 系の文脈依存項目 (ログを表示 / 競合を解消 / Git Clone…) */
+/** Git 系の文脈依存項目 (ログを表示 / 競合を解消 / Git init… / Git Clone…) */
 export function gitContextItems(targetPath: string, isFile: boolean, isDir: boolean): CfgMenuItem[] {
   const { repoRoot, mergeState } = useGit.getState();
   const rel = repoRelOf(targetPath);
@@ -138,7 +139,8 @@ export function gitContextItems(targetPath: string, isFile: boolean, isDir: bool
       items.push({ id: 'resolveConflict', label: '競合を解消…', action: () => openConflictResolver(rel) });
     }
   } else if (isDir) {
-    // Git 管理外のフォルダ → Git Clone… (002.md §3)
+    // Git 管理外のフォルダ → Git init… / Git Clone… (002.md §3)
+    items.push({ id: 'gitInit', label: 'Git init…', action: () => openGitInitDialog(targetPath) });
     items.push({ id: 'gitClone', label: 'Git Clone…', action: () => openCloneDialog(targetPath) });
   }
   return items;

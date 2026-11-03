@@ -27,6 +27,7 @@ import { WorkingDiff, type FocusFile } from './WorkingDiff';
 import { GitGraph } from './GitGraph';
 import { LogPathFilter } from './LogPathFilter';
 import { openCloneDialog } from './CloneDialog';
+import { openGitInitDialog } from './GitInitDialog';
 import { runGitCommands } from './GitCommandDialog';
 import { GitToolbar, GitMergeBanner } from './GitToolbar';
 import { openSyncDialog } from './SyncDialog';
@@ -418,21 +419,9 @@ export function GitPanel({ tab }: { tab: GitTab }) {
           <p>このフォルダは Git リポジトリではありません。</p>
           <button
             className={cx("btn")}
-            onClick={() =>
-              void confirmDialog('Git リポジトリを作成', `${explorerPath} で git init を実行しますか?`).then(
-                (ok) => {
-                  if (ok) {
-                    api
-                      .gitInit(explorerPath)
-                      .then(() => useGit.getState().checkRepo(explorerPath))
-                      .then(() => show('success', 'リポジトリを作成しました'))
-                      .catch(toastError);
-                  }
-                },
-              )
-            }
+            onClick={() => openGitInitDialog(explorerPath)}
           >
-            git init
+            git init…
           </button>{' '}
           <button className={cx("btn")} onClick={() => openCloneDialog(explorerPath)}>
             Git Clone…

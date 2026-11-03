@@ -15,6 +15,7 @@ import { EditorPane } from './features/editor/EditorPane';
 import { GitPanel } from './features/git/GitPanel';
 import { GitToolbar, GitMergeBanner } from './features/git/GitToolbar';
 import { CloneDialog } from './features/git/CloneDialog';
+import { GitInitDialog } from './features/git/GitInitDialog';
 import { ConflictResolver } from './features/git/ConflictResolver';
 import { GitCommandDialog } from './features/git/GitCommandDialog';
 import { SyncDialog } from './features/git/SyncDialog';
@@ -510,6 +511,7 @@ export default function App() {
       <SettingsDialog />
       <RepoGroupsDialog />
       <CloneDialog />
+      <GitInitDialog />
       {/* リベース中の全画面ロック。ConflictResolver より前に置き、解消ツールを手前に重ねる */}
       <RebaseOverlay />
       <ConflictResolver />

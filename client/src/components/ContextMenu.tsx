@@ -45,6 +45,13 @@ export const useContextMenu = create<MenuState>((set) => ({
   close: () => set({ visible: false }),
 }));
 
+/**
+ * サブメニューの開閉の遅延 (ms)。マウスを斜めに動かしてサブメニューへ移る途中で別の項目を横切っても
+ * すぐには切り替えず、少しの間メニューの外に出ても閉じないようにする (Windows のメニューと同じ考え方)
+ */
+const SUBMENU_OPEN_DELAY = 150;
+const SUBMENU_CLOSE_DELAY = 300;
+
 /** サブメニュー: 親項目の右側に開く。画面外にはみ出す場合は左側/上方向へ寄せる */
 function Submenu({ items, close }: { items: MenuItem[]; close: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -70,6 +77,19 @@ function Submenu({ items, close }: { items: MenuItem[]; close: () => void }) {
 function MenuList({ items, close }: { items: MenuItem[]; close: () => void }) {
   // マウスオーバー中のサブメニュー (クリックでも開く: タッチ/キーボード操作向け)
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  /** 遅延してから openIndex を next にする (既にそうなっていれば予約を取り消すだけ) */
+  const schedule = (next: number | null, delay: number) => {
+    clearTimeout(timer.current);
+    if (openIndex !== next) timer.current = setTimeout(() => setOpenIndex(next), delay);
+  };
+  /** 今すぐ開く (クリック時) */
+  const openNow = (i: number) => {
+    clearTimeout(timer.current);
+    setOpenIndex(i);
+  };
 
   return (
     <>
@@ -80,13 +100,14 @@ function MenuList({ items, close }: { items: MenuItem[]; close: () => void }) {
           <div
             key={i}
             className={cx("menu-group")}
-            onMouseEnter={() => setOpenIndex(i)}
-            onMouseLeave={() => setOpenIndex((cur) => (cur === i ? null : cur))}
+            // サブメニューはこの要素の中にあるので、サブメニューへ入ったときも mouseenter で予約を取り消せる
+            onMouseEnter={() => schedule(i, SUBMENU_OPEN_DELAY)}
+            onMouseLeave={() => schedule(null, SUBMENU_CLOSE_DELAY)}
           >
             <button
               className={cx(`menu-item has-submenu${openIndex === i ? ' open' : ''}`)}
               disabled={item.disabled}
-              onClick={() => setOpenIndex(i)}
+              onClick={() => openNow(i)}
             >
               <span>{item.label}</span>
               <span className={cx("menu-arrow")}>▶</span>
@@ -99,6 +120,8 @@ function MenuList({ items, close }: { items: MenuItem[]; close: () => void }) {
             className={cx(`menu-item${item.danger ? ' danger' : ''}`)}
             disabled={item.disabled}
             title={item.title}
+            // 通常の項目に乗ったら、開いているサブメニューは少し待ってから閉じる
+            onMouseEnter={() => schedule(null, SUBMENU_CLOSE_DELAY)}
             onClick={(e) => {
               close();
               item.action?.(e);

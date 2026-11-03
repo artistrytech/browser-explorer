@@ -1845,9 +1845,69 @@ gitRouter.get('/blame', async (req, res) => {
   res.json({ blame });
 });
 
-gitRouter.post('/init', async (req, res) => {
+/** git config の値 (未設定・失敗は空文字) */
+async function configValue(g: SimpleGit, key: string): Promise<string> {
+  return (await g.raw(['config', '--get', key]).catch(() => '')).trim();
+}
+
+/**
+ * git init ダイアログの初期値。親の設定 (global / system。対象フォルダから見えるもの) の
+ * user.name / user.email / init.defaultBranch と、登録済みの他のリポジトリで使っている
+ * user.name / user.email の組 (重複と、親の設定と同じものは除く) を返す。
+ */
+gitRouter.post('/init-options', async (req, res) => {
   const g = git(req.body.path);
+  const [name, email, defaultBranch] = await Promise.all([
+    configValue(g, 'user.name'),
+    configValue(g, 'user.email'),
+    configValue(g, 'init.defaultBranch'),
+  ]);
+  const repos: string[] = Array.isArray(req.body.repos)
+    ? req.body.repos.filter((r: unknown): r is string => typeof r === 'string' && r.length > 0).slice(0, 200)
+    : [];
+  const found = await Promise.all(
+    repos.map(async (repo) => {
+      try {
+        const rg = simpleGit(repo);
+        const [n, e] = await Promise.all([configValue(rg, 'user.name'), configValue(rg, 'user.email')]);
+        return n || e ? { name: n, email: e, repo } : null;
+      } catch {
+        return null; // 消えたフォルダ等は飛ばす
+      }
+    }),
+  );
+  // 親の設定と同じ組は上書きする意味が無いので出さない
+  const seen = new Set<string>([`${name}\n${email}`]);
+  const candidates = found.filter((c): c is { name: string; email: string; repo: string } => {
+    if (!c) return false;
+    const key = `${c.name}\n${c.email}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  res.json({ parent: { name, email, defaultBranch }, candidates });
+});
+
+/**
+ * git init。オプション: defaultBranch (最初のブランチ名)、userName / userEmail (このリポジトリだけの
+ * user.name / user.email を設定する。省略時は親の設定のまま)
+ */
+gitRouter.post('/init', async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const branch = str(body.defaultBranch);
+  const userName = str(body.userName);
+  const userEmail = str(body.userEmail);
+  const g = git(body.path);
+  if (branch) {
+    // ブランチ名として使えるか先に確かめる (init した後で失敗しないように)
+    await g.raw(['check-ref-format', '--branch', branch]).catch(() => badRequest(`ブランチ名に使えません: ${branch}`));
+  }
   await g.init();
+  // git init -b は古い git (2.28 未満) に無いので、作った直後の HEAD を付け替える (まだコミットが無いので安全)
+  if (branch) await g.raw(['symbolic-ref', 'HEAD', `refs/heads/${branch}`]);
+  if (userName) await g.addConfig('user.name', userName, false, 'local');
+  if (userEmail) await g.addConfig('user.email', userEmail, false, 'local');
   res.json({ ok: true });
 });
 
