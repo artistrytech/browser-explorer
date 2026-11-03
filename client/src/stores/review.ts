@@ -162,7 +162,7 @@ export const useReview = create<ReviewStore>((set, get) => ({
  * コメントは保存せず、入力欄の内容をコピーして使う
  */
 export function isLiveReview(review: Pick<Review, 'kind'>): boolean {
-  return review.kind !== 'branch';
+  return review.kind === 'head' || review.kind === 'worktree';
 }
 
 /** 未解決コメント数 (outdated は除く) をファイル単位で数える */

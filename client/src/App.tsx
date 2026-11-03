@@ -61,6 +61,7 @@ import {
   replaceView,
   isGitView,
   logFilterFromUrl,
+  logCommitFromUrl,
   refreshUiConfig,
 } from './stores/ui';
 import { onFsChange, onWsEvent } from './api/ws';
@@ -126,6 +127,8 @@ export default function App() {
     const initial = pathFromUrl();
     const initialView = viewFromUrl();
     const initialLogFilter = logFilterFromUrl();
+    // コミット指定はパス絞り込みと排他 (両方あればパス絞り込みを優先)
+    const initialLogCommit = initialLogFilter ? null : logCommitFromUrl();
     const initialSearch = searchFromUrl();
     const initialDiff = diffTargetFromUrl();
     const initialReview = reviewIdFromUrl();
@@ -138,6 +141,7 @@ export default function App() {
       params.set('logpath', initialLogFilter.path);
       if (initialLogFilter.follow) params.set('follow', '1');
     }
+    if (initialLogCommit) params.set('logcommit', initialLogCommit);
     if (initialSearch) params.set('q', initialSearch);
     if (initialDiff) {
       params.set('drepo', initialDiff.repo);
@@ -151,6 +155,7 @@ export default function App() {
     history.replaceState({ path: initial, view: initialView }, '', `${location.pathname}?${params}`);
     useUi.getState().setView(initialView);
     useGit.getState().setLogFilter(initialLogFilter);
+    useGit.getState().setLogCommit(initialLogCommit);
     if (initialDiff) useDiffTab.getState().open(initialDiff);
     // ?ppath= (Markdown のリンクを別タブで開いたとき等) はエディタタブのプレビューで開く (URL には残さない)
     if (initialPreview) void useEditor.getState().open(initialPreview, 'preview');
@@ -175,6 +180,8 @@ export default function App() {
       if (!(cur && next && cur.path === next.path && cur.follow === next.follow)) {
         useGit.getState().setLogFilter(next);
       }
+      const nextCommit = next ? null : logCommitFromUrl();
+      if (useGit.getState().logCommit !== nextCommit) useGit.getState().setLogCommit(nextCommit);
       // 差分タブの対象も URL から復元 (同一対象なら参照を維持)
       const curDiff = useDiffTab.getState().current;
       const nextDiff = diffTargetFromUrl();

@@ -190,7 +190,7 @@ function statusClass(f: GitFileStatus, staged: boolean): string {
 
 /** tab は最上位タブ (コミット/ログ/ブランチ) から与えられる */
 export function GitPanel({ tab }: { tab: GitTab }) {
-  const { repoRoot, status, loading, refreshStatus, logFilter } = useGit();
+  const { repoRoot, status, loading, refreshStatus, logFilter, logCommit } = useGit();
   const show = useToast((s) => s.show);
   const [message, setMessage] = useState('');
   const [amend, setAmend] = useState(false);
@@ -1351,13 +1351,15 @@ export function GitPanel({ tab }: { tab: GitTab }) {
   const logGraphPane = (
     // コミット DAG をグラフ描画 (002.md §5)。パス絞り込み時も同じグラフ表示
     <>
-      {/* 直接入力 + 補完でパスを絞り込む (ファイルタブからの「Gitログ」もここに反映される) */}
-      <LogPathFilter repoRoot={repoRoot} filter={logFilter} />
+      {/* 直接入力 + 補完でパスを絞り込む (ファイルタブからの「Gitログ」もここに反映される)。
+          プルダウンで「コミット指定」に切り替えると、ハッシュを入力してそのコミットからのログを出す */}
+      <LogPathFilter repoRoot={repoRoot} filter={logFilter} commit={logCommit} />
       <GitGraph
         repo={repoRoot}
         selectedHash={commitDetail?.hash ?? null}
         onSelect={selectCommit}
         filter={logFilter}
+        rev={logCommit}
       />
     </>
   );

@@ -41,6 +41,7 @@ import type {
   ReadResult,
   Review,
   ReviewComment,
+  ReviewCompare,
   ReviewDetail,
   TerminalInfo,
   TerminalListResult,
@@ -287,12 +288,22 @@ export const api = {
     ),
   gitGraph: (
     repo: string,
-    opts: { all?: boolean; branch?: string; limit?: number; skip?: number; path?: string; follow?: boolean } = {},
+    opts: {
+      all?: boolean;
+      branch?: string;
+      /** コミット指定: そのコミットと祖先のログ (branch / all より優先) */
+      rev?: string;
+      limit?: number;
+      skip?: number;
+      path?: string;
+      follow?: boolean;
+    } = {},
   ) =>
     get<{ commits: GitGraphCommit[] }>(
       `/api/git/graph?repo=${q(repo)}&limit=${opts.limit ?? 200}` +
         `${opts.skip ? `&skip=${opts.skip}` : ''}${opts.all ? '&all=true' : ''}` +
         `${opts.branch ? `&branch=${q(opts.branch)}` : ''}` +
+        `${opts.rev ? `&rev=${q(opts.rev)}` : ''}` +
         `${opts.path ? `&path=${q(opts.path)}` : ''}` +
         `${opts.follow ? '&follow=true' : ''}`,
     ),
@@ -515,7 +526,15 @@ export const api = {
 
   // --- コードレビュー (レビュータブ) ---
   reviewList: (repo: string) => get<{ reviews: Review[] }>(`/api/review/list?repo=${q(repo)}`),
-  reviewCreate: (body: { repo: string; title: string; baseBranch: string; headBranch: string }) =>
+  /** headType = 'commit' では headBranch にコミットのハッシュ (短縮形可) を渡す */
+  reviewCreate: (body: {
+    repo: string;
+    title: string;
+    baseBranch: string;
+    headBranch: string;
+    headType: 'branch' | 'commit';
+    compare: ReviewCompare;
+  }) =>
     post<{ review: Review }>('/api/review', body),
   reviewUpdate: (id: number, patch: { title?: string; summary?: string }) =>
     put<{ review: Review }>('/api/review', { id, ...patch }),

@@ -15,7 +15,18 @@ const cx = createCssModuleClassNames(styles);
  * 補完は Windows の「ファイル名を指定して実行」と同じ考え方で、
  * 入力中のパスの「親フォルダ直下」を一覧し、打ちかけの名前で前方一致させる。
  * 候補を選ぶとフォルダなら末尾に '/' を足して次の階層へ進む。
+ *
+ * 左端のプルダウンで「コミット指定」に切り替えると、ハッシュを入力して
+ * そのコミット (と祖先) のログを表示する。パス絞り込みとは排他。
  */
+
+/** 絞り込みの種類 (プルダウン) */
+type FilterMode = 'path' | 'commit';
+
+/** コミットのハッシュとして受け付ける形 (短縮形は 4 文字以上) */
+const HASH_RE = /^[0-9a-f]{4,64}$/i;
+/** 完全な形のハッシュ (貼り付けた場合は Enter を待たずに表示する) */
+const FULL_HASH_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 
 /** 候補の最大表示件数 (巨大フォルダで一覧が重くならないように) */
 const MAX_SUGGESTIONS = 300;
@@ -34,7 +45,18 @@ function normalizeInput(v: string): string {
   return v.trim().replace(/^\.?\/+/, '').replace(/\/+$/, '');
 }
 
-export function LogPathFilter({ repoRoot, filter }: { repoRoot: string; filter: LogFilter | null }) {
+export function LogPathFilter({
+  repoRoot,
+  filter,
+  commit,
+}: {
+  repoRoot: string;
+  filter: LogFilter | null;
+  /** 適用中のコミット指定 */
+  commit: string | null;
+}) {
+  const [mode, setMode] = useState<FilterMode>(commit ? 'commit' : 'path');
+  const [commitValue, setCommitValue] = useState(commit ?? '');
   const [value, setValue] = useState(filter?.path ?? '');
   /** 現在の親フォルダ直下のエントリ (前方一致で絞る前) */
   const [entries, setEntries] = useState<FsEntry[]>([]);
@@ -60,6 +82,17 @@ export function LogPathFilter({ repoRoot, filter }: { repoRoot: string; filter: 
     applied.current = path;
     setValue(path);
   }, [filter]);
+
+  // 外からコミット指定が変わったら (戻る/進む・パス絞り込みへの切り替え) 入力欄とプルダウンも合わせる
+  useEffect(() => {
+    if (commit) {
+      setMode('commit');
+      setCommitValue(commit);
+    } else if (filter) {
+      setMode('path');
+    }
+    // 両方とも無い (全体表示) ときは、選んでいるプルダウンをそのまま残す
+  }, [commit, filter]);
 
   // リポジトリが変われば別物なのでキャッシュを捨てる
   useEffect(() => {
@@ -137,12 +170,54 @@ export function LogPathFilter({ repoRoot, filter }: { repoRoot: string; filter: 
 
   // 入力が落ち着いたら自動で絞り込む (打鍵の途中経過は履歴に積まない)
   useEffect(() => {
+    if (mode !== 'path') return;
     const path = normalizeInput(value);
     if (path === applied.current) return;
     const timer = setTimeout(() => void applyPath(path, true), APPLY_DELAY);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, repoRoot]);
+  }, [value, repoRoot, mode]);
+
+  /** コミット指定を適用する (空なら解除)。不正な形は無視し、存在しないハッシュはログ側でエラー表示する */
+  const applyCommit = (raw: string, replace: boolean) => {
+    const hash = raw.trim();
+    if (hash && !HASH_RE.test(hash)) return;
+    if ((hash || null) === commit) return;
+    useGit.getState().showLogAtCommit(hash || null, { replace });
+  };
+
+  // 完全な形のハッシュを貼り付けた場合と、入力を消した場合は自動で適用する
+  // (短縮形は打鍵の途中で別のコミットに一致しうるので、Enter で確定する)
+  useEffect(() => {
+    if (mode !== 'commit') return;
+    const hash = commitValue.trim();
+    if (hash && !FULL_HASH_RE.test(hash)) return;
+    const timer = setTimeout(() => applyCommit(hash, true), APPLY_DELAY);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commitValue, mode]);
+
+  /** プルダウンの切り替え: もう一方の条件は解除する (両方を同時には使わない) */
+  const changeMode = (next: FilterMode) => {
+    if (next === mode) return;
+    setMode(next);
+    setListOpen(false);
+    if (next === 'commit') {
+      if (filter) {
+        applied.current = '';
+        ++applySeq.current; // 待機中のパス絞り込みの適用を捨てる
+        useGit.getState().showLogFor('', false, { replace: true });
+      }
+      setCommitValue('');
+    } else {
+      if (commit) useGit.getState().showLogAtCommit(null, { replace: true });
+      setValue('');
+    }
+    // 切り替えたらすぐ入力できるようにする
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const commitInvalid = commitValue.trim() !== '' && !HASH_RE.test(commitValue.trim());
 
   const onKeyDown = (ev: React.KeyboardEvent) => {
     if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
@@ -180,9 +255,50 @@ export function LogPathFilter({ repoRoot, filter }: { repoRoot: string; filter: 
     }
   };
 
+  const modeSelect = (
+    <select
+      className={cx('log-filter-mode')}
+      value={mode}
+      title="ログの絞り込み方法"
+      onChange={(ev) => changeMode(ev.target.value as FilterMode)}
+    >
+      <option value="path">パス絞り込み</option>
+      <option value="commit">コミット指定</option>
+    </select>
+  );
+
+  if (mode === 'commit') {
+    return (
+      <div className={cx('log-filter-bar')}>
+        {modeSelect}
+        <div className={cx('log-filter-field')}>
+          <input
+            ref={inputRef}
+            className={cx(`log-filter-input log-filter-hash${commitInvalid ? ' invalid' : ''}`)}
+            type="text"
+            spellCheck={false}
+            autoComplete="off"
+            placeholder="コミットのハッシュ (短縮形可。Enter でそのコミットと祖先のログを表示)"
+            value={commitValue}
+            title={commitInvalid ? 'ハッシュは 16 進数 4 文字以上で入力してください' : commitValue}
+            onChange={(ev) => setCommitValue(ev.target.value)}
+            onKeyDown={(ev) => {
+              if (ev.key === 'Enter') {
+                applyCommit(commitValue, false);
+              } else if (ev.key === 'Escape') {
+                ev.stopPropagation();
+                setCommitValue(commit ?? ''); // 適用済みの内容へ戻す
+              }
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={cx('log-filter-bar')}>
-      <span className={cx('log-filter-label')}>パス絞り込み</span>
+      {modeSelect}
       <div className={cx('log-filter-field')}>
         <input
           ref={inputRef}

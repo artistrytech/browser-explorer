@@ -461,14 +461,20 @@ export interface LogSessionSummary {
  * レビュー 1 件。base...head (merge-base 基準) の差分を、作成時に確定した
  * 2 つのコミット (baseCommit = merge-base / headCommit) のスナップショットとして持つ。
  */
+/** レビューの比較方法: merge-base = 3 点比較 (分岐点から) / direct = 2 点比較 (先端どうしを直接) */
+export type ReviewCompare = 'merge-base' | 'direct';
+
 export interface Review {
   id: number;
   /**
    * branch = 特定ブランチが対象 (作成時のコミットを固定)
-   * head = HEAD が対象 (開くたびに HEAD と merge-base を取り直す。コメントは保存しない)
+   * commit = コミットのハッシュを直接指定 (そのコミットに固定)
+   * head = HEAD が対象 (開くたびに HEAD と比較の基準を取り直す。コメントは保存しない)
    * worktree = 未コミットの変更 (一覧の先頭に固定の疑似レビュー。id は WORKTREE_REVIEW_ID)
    */
-  kind: 'branch' | 'head' | 'worktree';
+  kind: 'branch' | 'commit' | 'head' | 'worktree';
+  /** 比較方法: merge-base = 3 点比較 (分岐点から) / direct = 2 点比較 (先端どうしを直接) */
+  compare: ReviewCompare;
   repo: string;
   title: string;
   /** レビュー全体のメモ (Markdown 出力の冒頭に入る) */
@@ -517,6 +523,8 @@ export interface ReviewDetail {
   headExists: boolean;
   /** 固定したコミット以降、対象ブランチに積まれた新しいコミット数 */
   newCommits: number;
+  /** 2 点比較で、固定したコミット以降に取り込み先へ積まれた新しいコミット数 */
+  newBaseCommits: number;
 }
 
 // --- コードマップ (server/services/lsp.ts・codeMapAi.ts) ---

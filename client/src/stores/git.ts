@@ -32,9 +32,17 @@ interface GitStore {
   mergeState: MergeState;
   /** ログのパス絞り込み。null なら全体 (002.md §1) */
   logFilter: LogFilter | null;
+  /** ログのコミット指定 (そのコミットと祖先を表示)。パス絞り込みとは排他。null なら指定なし */
+  logCommit: string | null;
   checkRepo: (dirPath: string) => Promise<void>;
   refreshStatus: () => Promise<void>;
   setLogFilter: (f: LogFilter | null) => void;
+  setLogCommit: (hash: string | null) => void;
+  /**
+   * ログをコミット指定で表示する (パス絞り込みは解除)。空文字 / null で指定を解除。
+   * replace はブラウザ履歴に積まず差し替える
+   */
+  showLogAtCommit: (hash: string | null, opts?: { replace?: boolean }) => void;
   /**
    * 「ログを表示」: 絞り込みを設定して「ログ」タブを開く (002.md §1.2)。
    * newTab でブラウザ別タブに開く。replace はブラウザ履歴に積まず差し替える
@@ -88,19 +96,28 @@ export const useGit = create<GitStore>((set, get) => ({
   overlay: {},
   mergeState: NO_MERGE,
   logFilter: null,
+  logCommit: null,
 
   checkRepo: async (dirPath) => {
     const seq = ++checkSeq;
     const prevRoot = get().repoRoot;
     // 現在のリポジトリの外へ移動した時点で切替中にする (isRepo の応答を待たず古い内容を隠す)
     if (prevRoot && !isUnder(dirPath, prevRoot)) set({ loading: true });
-    const cleared = { repoRoot: null, status: null, loading: false, overlay: {}, mergeState: NO_MERGE, logFilter: null };
+    const cleared = {
+      repoRoot: null,
+      status: null,
+      loading: false,
+      overlay: {},
+      mergeState: NO_MERGE,
+      logFilter: null,
+      logCommit: null,
+    };
     try {
       const { isRepo, root } = await api.isRepo(dirPath);
       if (seq !== checkSeq) return; // その後さらに移動した (新しい checkRepo に任せる)
       if (isRepo && root) {
         if (get().repoRoot !== root) {
-          // 初回検出 (null → repo) は URL から復元した logFilter を保持する
+          // 初回検出 (null → repo) は URL から復元した logFilter / logCommit を保持する
           const keepFilter = get().repoRoot === null;
           set({
             repoRoot: root,
@@ -108,7 +125,7 @@ export const useGit = create<GitStore>((set, get) => ({
             loading: true,
             overlay: {},
             mergeState: NO_MERGE,
-            ...(keepFilter ? {} : { logFilter: null }),
+            ...(keepFilter ? {} : { logFilter: null, logCommit: null }),
           });
         } else {
           // 同じリポジトリ内の移動。最初の status がまだ届いていなければ切替中のまま
@@ -141,6 +158,13 @@ export const useGit = create<GitStore>((set, get) => ({
   },
 
   setLogFilter: (logFilter) => set({ logFilter }),
+  setLogCommit: (logCommit) => set({ logCommit }),
+
+  showLogAtCommit: (hash, { replace = false } = {}) => {
+    const commit = hash?.trim() || null;
+    set({ logFilter: null, logCommit: commit });
+    pushLogView(null, replace, commit);
+  },
 
   showLogFor: (relPath, isFile, { newTab = false, replace = false } = {}) => {
     const repo = get().repoRoot;
@@ -157,7 +181,7 @@ export const useGit = create<GitStore>((set, get) => ({
     }
     // 差分ファイル一覧のフィルタ初期値として対象パスを設定 (GitPanel が復元する)
     if (repo) saveGitView(repo, { filesFilter: relPath });
-    set({ logFilter: filter });
+    set({ logFilter: filter, logCommit: null });
     // ブラウザ履歴に追加 (URL に対象の相対パスを含める)
     pushLogView(filter, replace);
   },

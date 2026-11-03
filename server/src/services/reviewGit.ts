@@ -7,7 +7,8 @@ import { parseNameStatusZ, parseNumstatZ } from './gitParse.js';
 /**
  * レビュー機能が使う git 操作。
  *
- * 差分は GitHub の PR と同じ three-dot (base...head = merge-base 基準) で取る。
+ * 差分は既定では GitHub の PR と同じ three-dot (base...head = merge-base 基準) で取る。
+ * 2 点比較 (direct) を選んだレビューは、base の先端と head を直接比べる (base..head)。
  * ただし merge-base はレビュー作成時に一度だけ解決して DB に固定するため、
  * 実際の diff は「固定した 2 コミットの two-dot」として実行する (結果は同じで、
  * ブランチが後から進んでも表示が動かない)。

@@ -255,7 +255,14 @@ gitRouter.get('/graph', async (req, res) => {
   const args = ['log', '--topo-order', `--max-count=${limit}`, `--skip=${skip}`,
     '--pretty=format:%H%x1f%P%x1f%an%x1f%aI%x1f%D%x1f%s%x1e'];
   const branch = typeof req.query.branch === 'string' && req.query.branch.length > 0 ? req.query.branch : '';
-  if (branch) args.splice(1, 0, branch);
+  // コミット指定: そのコミットと、そこから辿れる祖先のログ (git log <hash>)
+  const rev = typeof req.query.rev === 'string' ? req.query.rev.trim() : '';
+  if (rev) {
+    if (!/^[0-9a-f]{4,64}$/i.test(rev)) badRequest('コミットのハッシュ (16 進数 4 文字以上) を入力してください');
+    const full = await g.raw(['rev-parse', '--verify', '--quiet', `${rev}^{commit}`]).catch(() => '');
+    if (!full.trim()) badRequest(`コミットが見つかりません (または短縮形が一意に決まりません): ${rev}`);
+    args.splice(1, 0, full.trim());
+  } else if (branch) args.splice(1, 0, branch);
   else if (req.query.all === 'true') args.splice(1, 0, '--all');
   // パス絞り込み (§1): --parents で %P を簡略化後の親に書き換えさせ、レーン描画の整合性を保つ
   if (typeof req.query.path === 'string' && req.query.path.length > 0) {

@@ -212,6 +212,9 @@ export function ReviewDetail({ id }: { id: number }) {
   }
 
   const { review, comments, viewed, available, headExists, newCommits } = detail;
+  // 古いサーバの応答 (項目なし) でも動くように既定値を補う
+  const newBaseCommits = detail.newBaseCommits ?? 0;
+  const direct = review.compare === 'direct';
   const readOnly = review.status === 'closed';
   const worktree = review.kind === 'worktree';
   const unresolved = unresolvedByPath(comments);
@@ -409,6 +412,16 @@ export function ReviewDetail({ id }: { id: number }) {
                   {review.baseCommit.slice(0, 7)} … {review.headCommit.slice(0, 7)}
                 </span>
               )}
+              <span
+                className={cx('rv-compare-tag')}
+                title={
+                  direct
+                    ? `${review.baseBranch} の先端と対象を直接比較 (git diff base..head)`
+                    : `${review.baseBranch} から分岐したあとの変更 (git diff base...head)`
+                }
+              >
+                {direct ? '2 点比較' : '3 点比較'}
+              </span>
             </>
           )}
         </span>
@@ -452,7 +465,11 @@ export function ReviewDetail({ id }: { id: number }) {
         <div className={cx('rv-banner info')}>
           {worktree
             ? '作業ツリーの未コミットの変更 (ステージ済み・未ステージ・未追跡) を HEAD と比較しています。ファイルを保存すると差分も自動で更新されます。'
-            : `${review.baseBranch} から分岐したあとの HEAD の変更を表示しています。コミットやブランチの切り替えで HEAD が動くと差分も自動で更新されます。`}
+            : `${
+                direct
+                  ? `${review.baseBranch} の先端と HEAD を直接比較しています。`
+                  : `${review.baseBranch} から分岐したあとの HEAD の変更を表示しています。`
+              }コミットやブランチの切り替えで HEAD が動くと差分も自動で更新されます。`}
           {' '}行番号をクリック / ドラッグすると、ファイルのパスと行番号が入ったコメント欄が開きます (保存はされません。「コピー」でクリップボードへ)。
         </div>
       )}
@@ -474,7 +491,9 @@ export function ReviewDetail({ id }: { id: number }) {
           {worktree
             ? '差分を表示できません (リポジトリを参照できません)。'
             : live
-              ? `差分を表示できません (取り込み先 ${review.baseBranch} が見つからないか、HEAD と共通の祖先がありません)。`
+              ? direct
+                ? `差分を表示できません (取り込み先 ${review.baseBranch} が見つかりません)。`
+                : `差分を表示できません (取り込み先 ${review.baseBranch} が見つからないか、HEAD と共通の祖先がありません)。`
               : '差分を表示できません (リポジトリまたは対象コミットが失われています)。コメントは閲覧・出力できます。'}
         </div>
       )}
@@ -483,10 +502,19 @@ export function ReviewDetail({ id }: { id: number }) {
           対象ブランチ <code>{review.headBranch}</code> が削除されたため、このレビューはクローズされました。
         </div>
       )}
-      {newCommits > 0 && (
+      {(newCommits > 0 || newBaseCommits > 0) && (
         <div className={cx('rv-banner')}>
           <span>
-            <code>{review.headBranch}</code> に新しいコミットが {newCommits} 件あります。
+            {newCommits > 0 && (
+              <>
+                <code>{review.headBranch}</code> に新しいコミットが {newCommits} 件あります。
+              </>
+            )}
+            {newBaseCommits > 0 && (
+              <>
+                取り込み先 <code>{review.baseBranch}</code> に新しいコミットが {newBaseCommits} 件あります (2 点比較のため差分が変わります)。
+              </>
+            )}
             更新すると、差分が変わったファイルのコメントは「位置ずれの可能性」として扱われます。
           </span>
           <button className={cx('status-btn on')} disabled={refreshing} onClick={() => void refresh()}>

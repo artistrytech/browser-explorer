@@ -10,6 +10,17 @@
   z-index: 5;
 }
 
+/* 絞り込みの種類 (パス絞り込み / コミット指定) */
+.log-filter-mode {
+  flex: none;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
 .log-filter-label {
   flex: none;
   font-size: 12px;
@@ -37,6 +48,15 @@
 
 .log-filter-input:focus {
   outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.log-filter-hash {
+  font-family: var(--font-mono, monospace);
+}
+
+.log-filter-input.invalid {
+  outline: 1px solid var(--danger);
   outline-offset: -1px;
 }
 

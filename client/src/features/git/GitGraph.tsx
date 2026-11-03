@@ -4,7 +4,8 @@ import { loadGitView, saveGitView } from '../../lib/gitViewMemory';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import { confirmDialog, promptDialog } from '../../stores/dialog';
 import { useGit } from '../../stores/git';
-import { toastError } from '../../stores/toast';
+import { toastError, useToast } from '../../stores/toast';
+import { copyText } from '../../lib/clipboard';
 import { runGitCommands } from './GitCommandDialog';
 import { openCherryPickDialog } from './CherryPickDialog';
 import { openRevertDialog } from './RevertDialog';
@@ -202,6 +203,7 @@ export function GitGraph({
   selectedHash,
   filter = null,
   branch = null,
+  rev = null,
   readOnly = false,
 }: {
   repo: string;
@@ -211,6 +213,11 @@ export function GitGraph({
   filter?: { path: string; follow: boolean } | null;
   /** ブランチ絞り込み: 指定時はそのブランチに到達可能なコミットだけを表示する */
   branch?: string | null;
+  /**
+   * コミット指定: 指定時はそのコミットと祖先だけを表示し、読み込んだらそのコミットを選択する。
+   * branch / 全ブランチより優先する
+   */
+  rev?: string | null;
   /** 閲覧のみ (ブランチの一括削除中など): コミットの右クリックメニューを出さない */
   readOnly?: boolean;
 }) {
@@ -225,6 +232,8 @@ export function GitGraph({
   const scrollRestoredRef = useRef(false);
   // 読み込みの世代番号。リポジトリ切替や連続した再読み込みで古い応答が後から届いても捨てる
   const loadSeq = useRef(0);
+  /** コミット指定で、指定したコミットを選択済みか (状態の更新による再読み込みで選択を奪わないため) */
+  const revSelected = useRef<string | null>(null);
 
   const toggleAll = (checked: boolean) => {
     setAll(checked);
@@ -238,13 +247,13 @@ export function GitGraph({
   useEffect(() => {
     setCommits([]);
     scrollRestoredRef.current = false;
-  }, [repo, filter, branch]);
+  }, [repo, filter, branch, rev]);
 
   // スクロール位置を sessionStorage に保持 (タブ復帰時に復元)。全体グラフと絞り込みグラフで別枠。
   // アンマウント時はデバウンス待ちの値をフラッシュして取りこぼしを防ぐ
   useEffect(() => {
     const el = rowsRef.current;
-    if (branch) return;
+    if (branch || rev) return;
     if (!el) return;
     const save = (top: number) =>
       saveGitView(repo, filter ? { logScrollTop: top } : { graphScrollTop: top });
@@ -261,16 +270,16 @@ export function GitGraph({
       el.removeEventListener('scroll', onScroll);
       if (last >= 0) save(last);
     };
-  }, [repo, filter, branch]);
+  }, [repo, filter, branch, rev]);
 
   // 初回描画後に一度だけスクロール位置を復元
   useEffect(() => {
     if (scrollRestoredRef.current || commits.length === 0 || !rowsRef.current) return;
     scrollRestoredRef.current = true;
-    if (branch) return;
+    if (branch || rev) return;
     const saved = loadGitView(repo);
     if (saved) rowsRef.current.scrollTop = filter ? saved.logScrollTop : saved.graphScrollTop;
-  }, [commits, repo, filter, branch]);
+  }, [commits, repo, filter, branch, rev]);
 
   const load = (reset: boolean) => {
     const seq = ++loadSeq.current;
@@ -278,8 +287,9 @@ export function GitGraph({
     const skip = reset ? 0 : commits.length;
     api
       .gitGraph(repo, {
-        all: branch ? false : all,
+        all: branch || rev ? false : all,
         branch: branch ?? undefined,
+        rev: rev ?? undefined,
         limit: PAGE,
         skip,
         path: filter?.path,
@@ -290,6 +300,11 @@ export function GitGraph({
         // ページングはレーン連続性のため読み込み済み全体を再計算する (§5.4)
         setCommits((prev) => (reset ? r.commits : [...prev, ...r.commits]));
         setHasMore(r.commits.length === PAGE);
+        // コミット指定: 先頭 (= 指定したコミット) を一度だけ選択する
+        if (reset && rev && revSelected.current !== `${repo}\0${rev}` && r.commits[0]) {
+          revSelected.current = `${repo}\0${rev}`;
+          onSelect(r.commits[0].hash);
+        }
       })
       .catch((e) => {
         if (seq === loadSeq.current) toastError(e);
@@ -302,7 +317,7 @@ export function GitGraph({
   useEffect(() => {
     load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo, all, status, filter, branch]);
+  }, [repo, all, status, filter, branch, rev]);
 
   const { rows, maxLanes } = useMemo(() => {
     // --follow (リネーム追跡) は git の履歴簡略化と併用すると親の書き換えが行われず、
@@ -325,10 +340,27 @@ export function GitGraph({
       ],
     });
 
+  const copyHash = async (hash: string) => {
+    try {
+      await copyText(hash);
+      useToast.getState().show('success', 'ハッシュ値をコピーしました');
+    } catch (e) {
+      toastError(e);
+    }
+  };
+
   const commitMenu = (e: React.MouseEvent, c: GitGraphCommit) => {
     e.preventDefault();
     const short = c.hash.slice(0, 7);
+    const copyItem: MenuItem = { label: 'ハッシュ値をコピー', action: () => void copyHash(c.hash) };
+    // 閲覧のみでもコピーはできる (リポジトリを変更しない操作のため)
+    if (readOnly) {
+      openMenu(e.clientX, e.clientY, [copyItem]);
+      return;
+    }
     const items: MenuItem[] = [
+      copyItem,
+      { separator: true },
       {
         label: `このコミットを checkout (${short})`,
         action: () =>
@@ -377,7 +409,9 @@ export function GitGraph({
   return (
     <div className={cx("git-graph")}>
       <div className={cx("graph-toolbar")}>
-        {branch ? (
+        {rev ? (
+          <span title={rev}>コミット {rev} とその祖先</span>
+        ) : branch ? (
           <span title={branch}>{branch}</span>
         ) : (
           <label>
@@ -396,7 +430,7 @@ export function GitGraph({
               style={{ height: ROW_H }}
               onMouseDown={() => onSelect(c.hash)}
               onDoubleClick={() => showDetail(c)}
-              onContextMenu={(e) => (readOnly ? e.preventDefault() : commitMenu(e, c))}
+              onContextMenu={(e) => commitMenu(e, c)}
               title={`${c.hash}\n${c.subject}\n\n(ダブルクリックで詳細)`}
             >
               <span className={cx("graph-cell")} style={{ width: graphWidth }}>

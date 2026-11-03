@@ -18,6 +18,7 @@ import {
   updateReview,
   type Review,
   type ReviewComment,
+  type ReviewCompare,
 } from '../services/reviewStore.js';
 import {
   changedPaths,
@@ -117,13 +118,35 @@ const HEAD_TARGET = 'HEAD';
 /**
  * レビューの種類。
  * branch = 特定ブランチが対象 (作成時のコミットを固定)
- * head = HEAD が対象 (固定せず、開くたびに HEAD と merge-base を取り直す。コメントは保存しない)
+ * commit = コミットのハッシュを直接指定 (そのコミットに固定。ブランチの増減で自動クローズしない)
+ * head = HEAD が対象 (固定せず、開くたびに HEAD と比較の基準を取り直す。コメントは保存しない)
  * worktree = 未コミットの変更 (DB に持たない固定の疑似レビュー。GET /worktree)
  */
-type ReviewKind = 'branch' | 'head' | 'worktree';
+type ReviewKind = 'branch' | 'commit' | 'head' | 'worktree';
 
 function isHeadReview(review: Review): boolean {
-  return review.headBranch === HEAD_TARGET;
+  return review.headType !== 'commit' && review.headBranch === HEAD_TARGET;
+}
+
+function isCommitReview(review: Review): boolean {
+  return review.headType === 'commit';
+}
+
+/** コミットのハッシュとして受け付ける形 (短縮形は 4 文字以上。SHA-256 リポジトリも考慮して 64 文字まで) */
+const HASH_RE = /^[0-9a-f]{4,64}$/i;
+
+/**
+ * 比較の基準 (変更前側) のコミット。
+ * merge-base = base と head の分岐点 (3 点比較。GitHub の PR と同じ)
+ * direct = base の先端そのもの (2 点比較。単純に 2 つの版のファイルを比べる)
+ */
+async function compareBase(
+  g: SimpleGit,
+  compare: ReviewCompare,
+  baseBranch: string,
+  headRef: string,
+): Promise<string | null> {
+  return compare === 'direct' ? resolveCommit(g, baseBranch) : mergeBase(g, baseBranch, headRef);
 }
 
 /**
@@ -131,7 +154,7 @@ function isHeadReview(review: Review): boolean {
  * リポジトリ自体が参照できない場合 (フォルダ移動・取り外しドライブ) は判定しない。
  */
 function autoClose(review: Review, existing: Set<string>): Review {
-  if (review.status === 'closed' || isHeadReview(review)) return review;
+  if (review.status === 'closed' || isHeadReview(review) || isCommitReview(review)) return review;
   if (existing.has(review.headBranch)) return review;
   return updateReview(review.id, { status: 'closed', closedReason: 'branch-deleted' }) ?? review;
 }
@@ -146,20 +169,20 @@ function summarize(review: Review): ReviewSummary {
   const comments = listComments(review.id);
   return {
     ...review,
-    kind: isHeadReview(review) ? 'head' : 'branch',
+    kind: isHeadReview(review) ? 'head' : isCommitReview(review) ? 'commit' : 'branch',
     comments: comments.length,
     unresolved: comments.filter((c) => !c.resolved && !c.outdated).length,
   };
 }
 
-/** HEAD が対象のレビューの、現時点の比較コミット (HEAD と merge-base)。求められなければ null */
+/** HEAD が対象のレビューの、現時点の比較コミット (HEAD と比較の基準)。求められなければ null */
 async function liveCommits(
   g: SimpleGit,
   review: Review,
 ): Promise<{ baseCommit: string; headCommit: string } | null> {
   const headCommit = await resolveCommit(g, HEAD_TARGET);
   if (!headCommit) return null;
-  const baseCommit = await mergeBase(g, review.baseBranch, HEAD_TARGET);
+  const baseCommit = await compareBase(g, review.compare, review.baseBranch, HEAD_TARGET);
   return baseCommit ? { baseCommit, headCommit } : null;
 }
 
@@ -185,26 +208,43 @@ reviewRouter.get('/list', async (req, res) => {
 });
 
 /**
- * レビュー作成: base...head の merge-base と head のコミットを確定し、
+ * レビュー作成: 比較の基準 (merge-base または base の先端) と head のコミットを確定し、
  * refs/reviews/<id>/{base,head} に打って gc から保護する。
  * 対象が HEAD (headBranch = 'HEAD') の場合は固定しない (開くたびに取り直すので ref も打たない)。
+ * headType = 'commit' では headBranch にコミットのハッシュ (短縮形可) を受け取る。
  */
 reviewRouter.post('/', async (req, res) => {
-  const { repo, title } = (req.body ?? {}) as { repo?: string; title?: string };
+  const body = (req.body ?? {}) as { repo?: string; title?: string; headType?: string; compare?: string };
+  const { repo, title } = body;
   if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  const compare: ReviewCompare = body.compare === 'direct' ? 'direct' : 'merge-base';
+  const byCommit = body.headType === 'commit';
   const baseBranch = normalizeBranch((req.body ?? {}).baseBranch);
-  const headBranch = normalizeBranch((req.body ?? {}).headBranch);
-  if (baseBranch === headBranch) badRequest('比較対象に同じブランチは指定できません');
+  const headInput = byCommit
+    ? String((req.body ?? {}).headBranch ?? '').trim()
+    : normalizeBranch((req.body ?? {}).headBranch);
+  if (byCommit && !HASH_RE.test(headInput)) badRequest('コミットのハッシュ (16 進数 4 文字以上) を入力してください');
+  if (!byCommit && baseBranch === headInput) badRequest('比較対象に同じブランチは指定できません');
   if (baseBranch === HEAD_TARGET) badRequest('取り込み先に HEAD は指定できません');
-  const toHead = headBranch === HEAD_TARGET;
+  const toHead = !byCommit && headInput === HEAD_TARGET;
 
   const g = openGit(repo);
-  const headCommit = await resolveCommit(g, headBranch);
-  if (!headCommit) badRequest(toHead ? 'HEAD にコミットがありません' : `ブランチが見つかりません: ${headBranch}`);
+  const headCommit = await resolveCommit(g, headInput);
+  if (!headCommit) {
+    badRequest(
+      byCommit
+        ? `コミットが見つかりません (または短縮形が一意に決まりません): ${headInput}`
+        : toHead
+          ? 'HEAD にコミットがありません'
+          : `ブランチが見つかりません: ${headInput}`,
+    );
+  }
   const baseHead = await resolveCommit(g, baseBranch);
   if (!baseHead) badRequest(`ブランチが見つかりません: ${baseBranch}`);
-  const baseCommit = await mergeBase(g, baseBranch, headBranch);
+  const baseCommit = await compareBase(g, compare, baseBranch, headCommit);
   if (!baseCommit) badRequest('2 つのブランチに共通の祖先がありません (比較できません)');
+  // コミット指定は、表示名に短縮ハッシュを使う (実体は headCommit に完全な形で持つ)
+  const headBranch = byCommit ? headCommit.slice(0, 12) : headInput;
 
   const review = createReview({
     repo,
@@ -213,6 +253,8 @@ reviewRouter.post('/', async (req, res) => {
     headBranch,
     baseCommit,
     headCommit,
+    headType: byCommit ? 'commit' : 'branch',
+    compare,
   });
   if (!toHead) await pinReviewRefs(g, review.id, baseCommit, headCommit);
   res.json({ review: summarize(review) });
@@ -262,7 +304,7 @@ reviewRouter.get('/detail', async (req, res) => {
   const available = g !== null && (await repoAvailable(g));
   if (g && available) review = autoClose(review, await branchNames(g));
 
-  // HEAD が対象: 固定したコミットではなく、現時点の HEAD と merge-base の差分を返す
+  // HEAD が対象: 固定したコミットではなく、現時点の HEAD と比較の基準の差分を返す
   if (isHeadReview(review)) {
     const live = g && available ? await liveCommits(g, review) : null;
     res.json({
@@ -273,6 +315,7 @@ reviewRouter.get('/detail', async (req, res) => {
       available: live !== null,
       headExists: true,
       newCommits: 0,
+      newBaseCommits: 0,
     });
     return;
   }
@@ -283,10 +326,25 @@ reviewRouter.get('/detail', async (req, res) => {
     (await commitExists(g, review.headCommit)) &&
     (await commitExists(g, review.baseCommit));
   const files = g && snapshotOk ? await rangeFiles(g, review.baseCommit, review.headCommit) : [];
-  const headBranchCommit = g && available ? await resolveCommit(g, review.headBranch) : null;
+  // コミット指定は対象が動かないので、コミットが残っていれば「存在する」・新しいコミットは無し
+  const headBranchCommit =
+    g && available
+      ? isCommitReview(review)
+        ? snapshotOk
+          ? review.headCommit
+          : null
+        : await resolveCommit(g, review.headBranch)
+      : null;
   const newCommits =
-    g && headBranchCommit && headBranchCommit !== review.headCommit
+    g && !isCommitReview(review) && headBranchCommit && headBranchCommit !== review.headCommit
       ? await countNewCommits(g, review.headCommit, review.headBranch)
+      : 0;
+  // 2 点比較は取り込み先の先端と直接比べるため、取り込み先が進んでも差分が変わる
+  const baseBranchCommit =
+    g && available && review.compare === 'direct' ? await resolveCommit(g, review.baseBranch) : null;
+  const newBaseCommits =
+    g && baseBranchCommit && baseBranchCommit !== review.baseCommit
+      ? await countNewCommits(g, review.baseCommit, review.baseBranch)
       : 0;
 
   res.json({
@@ -300,6 +358,8 @@ reviewRouter.get('/detail', async (req, res) => {
     headExists: headBranchCommit !== null,
     /** 固定したコミット以降の新しいコミット数 */
     newCommits,
+    /** 2 点比較で、固定した取り込み先のコミット以降に取り込み先へ増えたコミット数 */
+    newBaseCommits,
   });
 });
 
@@ -353,6 +413,8 @@ reviewRouter.get('/worktree', async (req, res) => {
     baseCommit: base,
     // 差分の色付けで変更後の内容を作業ツリーから読ませる (GET /api/git/file-content の rev)
     headCommit: 'worktree',
+    headType: 'branch',
+    compare: 'direct',
     status: 'open',
     closedReason: null,
     createdAt: ts,
@@ -368,6 +430,7 @@ reviewRouter.get('/worktree', async (req, res) => {
     available,
     headExists: head !== null,
     newCommits: 0,
+    newBaseCommits: 0,
   });
 });
 
@@ -387,7 +450,8 @@ reviewRouter.get('/worktree/file-patch', async (req, res) => {
 });
 
 /**
- * 「最新に更新」: 対象ブランチの先端と merge-base を取り直し、ref を張り替える。
+ * 「最新に更新」: 対象ブランチの先端と比較の基準を取り直し、ref を張り替える。
+ * コミット指定は対象を動かさず、比較の基準 (取り込み先側) だけを取り直す。
  * 差分が変わったファイルのコメントは位置を保証できないため outdated にし、確認済みも外す。
  */
 reviewRouter.post('/refresh', async (req, res) => {
@@ -400,9 +464,10 @@ reviewRouter.post('/refresh', async (req, res) => {
   }
   const g = tryOpenGit(review.repo);
   if (!g || !(await repoAvailable(g))) badRequest('リポジトリを参照できません');
-  const headCommit = await resolveCommit(g, review.headBranch);
+  const headCommit = isCommitReview(review) ? review.headCommit : await resolveCommit(g, review.headBranch);
   if (!headCommit) badRequest(`ブランチが見つかりません: ${review.headBranch}`);
-  const baseCommit = (await mergeBase(g, review.baseBranch, review.headBranch)) ?? review.baseCommit;
+  const baseCommit =
+    (await compareBase(g, review.compare, review.baseBranch, headCommit)) ?? review.baseCommit;
   if (headCommit === review.headCommit && baseCommit === review.baseCommit) {
     res.json({ review: summarize(review), outdated: 0, changed: [] });
     return;
@@ -507,7 +572,10 @@ export function buildMarkdown(review: Review, comments: ReviewComment[]): string
   const out: string[] = [];
   out.push(`# レビュー: ${review.title}`, '');
   out.push(`- 対象: \`${review.headBranch}\` → \`${review.baseBranch}\``);
-  out.push(`- 比較: \`${review.baseCommit.slice(0, 7)}\` … \`${review.headCommit.slice(0, 7)}\``);
+  out.push(
+    `- 比較: \`${review.baseCommit.slice(0, 7)}\` … \`${review.headCommit.slice(0, 7)}\`` +
+      ` (${review.compare === 'direct' ? '2 点比較' : '3 点比較 / merge-base から'})`,
+  );
   out.push(`- 出力日時: ${new Date().toLocaleString('ja-JP')}`);
   out.push('');
   if (review.summary.trim()) {

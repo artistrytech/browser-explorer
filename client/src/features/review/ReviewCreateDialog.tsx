@@ -6,7 +6,7 @@ import { useSettings } from '../../stores/settings';
 import { toastError } from '../../stores/toast';
 import { backupBranchRegex } from '../../lib/backupBranch';
 import { BranchCombobox, type BranchOption } from './BranchCombobox';
-import type { GitBranch } from '../../types';
+import type { GitBranch, ReviewCompare } from '../../types';
 import styles from './Review.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 import { useDialogKeys } from '../../lib/dialogKeys';
@@ -36,23 +36,31 @@ function shortName(b: GitBranch): string {
   return b.name.replace(/^remotes\//, '');
 }
 
-/** レビュー対象: HEAD (現在のチェックアウトに追従) か、特定のブランチか */
-type Target = 'head' | 'branch';
+/** レビュー対象: HEAD (現在のチェックアウトに追従) か、特定のブランチか、コミット (ハッシュを直接入力) か */
+type Target = 'head' | 'branch' | 'commit';
 
-/** ダイアログの選択 (対象の種類・バックアップ除外) は次回も引き継ぐ */
+/** コミットのハッシュとして受け付ける形 (短縮形は 4 文字以上) */
+const HASH_RE = /^[0-9a-f]{4,64}$/i;
+
+/** ダイアログの選択 (対象の種類・比較方法・バックアップ除外) は次回も引き継ぐ */
 const PREFS_KEY = 'review:create:prefs';
 
 interface CreatePrefs {
   target: Target;
+  compare: ReviewCompare;
   excludeBackup: boolean;
 }
 
 function loadPrefs(): CreatePrefs {
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<CreatePrefs>;
-    return { target: p.target === 'head' ? 'head' : 'branch', excludeBackup: p.excludeBackup !== false };
+    return {
+      target: p.target === 'head' || p.target === 'commit' ? p.target : 'branch',
+      compare: p.compare === 'direct' ? 'direct' : 'merge-base',
+      excludeBackup: p.excludeBackup !== false,
+    };
   } catch {
-    return { target: 'branch', excludeBackup: true };
+    return { target: 'branch', compare: 'merge-base', excludeBackup: true };
   }
 }
 
@@ -65,9 +73,10 @@ function savePrefs(p: CreatePrefs): void {
 }
 
 /**
- * レビュー作成: 比較する 2 ブランチを選ぶ。
- * 差分は GitHub の PR と同じ three-dot (base...head)。
- * 対象がブランチなら作成時点の merge-base と head のコミットを固定し、
+ * レビュー作成: 比較する 2 ブランチ (対象はコミットのハッシュでも可) を選ぶ。
+ * 差分は既定では GitHub の PR と同じ three-dot (base...head = 3 点比較)。
+ * 2 点比較を選ぶと、base の先端と head を直接比べる (base..head)。
+ * 対象がブランチ / コミットなら作成時点の比較の基準と head のコミットを固定し、
  * HEAD なら固定せず、開くたびに現在の HEAD との差分を取り直す。
  */
 export function ReviewCreateDialog() {
@@ -75,9 +84,11 @@ export function ReviewCreateDialog() {
   const [branches, setBranches] = useState<GitBranch[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
   const [target, setTarget] = useState<Target>('branch');
+  const [compare, setCompare] = useState<ReviewCompare>('merge-base');
   const [excludeBackup, setExcludeBackup] = useState(true);
   const [base, setBase] = useState('');
   const [head, setHead] = useState('');
+  const [commit, setCommit] = useState('');
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
   const backupPattern = useSettings((s) => s.settings.backupBranchPattern);
@@ -86,11 +97,13 @@ export function ReviewCreateDialog() {
     if (!open) return;
     const prefs = loadPrefs();
     setTarget(prefs.target);
+    setCompare(prefs.compare);
     setExcludeBackup(prefs.excludeBackup);
     setTitle('');
     setBusy(false);
     setBase('');
     setHead('');
+    setCommit('');
     api
       .gitBranches(repo)
       .then((r) => {
@@ -105,8 +118,9 @@ export function ReviewCreateDialog() {
   }, [open, repo]);
 
   const changePrefs = (p: Partial<CreatePrefs>) => {
-    const next = { target, excludeBackup, ...p };
+    const next = { target, compare, excludeBackup, ...p };
     setTarget(next.target);
+    setCompare(next.compare);
     setExcludeBackup(next.excludeBackup);
     savePrefs(next);
   };
@@ -123,16 +137,31 @@ export function ReviewCreateDialog() {
   ];
 
   const toHead = target === 'head';
-  const headRef = toHead ? 'HEAD' : head;
-  const same = !toHead && !!base && base === head;
+  const byCommit = target === 'commit';
+  const commitInput = commit.trim();
+  const commitValid = HASH_RE.test(commitInput);
+  const headRef = toHead ? 'HEAD' : byCommit ? (commitValid ? commitInput : '') : head;
+  /** 表示用の対象名 (コミットは短縮形) */
+  const headLabel = byCommit ? commitInput.slice(0, 12) : headRef;
+  const same = target === 'branch' && !!base && base === head;
   /** HEAD が取り込み先と同じブランチ上にある (差分は空。HEAD が別ブランチへ移れば出る) */
   const headOnBase = toHead && !!base && base === current;
   const canCreate = !!base && !!headRef && !same && !busy;
+  const direct = compare === 'direct';
+  /** 説明文に出す git diff の書き方 (3 点比較は ...、2 点比較は ..) */
+  const range = `${base}${direct ? '..' : '...'}${toHead ? 'HEAD' : headLabel}`;
 
   const create = async () => {
     setBusy(true);
     try {
-      const { review } = await api.reviewCreate({ repo, title: title.trim(), baseBranch: base, headBranch: headRef });
+      const { review } = await api.reviewCreate({
+        repo,
+        title: title.trim(),
+        baseBranch: base,
+        headBranch: headRef,
+        headType: byCommit ? 'commit' : 'branch',
+        compare,
+      });
       close();
       await useReview.getState().loadList(repo).catch(() => undefined);
       useReview.getState().open(review.id);
@@ -166,14 +195,35 @@ export function ReviewCreateDialog() {
               HEAD{current ? ` (${current})` : ''}
             </label>
             <label className={cx('rv-radio')}>
-              <input type="radio" checked={!toHead} onChange={() => changePrefs({ target: 'branch' })} />
+              <input
+                type="radio"
+                checked={target === 'branch'}
+                onChange={() => changePrefs({ target: 'branch' })}
+              />
               ブランチを指定
             </label>
+            <label className={cx('rv-radio')}>
+              <input type="radio" checked={byCommit} onChange={() => changePrefs({ target: 'commit' })} />
+              コミットを指定
+            </label>
           </div>
-          {!toHead && (
+          {target === 'branch' && (
             <>
               <label>対象ブランチ (head)</label>
               <BranchCombobox options={options} value={head} onChange={setHead} />
+            </>
+          )}
+          {byCommit && (
+            <>
+              <label>対象コミット (head)</label>
+              <input
+                className={cx('rv-input rv-hash-input')}
+                value={commit}
+                spellCheck={false}
+                autoComplete="off"
+                placeholder="コミットのハッシュ (短縮形可。ログの右クリック →「ハッシュ値をコピー」)"
+                onChange={(e) => setCommit(e.target.value)}
+              />
             </>
           )}
           <label>取り込み先 (base)</label>
@@ -187,22 +237,54 @@ export function ReviewCreateDialog() {
             />
             バックアップブランチを候補から除外する
           </label>
+          <label>比較方法</label>
+          <div className={cx('rv-radio-row')}>
+            <label
+              className={cx('rv-radio')}
+              title="取り込み先から分岐したあとの、対象側の変更だけを表示します (GitHub の PR と同じ)"
+            >
+              <input type="radio" checked={!direct} onChange={() => changePrefs({ compare: 'merge-base' })} />
+              3 点比較 (分岐点から)
+            </label>
+            <label
+              className={cx('rv-radio')}
+              title="取り込み先の先端と対象をそのまま比べます。取り込み先側だけで進んだ変更も差分に出ます"
+            >
+              <input type="radio" checked={direct} onChange={() => changePrefs({ compare: 'direct' })} />
+              2 点比較 (ファイルを直接比較)
+            </label>
+          </div>
           <label>レビュー名</label>
           <input
             className={cx('rv-input')}
             value={title}
-            placeholder={headRef && base ? `${headRef} → ${base}` : '(自動)'}
+            placeholder={headRef && base ? `${headLabel} → ${base}` : '(自動)'}
             onChange={(e) => setTitle(e.target.value)}
           />
         </div>
         <div className={cx('rv-note')}>
           {!base || !headRef
-            ? '比較する 2 つのブランチを選んでください。'
-            : toHead
-              ? `${base} から分岐したあとの HEAD の変更が対象です (git diff ${base}...HEAD)。コミットは固定せず、コミットやブランチの切り替えで HEAD が動くと差分も自動で更新されます。コメントは保存されません (入力欄の内容をコピーして使います)。`
-              : same
-                ? ''
-                : `${base} から分岐したあとの ${head} の変更が対象です (git diff ${base}...${head})。作成時点のコミットを固定するため、あとからブランチが進んでも表示は変わりません。`}
+            ? byCommit && commitInput && !commitValid
+              ? ''
+              : byCommit
+                ? '取り込み先のブランチと、対象コミットのハッシュを指定してください。'
+                : '比較する 2 つのブランチを選んでください。'
+            : same
+              ? ''
+              : `${
+                direct
+                  ? `${base} の先端と ${toHead ? 'HEAD' : headLabel} を直接比較します (git diff ${range})。${base} 側だけで進んだ変更も差分に出ます。`
+                  : `${base} から分岐したあとの ${toHead ? 'HEAD' : headLabel} の変更が対象です (git diff ${range})。`
+              }${
+                toHead
+                  ? 'コミットは固定せず、コミットやブランチの切り替えで HEAD が動くと差分も自動で更新されます。コメントは保存されません (入力欄の内容をコピーして使います)。'
+                  : byCommit
+                      ? '指定したコミットに固定します (ブランチが削除されてもクローズされません)。'
+                      : '作成時点のコミットを固定するため、あとからブランチが進んでも表示は変わりません。'
+              }`}
+          {byCommit && commitInput && !commitValid && (
+            <span className={cx('rv-warn')}>ハッシュは 16 進数 4 文字以上で入力してください。</span>
+          )}
           {same && <span className={cx('rv-warn')}>同じブランチは指定できません。</span>}
           {headOnBase && (
             <span className={cx('rv-warn')}> 現在 HEAD は {base} 上にあるため、差分は空になります。</span>

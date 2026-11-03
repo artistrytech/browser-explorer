@@ -180,9 +180,14 @@ function ReviewListView({ repo }: { repo: string }) {
                 </span>
                 <span
                   className={cx('rv-c-branch')}
-                  title={live ? `HEAD → ${r.baseBranch} (HEAD に追従して自動で更新)` : `${r.headBranch} → ${r.baseBranch}`}
+                  title={
+                    (live ? `HEAD → ${r.baseBranch} (HEAD に追従して自動で更新)` : `${r.headBranch} → ${r.baseBranch}`) +
+                    (r.kind === 'commit' ? '\nコミットを指定' : '') +
+                    (r.compare === 'direct' ? '\n2 点比較 (先端どうしを直接比較)' : '\n3 点比較 (分岐点から)')
+                  }
                 >
                   <code className={cx(live ? 'rv-code-live' : '')}>{r.headBranch}</code> → <code>{r.baseBranch}</code>
+                  {r.compare === 'direct' && <span className={cx('rv-compare-tag')}>2点</span>}
                 </span>
                 {/* HEAD が対象のレビューはコメントを保存しない */}
                 <span className={cx('rv-c-num')}>{!live && r.unresolved > 0 ? r.unresolved : '—'}</span>

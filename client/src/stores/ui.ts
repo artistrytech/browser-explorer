@@ -187,6 +187,11 @@ export function switchView(view: MainView): void {
   useUi.getState().setView(view);
 }
 
+/** URL の ?logcommit= からログのコミット指定を復元 */
+export function logCommitFromUrl(): string | null {
+  return new URLSearchParams(location.search).get('logcommit') || null;
+}
+
 /** URL の ?logpath= / ?follow= からログのパス絞り込みを復元 */
 export function logFilterFromUrl(): { path: string; follow: boolean } | null {
   const params = new URLSearchParams(location.search);
@@ -205,15 +210,19 @@ export function logFilterFromUrl(): { path: string; follow: boolean } | null {
 export function pushLogView(
   filter: { path: string; follow: boolean } | null,
   replace = false,
+  /** コミット指定 (パス絞り込みとは排他) */
+  commit: string | null = null,
 ): void {
   const params = new URLSearchParams(location.search);
   params.set('view', 'log');
   params.delete('logpath');
   params.delete('follow');
+  params.delete('logcommit');
   if (filter) {
     params.set('logpath', filter.path);
     if (filter.follow) params.set('follow', '1');
   }
+  if (commit) params.set('logcommit', commit);
   const search = `?${params}`;
   if (location.search !== search) {
     const state = { path: params.get('path'), view: 'log' };
@@ -230,6 +239,7 @@ export function openLogInNewTab(filter: { path: string; follow: boolean } | null
   params.set('view', 'log');
   params.delete('logpath');
   params.delete('follow');
+  params.delete('logcommit');
   if (filter) {
     params.set('logpath', filter.path);
     if (filter.follow) params.set('follow', '1');

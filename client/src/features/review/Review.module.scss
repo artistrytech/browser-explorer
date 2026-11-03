@@ -816,6 +816,11 @@
   width: 100%;
 }
 
+/* コミットのハッシュ入力欄 */
+.rv-hash-input {
+  font-family: var(--font-mono, monospace);
+}
+
 .rv-note {
   margin-top: 10px;
   color: var(--text-dim);
@@ -829,7 +834,18 @@
 
 .rv-radio-row {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+/* 一覧・詳細で 2 点比較のレビューに付ける目印 */
+.rv-compare-tag {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 .rv-radio,

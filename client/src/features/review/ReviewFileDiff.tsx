@@ -152,7 +152,7 @@ export function ReviewFileDiff({
   const dragging = useRef(false);
   /** mouseup (ペイン外で離した場合も含む) から参照する現在の選択 */
   const selectionRef = useRef<Selection | null>(null);
-  const ephemeral = kind !== 'branch';
+  const ephemeral = kind === 'head' || kind === 'worktree';
   const worktree = kind === 'worktree';
   /** 保存しないコメント: 直前に入力欄へ挿入した位置 (範囲を選び直したときに置き換えるため) */
   const lastInserted = useRef<string | null>(null);
