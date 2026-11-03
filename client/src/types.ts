@@ -475,6 +475,8 @@ export interface Review {
   kind: 'branch' | 'commit' | 'head' | 'worktree';
   /** 比較方法: merge-base = 3 点比較 (分岐点から) / direct = 2 点比較 (先端どうしを直接) */
   compare: ReviewCompare;
+  /** 取り込み先の種類: branch = ブランチ / commit = コミットのハッシュ (baseBranch は短縮ハッシュ) */
+  baseType: 'branch' | 'commit';
   repo: string;
   title: string;
   /** レビュー全体のメモ (Markdown 出力の冒頭に入る) */

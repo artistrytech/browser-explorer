@@ -38,6 +38,8 @@ function shortName(b: GitBranch): string {
 
 /** レビュー対象: HEAD (現在のチェックアウトに追従) か、特定のブランチか、コミット (ハッシュを直接入力) か */
 type Target = 'head' | 'branch' | 'commit';
+/** 取り込み先: ブランチか、コミット (ハッシュを直接入力) か */
+type BaseTarget = 'branch' | 'commit';
 
 /** コミットのハッシュとして受け付ける形 (短縮形は 4 文字以上) */
 const HASH_RE = /^[0-9a-f]{4,64}$/i;
@@ -47,6 +49,7 @@ const PREFS_KEY = 'review:create:prefs';
 
 interface CreatePrefs {
   target: Target;
+  baseTarget: BaseTarget;
   compare: ReviewCompare;
   excludeBackup: boolean;
 }
@@ -56,11 +59,12 @@ function loadPrefs(): CreatePrefs {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<CreatePrefs>;
     return {
       target: p.target === 'head' || p.target === 'commit' ? p.target : 'branch',
+      baseTarget: p.baseTarget === 'commit' ? 'commit' : 'branch',
       compare: p.compare === 'direct' ? 'direct' : 'merge-base',
       excludeBackup: p.excludeBackup !== false,
     };
   } catch {
-    return { target: 'branch', compare: 'merge-base', excludeBackup: true };
+    return { target: 'branch', baseTarget: 'branch', compare: 'merge-base', excludeBackup: true };
   }
 }
 
@@ -84,11 +88,13 @@ export function ReviewCreateDialog() {
   const [branches, setBranches] = useState<GitBranch[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
   const [target, setTarget] = useState<Target>('branch');
+  const [baseTarget, setBaseTarget] = useState<BaseTarget>('branch');
   const [compare, setCompare] = useState<ReviewCompare>('merge-base');
   const [excludeBackup, setExcludeBackup] = useState(true);
   const [base, setBase] = useState('');
   const [head, setHead] = useState('');
   const [commit, setCommit] = useState('');
+  const [baseCommitText, setBaseCommitText] = useState('');
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
   const backupPattern = useSettings((s) => s.settings.backupBranchPattern);
@@ -97,6 +103,7 @@ export function ReviewCreateDialog() {
     if (!open) return;
     const prefs = loadPrefs();
     setTarget(prefs.target);
+    setBaseTarget(prefs.baseTarget);
     setCompare(prefs.compare);
     setExcludeBackup(prefs.excludeBackup);
     setTitle('');
@@ -104,6 +111,7 @@ export function ReviewCreateDialog() {
     setBase('');
     setHead('');
     setCommit('');
+    setBaseCommitText('');
     api
       .gitBranches(repo)
       .then((r) => {
@@ -118,8 +126,9 @@ export function ReviewCreateDialog() {
   }, [open, repo]);
 
   const changePrefs = (p: Partial<CreatePrefs>) => {
-    const next = { target, compare, excludeBackup, ...p };
+    const next = { target, baseTarget, compare, excludeBackup, ...p };
     setTarget(next.target);
+    setBaseTarget(next.baseTarget);
     setCompare(next.compare);
     setExcludeBackup(next.excludeBackup);
     savePrefs(next);
@@ -143,13 +152,22 @@ export function ReviewCreateDialog() {
   const headRef = toHead ? 'HEAD' : byCommit ? (commitValid ? commitInput : '') : head;
   /** 表示用の対象名 (コミットは短縮形) */
   const headLabel = byCommit ? commitInput.slice(0, 12) : headRef;
-  const same = target === 'branch' && !!base && base === head;
+  const baseByCommit = baseTarget === 'commit';
+  const baseCommitInput = baseCommitText.trim();
+  const baseCommitValid = HASH_RE.test(baseCommitInput);
+  /** 取り込み先の指定 (ブランチ名 / ハッシュ)。未確定なら空 */
+  const baseRef = baseByCommit ? (baseCommitValid ? baseCommitInput : '') : base;
+  /** 表示用の取り込み先名 (コミットは短縮形) */
+  const baseLabel = baseByCommit ? baseCommitInput.slice(0, 12) : base;
+  const same =
+    (target === 'branch' && !baseByCommit && !!base && base === head) ||
+    (byCommit && baseByCommit && !!baseRef && baseRef.toLowerCase() === headRef.toLowerCase());
   /** HEAD が取り込み先と同じブランチ上にある (差分は空。HEAD が別ブランチへ移れば出る) */
-  const headOnBase = toHead && !!base && base === current;
-  const canCreate = !!base && !!headRef && !same && !busy;
+  const headOnBase = toHead && !baseByCommit && !!base && base === current;
+  const canCreate = !!baseRef && !!headRef && !same && !busy;
   const direct = compare === 'direct';
   /** 説明文に出す git diff の書き方 (3 点比較は ...、2 点比較は ..) */
-  const range = `${base}${direct ? '..' : '...'}${toHead ? 'HEAD' : headLabel}`;
+  const range = `${baseLabel}${direct ? '..' : '...'}${toHead ? 'HEAD' : headLabel}`;
 
   const create = async () => {
     setBusy(true);
@@ -157,9 +175,10 @@ export function ReviewCreateDialog() {
       const { review } = await api.reviewCreate({
         repo,
         title: title.trim(),
-        baseBranch: base,
+        baseBranch: baseRef,
         headBranch: headRef,
         headType: byCommit ? 'commit' : 'branch',
+        baseType: baseByCommit ? 'commit' : 'branch',
         compare,
       });
       close();
@@ -227,7 +246,33 @@ export function ReviewCreateDialog() {
             </>
           )}
           <label>取り込み先 (base)</label>
-          <BranchCombobox options={options} value={base} onChange={setBase} />
+          <div className={cx('rv-radio-row')}>
+            <label className={cx('rv-radio')}>
+              <input
+                type="radio"
+                checked={!baseByCommit}
+                onChange={() => changePrefs({ baseTarget: 'branch' })}
+              />
+              ブランチを指定
+            </label>
+            <label className={cx('rv-radio')}>
+              <input type="radio" checked={baseByCommit} onChange={() => changePrefs({ baseTarget: 'commit' })} />
+              コミットを指定
+            </label>
+          </div>
+          <span />
+          {baseByCommit ? (
+            <input
+              className={cx('rv-input rv-hash-input')}
+              value={baseCommitText}
+              spellCheck={false}
+              autoComplete="off"
+              placeholder="取り込み先コミットのハッシュ (短縮形可)"
+              onChange={(e) => setBaseCommitText(e.target.value)}
+            />
+          ) : (
+            <BranchCombobox options={options} value={base} onChange={setBase} />
+          )}
           <span />
           <label className={cx('rv-check')}>
             <input
@@ -258,23 +303,27 @@ export function ReviewCreateDialog() {
           <input
             className={cx('rv-input')}
             value={title}
-            placeholder={headRef && base ? `${headLabel} → ${base}` : '(自動)'}
+            placeholder={headRef && baseRef ? `${headLabel} → ${baseLabel}` : '(自動)'}
             onChange={(e) => setTitle(e.target.value)}
           />
         </div>
         <div className={cx('rv-note')}>
-          {!base || !headRef
-            ? byCommit && commitInput && !commitValid
+          {!baseRef || !headRef
+            ? (byCommit && commitInput && !commitValid) || (baseByCommit && baseCommitInput && !baseCommitValid)
               ? ''
               : byCommit
-                ? '取り込み先のブランチと、対象コミットのハッシュを指定してください。'
-                : '比較する 2 つのブランチを選んでください。'
+                ? '取り込み先と、対象コミットのハッシュを指定してください。'
+                : baseByCommit
+                  ? '取り込み先のコミットのハッシュと、レビュー対象を指定してください。'
+                  : '比較する 2 つのブランチを選んでください。'
             : same
               ? ''
               : `${
                 direct
-                  ? `${base} の先端と ${toHead ? 'HEAD' : headLabel} を直接比較します (git diff ${range})。${base} 側だけで進んだ変更も差分に出ます。`
-                  : `${base} から分岐したあとの ${toHead ? 'HEAD' : headLabel} の変更が対象です (git diff ${range})。`
+                  ? baseByCommit
+                    ? `${baseLabel} と ${toHead ? 'HEAD' : headLabel} を直接比較します (git diff ${range})。`
+                    : `${baseLabel} の先端と ${toHead ? 'HEAD' : headLabel} を直接比較します (git diff ${range})。${baseLabel} 側だけで進んだ変更も差分に出ます。`
+                  : `${baseLabel} から分岐したあとの ${toHead ? 'HEAD' : headLabel} の変更が対象です (git diff ${range})。`
               }${
                 toHead
                   ? 'コミットは固定せず、コミットやブランチの切り替えで HEAD が動くと差分も自動で更新されます。コメントは保存されません (入力欄の内容をコピーして使います)。'
@@ -282,10 +331,10 @@ export function ReviewCreateDialog() {
                       ? '指定したコミットに固定します (ブランチが削除されてもクローズされません)。'
                       : '作成時点のコミットを固定するため、あとからブランチが進んでも表示は変わりません。'
               }`}
-          {byCommit && commitInput && !commitValid && (
+          {((byCommit && commitInput && !commitValid) || (baseByCommit && baseCommitInput && !baseCommitValid)) && (
             <span className={cx('rv-warn')}>ハッシュは 16 進数 4 文字以上で入力してください。</span>
           )}
-          {same && <span className={cx('rv-warn')}>同じブランチは指定できません。</span>}
+          {same && <span className={cx('rv-warn')}>{baseByCommit ? '同じコミット' : '同じブランチ'}は指定できません。</span>}
           {headOnBase && (
             <span className={cx('rv-warn')}> 現在 HEAD は {base} 上にあるため、差分は空になります。</span>
           )}

@@ -526,13 +526,14 @@ export const api = {
 
   // --- コードレビュー (レビュータブ) ---
   reviewList: (repo: string) => get<{ reviews: Review[] }>(`/api/review/list?repo=${q(repo)}`),
-  /** headType = 'commit' では headBranch にコミットのハッシュ (短縮形可) を渡す */
+  /** headType / baseType = 'commit' では headBranch / baseBranch にコミットのハッシュ (短縮形可) を渡す */
   reviewCreate: (body: {
     repo: string;
     title: string;
     baseBranch: string;
     headBranch: string;
     headType: 'branch' | 'commit';
+    baseType: 'branch' | 'commit';
     compare: ReviewCompare;
   }) =>
     post<{ review: Review }>('/api/review', body),

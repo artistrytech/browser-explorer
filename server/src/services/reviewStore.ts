@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS review_viewed (
 /*
  * 後から追加した列 (既存の DB へは ALTER で足す)
  * head_type: レビュー対象の種類。branch = ブランチ / commit = コミットのハッシュを直接指定
+ * base_type: 取り込み先の種類。branch = ブランチ / commit = コミットのハッシュを直接指定
+ *            (コミット指定では head_branch / base_branch に 12 桁の短縮ハッシュを入れる)
  *            (HEAD が対象のものは従来どおり head_branch = 'HEAD' で表す)
  * compare: 比較方法。merge-base = 3 点比較 (base...head) / direct = 2 点比較 (base..head)
  */
@@ -56,6 +58,9 @@ CREATE TABLE IF NOT EXISTS review_viewed (
   const cols = db.prepare('PRAGMA table_info(reviews)').all() as { name: string }[];
   if (!cols.some((c) => c.name === 'head_type')) {
     db.exec("ALTER TABLE reviews ADD COLUMN head_type TEXT NOT NULL DEFAULT 'branch'");
+  }
+  if (!cols.some((c) => c.name === 'base_type')) {
+    db.exec("ALTER TABLE reviews ADD COLUMN base_type TEXT NOT NULL DEFAULT 'branch'");
   }
   if (!cols.some((c) => c.name === 'compare')) {
     db.exec("ALTER TABLE reviews ADD COLUMN compare TEXT NOT NULL DEFAULT 'merge-base'");
@@ -77,6 +82,7 @@ export interface Review {
   baseCommit: string;
   headCommit: string;
   headType: ReviewHeadType;
+  baseType: ReviewHeadType;
   compare: ReviewCompare;
   status: 'open' | 'closed';
   closedReason: string | null;
@@ -109,6 +115,7 @@ interface ReviewRow {
   base_commit: string;
   head_commit: string;
   head_type: string | null;
+  base_type: string | null;
   compare: string | null;
   status: string;
   closed_reason: string | null;
@@ -142,6 +149,7 @@ function toReview(r: ReviewRow): Review {
     baseCommit: r.base_commit,
     headCommit: r.head_commit,
     headType: r.head_type === 'commit' ? 'commit' : 'branch',
+    baseType: r.base_type === 'commit' ? 'commit' : 'branch',
     compare: r.compare === 'direct' ? 'direct' : 'merge-base',
     status: r.status === 'closed' ? 'closed' : 'open',
     closedReason: r.closed_reason,
@@ -188,15 +196,28 @@ export function createReview(r: {
   baseCommit: string;
   headCommit: string;
   headType: ReviewHeadType;
+  baseType: ReviewHeadType;
   compare: ReviewCompare;
 }): Review {
   const ts = now();
   const info = db
     .prepare(
-      `INSERT INTO reviews (repo, title, summary, base_branch, head_branch, base_commit, head_commit, head_type, compare, status, created_at, updated_at)
-       VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
+      `INSERT INTO reviews (repo, title, summary, base_branch, head_branch, base_commit, head_commit, head_type, base_type, compare, status, created_at, updated_at)
+       VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
     )
-    .run(r.repo, r.title, r.baseBranch, r.headBranch, r.baseCommit, r.headCommit, r.headType, r.compare, ts, ts);
+    .run(
+      r.repo,
+      r.title,
+      r.baseBranch,
+      r.headBranch,
+      r.baseCommit,
+      r.headCommit,
+      r.headType,
+      r.baseType,
+      r.compare,
+      ts,
+      ts,
+    );
   return getReview(Number(info.lastInsertRowid))!;
 }
 

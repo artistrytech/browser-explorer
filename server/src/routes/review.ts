@@ -214,18 +214,30 @@ reviewRouter.get('/list', async (req, res) => {
  * headType = 'commit' では headBranch にコミットのハッシュ (短縮形可) を受け取る。
  */
 reviewRouter.post('/', async (req, res) => {
-  const body = (req.body ?? {}) as { repo?: string; title?: string; headType?: string; compare?: string };
+  const body = (req.body ?? {}) as {
+    repo?: string;
+    title?: string;
+    headType?: string;
+    baseType?: string;
+    compare?: string;
+  };
   const { repo, title } = body;
   if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
   const compare: ReviewCompare = body.compare === 'direct' ? 'direct' : 'merge-base';
   const byCommit = body.headType === 'commit';
-  const baseBranch = normalizeBranch((req.body ?? {}).baseBranch);
+  const baseByCommit = body.baseType === 'commit';
+  const baseInput = baseByCommit
+    ? String((req.body ?? {}).baseBranch ?? '').trim()
+    : normalizeBranch((req.body ?? {}).baseBranch);
+  if (baseByCommit && !HASH_RE.test(baseInput)) {
+    badRequest('取り込み先のコミットのハッシュ (16 進数 4 文字以上) を入力してください');
+  }
   const headInput = byCommit
     ? String((req.body ?? {}).headBranch ?? '').trim()
     : normalizeBranch((req.body ?? {}).headBranch);
   if (byCommit && !HASH_RE.test(headInput)) badRequest('コミットのハッシュ (16 進数 4 文字以上) を入力してください');
-  if (!byCommit && baseBranch === headInput) badRequest('比較対象に同じブランチは指定できません');
-  if (baseBranch === HEAD_TARGET) badRequest('取り込み先に HEAD は指定できません');
+  if (!byCommit && !baseByCommit && baseInput === headInput) badRequest('比較対象に同じブランチは指定できません');
+  if (!baseByCommit && baseInput === HEAD_TARGET) badRequest('取り込み先に HEAD は指定できません');
   const toHead = !byCommit && headInput === HEAD_TARGET;
 
   const g = openGit(repo);
@@ -239,10 +251,19 @@ reviewRouter.post('/', async (req, res) => {
           : `ブランチが見つかりません: ${headInput}`,
     );
   }
-  const baseHead = await resolveCommit(g, baseBranch);
-  if (!baseHead) badRequest(`ブランチが見つかりません: ${baseBranch}`);
-  const baseCommit = await compareBase(g, compare, baseBranch, headCommit);
-  if (!baseCommit) badRequest('2 つのブランチに共通の祖先がありません (比較できません)');
+  const baseHead = await resolveCommit(g, baseInput);
+  if (!baseHead) {
+    badRequest(
+      baseByCommit
+        ? `取り込み先のコミットが見つかりません (または短縮形が一意に決まりません): ${baseInput}`
+        : `ブランチが見つかりません: ${baseInput}`,
+    );
+  }
+  if (baseByCommit && !toHead && baseHead === headCommit) badRequest('比較対象に同じコミットは指定できません');
+  // コミット指定は表示名に 12 桁の短縮ハッシュを使う (あとで取り直すときもこの名前で解決できる)
+  const baseBranch = baseByCommit ? baseHead.slice(0, 12) : baseInput;
+  const baseCommit = await compareBase(g, compare, baseByCommit ? baseHead : baseInput, headCommit);
+  if (!baseCommit) badRequest('2 つのコミットに共通の祖先がありません (比較できません)');
   // コミット指定は、表示名に短縮ハッシュを使う (実体は headCommit に完全な形で持つ)
   const headBranch = byCommit ? headCommit.slice(0, 12) : headInput;
 
@@ -254,6 +275,7 @@ reviewRouter.post('/', async (req, res) => {
     baseCommit,
     headCommit,
     headType: byCommit ? 'commit' : 'branch',
+    baseType: baseByCommit ? 'commit' : 'branch',
     compare,
   });
   if (!toHead) await pinReviewRefs(g, review.id, baseCommit, headCommit);
@@ -340,8 +362,11 @@ reviewRouter.get('/detail', async (req, res) => {
       ? await countNewCommits(g, review.headCommit, review.headBranch)
       : 0;
   // 2 点比較は取り込み先の先端と直接比べるため、取り込み先が進んでも差分が変わる
+  // (取り込み先がコミット指定なら動かないので見ない)
   const baseBranchCommit =
-    g && available && review.compare === 'direct' ? await resolveCommit(g, review.baseBranch) : null;
+    g && available && review.compare === 'direct' && review.baseType !== 'commit'
+      ? await resolveCommit(g, review.baseBranch)
+      : null;
   const newBaseCommits =
     g && baseBranchCommit && baseBranchCommit !== review.baseCommit
       ? await countNewCommits(g, review.baseCommit, review.baseBranch)
@@ -414,6 +439,7 @@ reviewRouter.get('/worktree', async (req, res) => {
     // 差分の色付けで変更後の内容を作業ツリーから読ませる (GET /api/git/file-content の rev)
     headCommit: 'worktree',
     headType: 'branch',
+    baseType: 'branch',
     compare: 'direct',
     status: 'open',
     closedReason: null,
