@@ -77,11 +77,72 @@
 .editor-tab-actions {
   margin-left: auto;
   display: flex;
+  align-items: center;
   gap: 6px;
   padding: 0 10px;
 }
 
-.monaco-container {
+.actions-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
+/* 隣り合うボタンをつなげて 1 つのグループに見せる (編集 / プレビュー、拡大率) */
+.btn-group {
+  display: inline-flex;
+  align-items: center;
+
+  .status-btn {
+    border-radius: 0;
+    min-width: 24px;
+    white-space: nowrap;
+  }
+
+  .status-btn:first-child {
+    border-radius: 3px 0 0 3px;
+  }
+
+  .status-btn:last-child {
+    border-radius: 0 3px 3px 0;
+  }
+
+  .status-btn + .status-btn {
+    border-left: none;
+  }
+
+  .status-btn.on + .status-btn,
+  .status-btn + .status-btn.on {
+    border-left: 1px solid var(--accent);
+  }
+}
+
+.zoom-value {
+  min-width: 48px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-tab-actions > .status-btn {
+  white-space: nowrap;
+}
+
+.editor-body {
   flex: 1;
   min-height: 0;
+  position: relative;
+}
+
+.monaco-container {
+  position: absolute;
+  inset: 0;
+}
+
+.monaco-container.hidden {
+  visibility: hidden;
+}
+
+.preview-container {
+  position: absolute;
+  inset: 0;
 }

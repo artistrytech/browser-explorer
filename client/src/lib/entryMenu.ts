@@ -7,7 +7,7 @@
 import { api } from '../api/client';
 import type { MenuItem } from '../components/ContextMenu';
 import { openCloneDialog } from '../features/git/CloneDialog';
-import { isMarkdownPath, openMarkdownPreview } from '../features/preview/MarkdownTab';
+import { isMarkdownPath, openMarkdownPreview } from '../features/preview/MarkdownPreview';
 import { openDualPane } from '../features/transfer/DualPaneDialog';
 import { openConflictResolver } from '../stores/conflict';
 import { useExplorer } from '../stores/explorer';
@@ -210,8 +210,8 @@ export function entryMenuItems(opts: EntryMenuOptions): MenuItem[] {
           ...osMenuItems(entry.path, platform),
         ]
       : [
-          { id: 'openEditor', label: 'エディタで開く', action: () => openEntry(entry) },
-          // Markdown はダブルクリックの既定がプレビューなので、明示的に選べる項目も出す
+          { id: 'openEditor', label: 'エディタで開く', action: () => openEntry(entry, 'edit') },
+          // Markdown はダブルクリックの既定がプレビュー表示なので、明示的に選べる項目も出す
           ...(isMarkdownPath(entry.path)
             ? [{ id: 'openPreview', label: 'プレビューで開く', action: () => openMarkdownPreview(entry.path) }]
             : []),

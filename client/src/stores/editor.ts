@@ -18,7 +18,12 @@ export interface EditorTab {
   bom: boolean;
   dirty: boolean;
   mtime: number;
+  /** Markdown をプレビューで表示中か (false は編集。ツールバーで切り替える) */
+  preview: boolean;
 }
+
+/** open で開くときの表示 (省略時: 開いていれば今の表示のまま、新しく開くなら編集) */
+export type EditorOpenMode = 'edit' | 'preview';
 
 interface EditorStore {
   tabs: EditorTab[];
@@ -29,7 +34,7 @@ interface EditorStore {
   /** 読み込み直す前に開いていたファイルを開き直している途中か (その間は view=editor のままにする) */
   restoring: boolean;
 
-  open: (path: string) => Promise<void>;
+  open: (path: string, mode?: EditorOpenMode) => Promise<void>;
   /** 読み込み直す前に開いていたファイル (sessionStorage) を開き直す。起動時に 1 回呼ぶ */
   restore: () => Promise<void>;
   /** ファイルを開いて指定の位置 (1 始まり) を表示する */
@@ -37,6 +42,8 @@ interface EditorStore {
   clearReveal: () => void;
   close: (path: string) => Promise<void>;
   activate: (path: string) => void;
+  /** Markdown の編集 / プレビューを切り替える */
+  setPreview: (path: string, preview: boolean) => void;
   updateContent: (path: string, content: string) => void;
   save: (path?: string) => Promise<void>;
   saveAll: () => Promise<void>;
@@ -70,7 +77,7 @@ const OWN_SAVE_GRACE_MS = 2000;
 /** 起動時に開き直すファイル (読み込み直す前に開いていたもの) */
 const restoreRecord = loadEditorTabs();
 
-function tabFromRead(r: Awaited<ReturnType<typeof api.read>>): EditorTab {
+function tabFromRead(r: Awaited<ReturnType<typeof api.read>>, preview = false): EditorTab {
   return {
     path: r.path,
     name: baseName(r.path),
@@ -81,6 +88,7 @@ function tabFromRead(r: Awaited<ReturnType<typeof api.read>>): EditorTab {
     bom: r.bom,
     dirty: false,
     mtime: r.mtime,
+    preview,
   };
 }
 
@@ -91,16 +99,19 @@ export const useEditor = create<EditorStore>((set, get) => ({
   reveal: null,
   restoring: restoreRecord !== null,
 
-  open: async (path) => {
+  open: async (path, mode) => {
     const existing = get().tabs.find((t) => t.path === path);
     if (existing) {
-      set({ activePath: path });
+      set((s) => ({
+        activePath: path,
+        tabs: mode ? s.tabs.map((t) => (t.path === path ? { ...t, preview: mode === 'preview' } : t)) : s.tabs,
+      }));
       switchView('editor');
       return;
     }
     try {
       const r = await api.read(path);
-      const tab = tabFromRead(r);
+      const tab = tabFromRead(r, mode === 'preview');
       set((s) => ({ tabs: [...s.tabs, tab], activePath: r.path }));
       // ファイル編集開始も履歴に積み、ブラウザバックで「ファイル」タブへ戻れるようにする
       switchView('editor');
@@ -114,7 +125,10 @@ export const useEditor = create<EditorStore>((set, get) => ({
     if (!restoreRecord || !get().restoring) return;
     // 消えた・読めなくなったファイルは黙って外す
     const results = await Promise.allSettled(restoreRecord.paths.map((p) => api.read(p)));
-    const restored = results.flatMap((r) => (r.status === 'fulfilled' ? [tabFromRead(r.value)] : []));
+    const previews = new Set(restoreRecord.previews);
+    const restored = results.flatMap((r) =>
+      r.status === 'fulfilled' ? [tabFromRead(r.value, previews.has(r.value.path))] : [],
+    );
     set((s) => {
       // 開き直している間にユーザーが開いたファイルはそのまま残し、後ろに並べる
       const tabs = [...restored.filter((t) => !s.tabs.some((x) => x.path === t.path)), ...s.tabs];
@@ -157,6 +171,10 @@ export const useEditor = create<EditorStore>((set, get) => ({
   activate: (path) => {
     set({ activePath: path });
     switchView('editor');
+  },
+
+  setPreview: (path, preview) => {
+    set((s) => ({ tabs: s.tabs.map((t) => (t.path === path ? { ...t, preview } : t)) }));
   },
 
   updateContent: (path, content) => {
@@ -309,14 +327,15 @@ export const useEditor = create<EditorStore>((set, get) => ({
   },
 }));
 
-// 開いているファイルの並び・表示中のファイルが変わったら sessionStorage へ控える (編集内容の変化では書かない)。
+// 開いているファイルの並び・表示中のファイル・プレビュー表示が変わったら sessionStorage へ控える (編集内容の変化では書かない)。
 // 開き直している途中は控えず、読み込み直す前の記録を残しておく
 let savedTabsKey = '';
 useEditor.subscribe((s) => {
   if (s.restoring) return;
   const paths = s.tabs.map((t) => t.path);
-  const key = JSON.stringify([paths, s.activePath]);
+  const previews = s.tabs.filter((t) => t.preview).map((t) => t.path);
+  const key = JSON.stringify([paths, s.activePath, previews]);
   if (key === savedTabsKey) return;
   savedTabsKey = key;
-  saveEditorTabs({ paths, active: s.activePath });
+  saveEditorTabs({ paths, active: s.activePath, previews });
 });

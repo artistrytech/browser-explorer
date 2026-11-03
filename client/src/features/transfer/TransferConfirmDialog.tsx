@@ -5,7 +5,6 @@ import { useExplorer } from '../../stores/explorer';
 import { useEditor, relocatedPath } from '../../stores/editor';
 import { useGit } from '../../stores/git';
 import { useToast, toastError } from '../../stores/toast';
-import { usePreviewTab } from '../preview/MarkdownTab';
 import { fileIcon, formatDate, formatSize, parentPath } from '../../lib/paths';
 import { useDialogKeys } from '../../lib/dialogKeys';
 import type {
@@ -386,16 +385,6 @@ function afterTransfer(
   if (op === 'move') {
     const moves = done.map((r) => ({ from: r.src, to: r.dest! }));
     useEditor.getState().relocate(moves);
-    const preview = usePreviewTab.getState().current;
-    if (preview) {
-      for (const m of moves) {
-        const next = relocatedPath(preview, m.from, m.to);
-        if (next) {
-          usePreviewTab.getState().open(next);
-          break;
-        }
-      }
-    }
   }
   // 上書きされた側をエディタで開いていれば、外部変更として読み直す (未保存なら通知のみ)
   const editor = useEditor.getState();

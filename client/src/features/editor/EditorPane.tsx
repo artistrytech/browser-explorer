@@ -1,13 +1,21 @@
 import { useEffect, useRef } from 'react';
 import { monaco, languageForPath } from './monacoSetup';
 import { useEditor } from '../../stores/editor';
-import { useSettings } from '../../stores/settings';
+import { useSettings, PREVIEW_ZOOM_MIN, PREVIEW_ZOOM_MAX } from '../../stores/settings';
+import { useUi } from '../../stores/ui';
 import { confirmDialog, promptDialog } from '../../stores/dialog';
 import { useContextMenu, type MenuItem } from '../../components/ContextMenu';
 import { api } from '../../api/client';
 import { copyPathItems } from '../../lib/copyPath';
 import { openCodeMap } from '../codemap/codeMapStore';
 import { parentPath, joinPath } from '../../lib/paths';
+import {
+  MarkdownPreview,
+  isMarkdownPath,
+  useMarkdownPreview,
+  setPreviewZoom,
+  zoomPreviewBy,
+} from '../preview/MarkdownPreview';
 import styles from './EditorPane.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -37,15 +45,20 @@ async function openTabMenu(e: React.MouseEvent, path: string): Promise<void> {
 }
 
 export function EditorPane() {
-  const { tabs, activePath, activate, close, updateContent, save, saveAll, saveAs, reload, setCursor } =
+  const { tabs, activePath, activate, close, updateContent, save, saveAll, saveAs, reload, setCursor, setPreview } =
     useEditor();
   const settings = useSettings((s) => s.settings);
+  /** プレビューはエディタタブを表示中だけ描く (非表示の間に拡大縮小のキー等を拾わないように) */
+  const visible = useUi((s) => s.view === 'editor');
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const modelsRef = useRef(new Map<string, monaco.editor.ITextModel>());
   const syncingRef = useRef(false);
 
   const activeTab = tabs.find((t) => t.path === activePath);
+  const isMarkdown = !!activeTab && isMarkdownPath(activeTab.path);
+  /** Markdown をプレビューで表示中か (Monaco は隠すだけで、モデルや表示位置はそのまま残す) */
+  const previewing = isMarkdown && !!activeTab?.preview;
 
   // エディタ本体は 1 つだけ生成し、タブ切替でモデルを差し替える
   useEffect(() => {
@@ -141,8 +154,15 @@ export function EditorPane() {
       modelsRef.current.set(activeTab.path, model);
     }
     if (editor.getModel() !== model) editor.setModel(model);
-    editor.focus();
+    if (!activeTab.preview) editor.focus();
   }, [activeTab?.path]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** 編集 / プレビューの切り替え。編集に戻ったらエディタにフォーカスする */
+  const togglePreview = (on: boolean) => {
+    if (!activeTab) return;
+    setPreview(activeTab.path, on);
+    if (!on) requestAnimationFrame(() => editorRef.current?.focus());
+  };
 
   // 外部からの content 変更 (再読込等) をモデルへ反映
   useEffect(() => {
@@ -161,6 +181,7 @@ export function EditorPane() {
     const editor = editorRef.current;
     if (!editor || !reveal || reveal.path !== activeTab?.path) return;
     if (editor.getModel() !== modelsRef.current.get(reveal.path)) return;
+    if (activeTab?.preview) setPreview(reveal.path, false);
     const pos = { lineNumber: reveal.line, column: reveal.column };
     editor.setPosition(pos);
     editor.revealPositionInCenter(pos);
@@ -205,6 +226,7 @@ export function EditorPane() {
           >
             <span>
               {t.dirty ? '● ' : ''}
+              {t.preview && isMarkdownPath(t.path) ? '👁 ' : ''}
               {t.name}
             </span>
             <button
@@ -219,6 +241,29 @@ export function EditorPane() {
           </div>
         ))}
         <span className={cx("editor-tab-actions")}>
+          {isMarkdown && (
+            <>
+              {/* Markdown: 編集 / プレビューの切り替え */}
+              <span className={cx('btn-group')}>
+                <button
+                  className={cx(`status-btn${previewing ? '' : ' on'}`)}
+                  title="編集する"
+                  onClick={() => togglePreview(false)}
+                >
+                  ✎ 編集
+                </button>
+                <button
+                  className={cx(`status-btn${previewing ? ' on' : ''}`)}
+                  title="プレビューを表示する"
+                  onClick={() => togglePreview(true)}
+                >
+                  👁 プレビュー
+                </button>
+              </span>
+              {previewing && <PreviewControls />}
+              <span className={cx('actions-sep')} />
+            </>
+          )}
           <button
             className={cx("status-btn")}
             title="ファイルを開き直す (ステータスバーで選んだエンコーディングで読み込む)"
@@ -237,7 +282,48 @@ export function EditorPane() {
           </button>
         </span>
       </div>
-      <div ref={containerRef} className={cx("monaco-container")} />
+      <div className={cx('editor-body')}>
+        <div ref={containerRef} className={cx(`monaco-container${previewing ? ' hidden' : ''}`)} />
+        {previewing && visible && activeTab && (
+          <div className={cx('preview-container')}>
+            <MarkdownPreview path={activeTab.path} content={activeTab.content} />
+          </div>
+        )}
+      </div>
     </div>
+  );
+}
+
+/** プレビュー表示中のツールバー: 拡大率 (−/+ で STEP ずつ、% 表示クリックで 100%) と全画面 */
+function PreviewControls() {
+  const zoom = useSettings((s) => s.settings.previewZoom);
+  const setFullscreen = useMarkdownPreview((s) => s.setFullscreen);
+  return (
+    <>
+      <span className={cx('btn-group')}>
+        <button
+          className={cx('status-btn')}
+          title="縮小 (Ctrl+−)"
+          disabled={zoom <= PREVIEW_ZOOM_MIN}
+          onClick={() => zoomPreviewBy(-1)}
+        >
+          −
+        </button>
+        <button className={cx('status-btn zoom-value')} title="拡大率をリセット (Ctrl+0)" onClick={() => setPreviewZoom(100)}>
+          {zoom}%
+        </button>
+        <button
+          className={cx('status-btn')}
+          title="拡大 (Ctrl++)"
+          disabled={zoom >= PREVIEW_ZOOM_MAX}
+          onClick={() => zoomPreviewBy(1)}
+        >
+          +
+        </button>
+      </span>
+      <button className={cx('status-btn')} title="全画面モード (Esc で終了)" onClick={() => setFullscreen(true)}>
+        ⛶ 全画面
+      </button>
+    </>
   );
 }

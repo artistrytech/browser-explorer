@@ -3,7 +3,7 @@ import { api } from '../api/client';
 import { openInNewTab } from '../lib/appTabs';
 
 /**
- * メイン領域の表示: ファイル一覧 / コミット(変更) / ログ / ブランチ / エディタ / コミット差分 / Markdown プレビュー /
+ * メイン領域の表示: ファイル一覧 / コミット(変更) / ログ / ブランチ / エディタ (Markdown のプレビューも) / コミット差分 /
  * アプリログ (サーバ・クライアントの動作ログ。Git のログとは別) / コードマップ (参照元・参照先のマップ)。
  * Git 系 (commit/log/branches) はそれぞれ独立した最上位タブ (ブラウザ履歴も独立)。
  */
@@ -15,7 +15,6 @@ export type MainView =
   | 'review'
   | 'editor'
   | 'diff'
-  | 'preview'
   | 'applog'
   | 'codemap';
 
@@ -109,17 +108,17 @@ export function openSettingsTab(tab: string): void {
   useUi.setState({ settingsTab: tab, settingsOpen: true });
 }
 
-/** URL の ?view= から表示ビューを復元 (無指定は files)。旧 'git' は 'commit' に読み替え */
+/** URL の ?view= から表示ビューを復元 (無指定は files)。旧 'git' は 'commit'、旧 'preview' は 'editor' に読み替え */
 export function viewFromUrl(): MainView {
   const v = new URLSearchParams(location.search).get('view');
   if (v === 'git') return 'commit';
+  if (v === 'preview') return 'editor';
   return v === 'commit' ||
     v === 'log' ||
     v === 'branches' ||
     v === 'review' ||
     v === 'editor' ||
     v === 'diff' ||
-    v === 'preview' ||
     v === 'applog' ||
     v === 'codemap'
     ? v

@@ -1,33 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { create } from 'zustand';
 import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { api } from '../../api/client';
-import { onFsChange } from '../../api/ws';
 import { monaco } from '../editor/monacoSetup';
 import { useEditor } from '../../stores/editor';
-import {
-  useSettings,
-  clampPreviewZoom,
-  PREVIEW_ZOOM_MIN,
-  PREVIEW_ZOOM_MAX,
-  PREVIEW_ZOOM_STEP,
-} from '../../stores/settings';
-import { switchView, replaceView, useUi } from '../../stores/ui';
-import { toastError } from '../../stores/toast';
-import { baseName, parentPath, joinPath } from '../../lib/paths';
+import { useSettings, clampPreviewZoom, PREVIEW_ZOOM_STEP } from '../../stores/settings';
+import { parentPath, joinPath } from '../../lib/paths';
 import { savePreviewScroll, loadPreviewScroll } from '../../lib/previewViewMemory';
 import { renderMermaid } from './mermaid';
 import { openInNewTab, wantsNewTab } from '../../lib/appTabs';
-import styles from './MarkdownTab.module.scss';
+import styles from './MarkdownPreview.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
 const cx = createCssModuleClassNames(styles);
 
 /**
- * Markdown プレビュータブ: .md ファイルを HTML に描画して表示する。
- * 差分タブと同じく対象は 1 つ (別のファイルを開くと差し替わる)。開く操作はブラウザ履歴に積まれる。
- * ファイルが外部 (エディタ含む) で保存されたら自動で再描画する。
+ * Markdown プレビュー: エディタタブ内で、編集とプレビューを切り替えて表示する (EditorPane が使う)。
+ * 描画するのはタブの編集内容 (未保存の変更も反映)。ファイルが外部で保存された場合は、
+ * エディタの外部変更の読み直しを通じて再描画される。
  */
 
 /** プレビューの対象とする拡張子 (ドット無し・小文字) */
@@ -39,14 +30,11 @@ export function isMarkdownPath(path: string): boolean {
 }
 
 interface PreviewStore {
-  current: string | null;
   /**
    * 全画面モード (ツールバー・タブ・サイドバー等を隠して本文だけを表示)。Esc で解除。
    * ブラウザの全画面 (Fullscreen API) も連動して切り替える
    */
   fullscreen: boolean;
-  open: (path: string) => void;
-  close: () => void;
   setFullscreen: (on: boolean) => void;
 }
 
@@ -59,49 +47,41 @@ function setBrowserFullscreen(on: boolean): void {
   }
 }
 
-export const usePreviewTab = create<PreviewStore>((set) => ({
-  current: null,
+export const useMarkdownPreview = create<PreviewStore>((set) => ({
   fullscreen: false,
-  open: (current) => set({ current }),
-  close: () => {
-    setBrowserFullscreen(false);
-    set({ current: null, fullscreen: false });
-  },
   setFullscreen: (fullscreen) => {
     setBrowserFullscreen(fullscreen);
     set({ fullscreen });
   },
 }));
 
-/** URL の ?ppath= からプレビュー対象を復元 */
+/** URL の ?ppath= (別タブでプレビューを開くときの指定) */
 export function previewPathFromUrl(): string | null {
   return new URLSearchParams(location.search).get('ppath');
 }
 
-/** プレビュータブを開く (ブラウザ履歴に追加)。newTab でブラウザの別タブに開く */
+/** Markdown をエディタタブのプレビュー表示で開く。newTab でブラウザの別タブに開く */
 export function openMarkdownPreview(path: string, newTab = false): void {
-  const params = new URLSearchParams(location.search);
-  params.set('view', 'preview');
-  params.set('ppath', path);
   if (newTab) {
+    // 開いた先で (エディタのタブを開き直した後に) エディタタブを開いて履歴に積むので、view は付けない
+    const params = new URLSearchParams(location.search);
+    params.delete('view');
+    params.set('ppath', path);
     openInNewTab(`${location.pathname}?${params}`);
     return;
   }
-  usePreviewTab.getState().open(path);
-  if (location.search !== `?${params}`) {
-    history.pushState({ path: params.get('path'), view: 'preview' }, '', `${location.pathname}?${params}`);
-  }
-  useUi.getState().setView('preview');
-  useSettings.getState().addRecent(path, 'file');
+  void useEditor.getState().open(path, 'preview');
 }
 
-/** プレビュータブを閉じる。表示中だった場合は「ファイル」タブへ戻す (履歴は積まない) */
-export function closePreviewTab(): void {
-  usePreviewTab.getState().close();
-  const params = new URLSearchParams(location.search);
-  params.delete('ppath');
-  history.replaceState(history.state, '', `${location.pathname}?${params}`);
-  if (useUi.getState().view === 'preview') replaceView('files');
+/** プレビューの拡大率を指定値に (設定として永続化) */
+export function setPreviewZoom(next: number): void {
+  const z = clampPreviewZoom(next);
+  if (z !== useSettings.getState().settings.previewZoom) useSettings.getState().update({ previewZoom: z });
+}
+
+/** プレビューの拡大率を STEP 単位で増減 */
+export function zoomPreviewBy(dir: 1 | -1): void {
+  setPreviewZoom(useSettings.getState().settings.previewZoom + dir * PREVIEW_ZOOM_STEP);
 }
 
 /** 見出しのアンカー ID (GitHub 風: 小文字化・空白は '-'・記号除去)。ページ内リンク用 */
@@ -188,19 +168,11 @@ function monacoLangFor(name: string): string | null {
   return monaco.languages.getLanguages().some((l) => l.id === id) ? id : null;
 }
 
-interface PreviewData {
-  html: string;
-  mtime: number;
-}
-
-export function MarkdownTab() {
-  const current = usePreviewTab((s) => s.current);
-  const fullscreen = usePreviewTab((s) => s.fullscreen);
-  const setFullscreen = usePreviewTab((s) => s.setFullscreen);
+export function MarkdownPreview({ path: current, content }: { path: string; content: string }) {
+  const fullscreen = useMarkdownPreview((s) => s.fullscreen);
+  const setFullscreen = useMarkdownPreview((s) => s.setFullscreen);
   const theme = useSettings((s) => s.settings.theme);
   const zoom = useSettings((s) => s.settings.previewZoom);
-  const [data, setData] = useState<PreviewData | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   /** 画像用に生成した object URL (差し替え/アンマウント時に解放する) */
@@ -212,28 +184,16 @@ export function MarkdownTab() {
   const pendingScroll = useRef<{ target: number; applied: number | null } | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  const load = async (path: string) => {
-    try {
-      const r = await api.read(path);
-      const raw = md.parse(r.content, { async: false });
-      const html = DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
-      setData({ html, mtime: r.mtime });
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setData(null);
-    }
-  };
+  const html = useMemo(() => {
+    const raw = md.parse(content, { async: false });
+    return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
+  }, [content]);
 
   useEffect(() => {
-    setData(null);
-    setError(null);
-    if (!current) return;
     const saved = loadPreviewScroll(current);
     pendingScroll.current = saved !== null && saved > 0 ? { target: saved, applied: null } : null;
-    void load(current);
     return () => {
-      // 別ファイルへの切替・タブ非表示 (アンマウント) 時に最終位置を保存
+      // 別ファイルへの切替・編集への切替 (アンマウント) 時に最終位置を保存
       clearTimeout(saveTimer.current);
       const el = scrollRef.current;
       if (el) savePreviewScroll(current, el.scrollTop);
@@ -256,12 +216,11 @@ export function MarkdownTab() {
 
   // 描画直後にスクロール位置を復元 (再読込時も同じ位置を保つ)
   useEffect(() => {
-    if (data) applyPendingScroll();
+    applyPendingScroll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [html]);
 
   const onScroll = () => {
-    if (!current) return;
     const el = scrollRef.current;
     if (!el) return;
     const top = el.scrollTop;
@@ -269,37 +228,18 @@ export function MarkdownTab() {
     saveTimer.current = setTimeout(() => savePreviewScroll(current, top), 150);
   };
 
-  // ファイルが保存されたら再描画 (エディタで編集 → 保存 → プレビューに反映)
-  useEffect(() => {
-    if (!current) return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    return onFsChange((e) => {
-      if (e.path !== current) return;
-      clearTimeout(timer);
-      timer = setTimeout(() => void load(current), 200);
-    });
-  }, [current]);
-
-  /** 拡大率を変更 (設定として永続化)。delta は STEP 単位の増減、absolute は指定値へ */
-  const setZoom = (next: number) => {
-    const z = clampPreviewZoom(next);
-    if (z !== useSettings.getState().settings.previewZoom) useSettings.getState().update({ previewZoom: z });
-  };
-  const zoomBy = (dir: 1 | -1) => setZoom(useSettings.getState().settings.previewZoom + dir * PREVIEW_ZOOM_STEP);
-
   // Ctrl+ホイールで拡大縮小 (ブラウザ自体のズームは抑止)。passive にできないので addEventListener で登録
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || !data) return;
+    if (!el) return;
     const onWheel = (e: WheelEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
-      if (e.deltaY !== 0) zoomBy(e.deltaY < 0 ? 1 : -1);
+      if (e.deltaY !== 0) zoomPreviewBy(e.deltaY < 0 ? 1 : -1);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, []);
 
   // Ctrl + / Ctrl - / Ctrl 0 で拡大縮小/リセット (プレビュー表示中のみ。入力欄にフォーカスがある間は対象外)
   useEffect(() => {
@@ -308,9 +248,9 @@ export function MarkdownTab() {
       const el = document.activeElement;
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el?.closest('.monaco-editor')) return;
       // '+' は US/JIS どちらの配列でも Shift が必要なので shiftKey は '+' のときだけ許容する
-      if (e.key === '+' || (e.key === '=' && !e.shiftKey)) zoomBy(1);
-      else if (e.key === '-' && !e.shiftKey) zoomBy(-1);
-      else if (e.key === '0' && !e.shiftKey) setZoom(100);
+      if (e.key === '+' || (e.key === '=' && !e.shiftKey)) zoomPreviewBy(1);
+      else if (e.key === '-' && !e.shiftKey) zoomPreviewBy(-1);
+      else if (e.key === '0' && !e.shiftKey) setPreviewZoom(100);
       else return;
       e.preventDefault();
     };
@@ -348,7 +288,7 @@ export function MarkdownTab() {
   // 描画後の後処理: 相対パス画像を API 経由で取得して差し替え / コードブロックの色付け
   useEffect(() => {
     const host = bodyRef.current;
-    if (!host || !data || !current) return;
+    if (!host) return;
     let cancelled = false;
 
     blobUrls.current.forEach((u) => URL.revokeObjectURL(u));
@@ -425,25 +365,25 @@ export function MarkdownTab() {
     };
     // テーマ切替時は mermaid 図を配色に合わせて描き直す (画像・コード色付けも再実行されるが data-src から復元されるだけ)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, current, theme]);
+  }, [html, current, theme]);
 
   useEffect(() => {
     return () => {
       blobUrls.current.forEach((u) => URL.revokeObjectURL(u));
       blobUrls.current = [];
       // 全画面のまま別ビューへ移った (Alt+← 等) 場合、次に開いたとき通常表示に戻す
-      usePreviewTab.getState().setFullscreen(false);
+      useMarkdownPreview.getState().setFullscreen(false);
     };
   }, []);
 
   /**
-   * リンククリック: ページ内アンカーはスクロール、相対パスの Markdown はプレビューで開く、
+   * リンククリック: ページ内アンカーはスクロール、相対パスの Markdown はエディタタブのプレビューで開く、
    * 外部 URL は別タブで開く (アプリ自体が遷移してしまうのを防ぐ)。
    * Markdown へのリンクは Ctrl+クリック (mac は ⌘) / 中クリックで別タブのプレビューに開く
    */
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const a = (e.target as HTMLElement).closest('a');
-    if (!a || !current) return;
+    if (!a) return;
     const href = a.getAttribute('href') ?? '';
     if (!href) return;
     e.preventDefault();
@@ -462,8 +402,6 @@ export function MarkdownTab() {
     else void useEditor.getState().open(abs);
   };
 
-  if (!current) return null;
-
   return (
     <div className={cx(`md-tab${fullscreen ? ' fullscreen' : ''}`)}>
       {fullscreen && (
@@ -475,74 +413,20 @@ export function MarkdownTab() {
           ✕ 全画面を終了
         </button>
       )}
-      <div className={cx('md-tab-head')}>
-        <span className={cx('md-tab-icon')}>📝</span>
-        <b className={cx('md-tab-path')} title={current}>
-          {baseName(current)}
-        </b>
-        <span className={cx('md-tab-dir')} title={current}>
-          {parentPath(current)}
-        </span>
-        <span className={cx('status-spacer')} />
-        <button
-          className={cx('status-btn')}
-          title="このファイルをエディタで開く"
-          onClick={() => void useEditor.getState().open(current)}
-        >
-          エディタで開く
-        </button>
-        <button className={cx('status-btn')} title="再読込" onClick={() => void load(current)}>
-          ⟳
-        </button>
-        {/* 拡大率: −/+ で STEP ずつ、% 表示クリックで 100% に戻す (Ctrl+ホイール / Ctrl+± / Ctrl+0 も可) */}
-        <span className={cx('md-zoom')}>
-          <button
-            className={cx('status-btn')}
-            title={`縮小 (Ctrl+−)`}
-            disabled={zoom <= PREVIEW_ZOOM_MIN}
-            onClick={() => zoomBy(-1)}
-          >
-            −
-          </button>
-          <button className={cx('status-btn md-zoom-value')} title="拡大率をリセット (Ctrl+0)" onClick={() => setZoom(100)}>
-            {zoom}%
-          </button>
-          <button
-            className={cx('status-btn')}
-            title={`拡大 (Ctrl++)`}
-            disabled={zoom >= PREVIEW_ZOOM_MAX}
-            onClick={() => zoomBy(1)}
-          >
-            +
-          </button>
-        </span>
-        <button className={cx('status-btn')} title="全画面モード (Esc で終了)" onClick={() => setFullscreen(true)}>
-          ⛶ 全画面
-        </button>
-        <button className={cx('dialog-close')} title="プレビュータブを閉じる" onClick={closePreviewTab}>
-          ✕
-        </button>
+      <div className={cx('md-tab-scroll')} ref={scrollRef} onScroll={onScroll}>
+        <div
+          ref={bodyRef}
+          className={cx('md-body')}
+          style={{ zoom: zoom / 100 }}
+          onClick={onClick}
+          // リンクの中クリックはブラウザの既定 (ブラウザの別タブで開く) にせず、クリックと同じ処理に渡す
+          onAuxClick={(e) => {
+            if (e.button === 1) onClick(e);
+          }}
+          // marked → DOMPurify でサニタイズ済みの HTML
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
       </div>
-      {error ? (
-        <div className={cx('empty-hint')}>{error}</div>
-      ) : !data ? (
-        <div className={cx('empty-hint')}>読み込み中…</div>
-      ) : (
-        <div className={cx('md-tab-scroll')} ref={scrollRef} onScroll={onScroll}>
-          <div
-            ref={bodyRef}
-            className={cx('md-body')}
-            style={{ zoom: zoom / 100 }}
-            onClick={onClick}
-            // リンクの中クリックはブラウザの既定 (ブラウザの別タブで開く) にせず、クリックと同じ処理に渡す
-            onAuxClick={(e) => {
-              if (e.button === 1) onClick(e);
-            }}
-            // marked → DOMPurify でサニタイズ済みの HTML
-            dangerouslySetInnerHTML={{ __html: data.html }}
-          />
-        </div>
-      )}
     </div>
   );
 }

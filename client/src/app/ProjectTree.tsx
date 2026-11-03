@@ -5,7 +5,6 @@ import { useEditor } from '../stores/editor';
 import { useGit, type OverlayCode } from '../stores/git';
 import { useSettings } from '../stores/settings';
 import { useUi } from '../stores/ui';
-import { usePreviewTab } from '../features/preview/MarkdownTab';
 import { useContextMenu } from '../components/ContextMenu';
 import { openWithDefault, renameEntry } from '../lib/fileOps';
 import { entryMenuItems, folderMenuItems } from '../lib/entryMenu';
@@ -112,7 +111,6 @@ export function ProjectTree({ repoRoot }: { repoRoot: string }) {
   const repoLabel = useSettings((s) => s.settings.repoLabels[repoRoot]);
   const view = useUi((s) => s.view);
   const editorPath = useEditor((s) => s.activePath);
-  const previewPath = usePreviewTab((s) => s.current);
 
   const [expanded, setExpanded] = useState<Set<string>>(() => loadProjectExpanded(repoRoot));
   const [children, setChildren] = useState<Record<string, Children>>({});
@@ -213,8 +211,8 @@ export function ProjectTree({ repoRoot }: { repoRoot: string }) {
     [load],
   );
 
-  // エディタ / プレビューで表示中のファイルを選択状態にして、ツリー上で見える位置まで展開する
-  const activeFile = view === 'editor' ? editorPath : view === 'preview' ? previewPath : null;
+  // エディタで表示中のファイル (プレビュー表示を含む) を選択状態にして、ツリー上で見える位置まで展開する
+  const activeFile = view === 'editor' ? editorPath : null;
   useEffect(() => {
     if (!activeFile) return;
     const rel = relOf(activeFile, repoRoot);

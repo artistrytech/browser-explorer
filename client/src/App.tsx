@@ -29,7 +29,7 @@ import { CherryPickDialog } from './features/git/CherryPickDialog';
 import { RevertDialog } from './features/git/RevertDialog';
 import { DiffTab, useDiffTab, closeDiffTab, diffTargetFromUrl } from './features/git/DiffTab';
 import { ReviewTab } from './features/review/ReviewTab';
-import { MarkdownTab, usePreviewTab, closePreviewTab, previewPathFromUrl } from './features/preview/MarkdownTab';
+import { previewPathFromUrl } from './features/preview/MarkdownPreview';
 import { AppLogTab } from './features/applog/AppLogTab';
 import { CodeMapTab } from './features/codemap/CodeMapTab';
 import { useCodeMap } from './features/codemap/codeMapStore';
@@ -90,7 +90,6 @@ export default function App() {
   const activePath = useEditor((s) => s.activePath);
   const editorRestoring = useEditor((s) => s.restoring);
   const diffTarget = useDiffTab((s) => s.current);
-  const previewPath = usePreviewTab((s) => s.current);
   const appLogOpened = useAppLog((s) => s.opened);
   /** コードマップの起点 (開いていなければ null)。タブ名は起点のシンボル名 (調べ終わるまではファイル名) */
   const codeMapOrigin = useCodeMap((s) => s.origin);
@@ -148,12 +147,12 @@ export default function App() {
       params.set('review', reviewUrlParam(initialReview));
       if (initialReviewFile) params.set('rfile', initialReviewFile);
     }
-    if (initialPreview) params.set('ppath', initialPreview);
     history.replaceState({ path: initial, view: initialView }, '', `${location.pathname}?${params}`);
     useUi.getState().setView(initialView);
     useGit.getState().setLogFilter(initialLogFilter);
     if (initialDiff) useDiffTab.getState().open(initialDiff);
-    if (initialPreview) usePreviewTab.getState().open(initialPreview);
+    // ?ppath= (Markdown のリンクを別タブで開いたとき等) はエディタタブのプレビューで開く (URL には残さない)
+    if (initialPreview) void useEditor.getState().open(initialPreview, 'preview');
     if (initialView === 'applog') useAppLog.setState({ opened: true });
     void navigate(initial, false).then(() => {
       if (initialSearch) void useExplorer.getState().runSearch(initialSearch, false);
@@ -180,11 +179,6 @@ export default function App() {
       const nextDiff = diffTargetFromUrl();
       if (nextDiff && (curDiff?.hash !== nextDiff.hash || curDiff?.path !== nextDiff.path)) {
         useDiffTab.getState().open(nextDiff);
-      }
-      // Markdown プレビューの対象も URL から復元 (同一対象なら参照を維持)
-      const nextPreview = previewPathFromUrl();
-      if (nextPreview && usePreviewTab.getState().current !== nextPreview) {
-        usePreviewTab.getState().open(nextPreview);
       }
       // レビュータブ: 一覧 ⇄ 詳細・選択中ファイルも URL から復元する
       useReview.getState().syncFromUrl();
@@ -293,11 +287,6 @@ export default function App() {
     if (view === 'codemap' && !codeMapOrigin) replaceView('files');
   }, [view, codeMapOrigin]);
 
-  // プレビュータブ: 対象が無いのに view=preview なら files へ
-  useEffect(() => {
-    if (view === 'preview' && !previewPath) replaceView('files');
-  }, [view, previewPath]);
-
   useEffect(() => {
     const activeTab = tabs.find((t) => t.path === activePath);
     const title =
@@ -305,9 +294,7 @@ export default function App() {
         ? baseName(path) || path
         : view === 'editor'
           ? activeTab?.name || 'Explorer'
-          : view === 'preview' && previewPath
-            ? baseName(previewPath)
-            : view === 'applog'
+          : view === 'applog'
               ? 'アプリログ'
               : view === 'codemap' && codeMapOrigin
               ? `参照マップ: ${codeMapTitle ?? baseName(codeMapOrigin.path)}`
@@ -315,7 +302,7 @@ export default function App() {
               ? baseName(repoRoot) || repoRoot
               : 'Explorer';
     document.title = title;
-  }, [activePath, path, previewPath, repoRoot, tabs, view, codeMapOrigin, codeMapTitle]);
+  }, [activePath, path, repoRoot, tabs, view, codeMapOrigin, codeMapTitle]);
 
   return (
     <div className={cx("app")}>
@@ -327,31 +314,6 @@ export default function App() {
         {tabs.length > 0 && (
           <button className={cx(`view-tab${view === 'editor' ? ' active' : ''}`)} onClick={() => switchView('editor')}>
             📝 エディタ ({tabs.length})
-          </button>
-        )}
-        {previewPath && (
-          <button
-            className={cx(`view-tab${view === 'preview' ? ' active' : ''}`)}
-            onClick={() => switchView('preview')}
-            onMouseDown={(e) => {
-              // 中クリックでも閉じられるように (エディタタブと同様)
-              if (e.button === 1) {
-                e.preventDefault();
-                closePreviewTab();
-              }
-            }}
-          >
-            👁 {baseName(previewPath)}
-            <span
-              className={cx("view-tab-close")}
-              title="プレビュータブを閉じる"
-              onClick={(e) => {
-                e.stopPropagation();
-                closePreviewTab();
-              }}
-            >
-              ✕
-            </span>
           </button>
         )}
         {/* Git 系は独立した最上位タブ (コミットは旧「変更」と同機能)。履歴もそれぞれ独立 */}
@@ -472,16 +434,6 @@ export default function App() {
                 </div>
                 <div className={cx(`main-view${view === 'diff' ? '' : ' hidden'}`)}>
                   {view === 'diff' && <DiffTab />}
-                </div>
-                <div className={cx(`main-view${view === 'preview' ? '' : ' hidden'}`)}>
-                  {/* ファイルタブと同じく、リポジトリ内なら Git のツールバーを出す */}
-                  {view === 'preview' && (
-                    <>
-                      <GitToolbar />
-                      <GitMergeBanner />
-                      <MarkdownTab />
-                    </>
-                  )}
                 </div>
                 <div className={cx(`main-view${view === 'applog' ? '' : ' hidden'}`)}>
                   {view === 'applog' && <AppLogTab />}

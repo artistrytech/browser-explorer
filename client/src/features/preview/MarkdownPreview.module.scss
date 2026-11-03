@@ -1,44 +1,7 @@
-.empty-hint {
-  padding: 28px;
-  text-align: center;
-  color: var(--text-dim);
-}
-
-.status-spacer {
-  flex: 1;
-}
-
-.status-btn {
-  border: 1px solid var(--border);
-  background: var(--bg);
-  border-radius: 3px;
-  padding: 1px 8px;
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--text);
-}
-
-.status-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
-}
-
-.dialog-close {
-  border: none;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.dialog-close:hover {
-  color: var(--danger);
-}
-
 .md-tab {
   display: flex;
   flex-direction: column;
-  /* 上に Git のツールバーが並ぶので、残りの高さを使う */
-  flex: 1;
+  height: 100%;
   min-height: 0;
 }
 
@@ -48,10 +11,6 @@
   inset: 0;
   z-index: 500;
   background: var(--bg);
-
-  .md-tab-head {
-    display: none;
-  }
 
   .md-body {
     max-width: 1100px;
@@ -78,59 +37,6 @@
     opacity: 1;
     color: var(--text);
   }
-}
-
-.md-tab-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-alt);
-}
-
-.md-tab-icon {
-  flex: none;
-}
-
-.md-tab-path {
-  flex: none;
-  white-space: nowrap;
-}
-
-.md-tab-dir {
-  color: var(--text-dim);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.md-zoom {
-  display: inline-flex;
-  align-items: center;
-
-  .status-btn {
-    border-radius: 0;
-    min-width: 24px;
-  }
-
-  .status-btn:first-child {
-    border-radius: 3px 0 0 3px;
-  }
-
-  .status-btn:last-child {
-    border-radius: 0 3px 3px 0;
-  }
-
-  .status-btn + .status-btn {
-    border-left: none;
-  }
-}
-
-.md-zoom-value {
-  min-width: 48px;
-  font-variant-numeric: tabular-nums;
 }
 
 .md-tab-scroll {

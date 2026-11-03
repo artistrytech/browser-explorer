@@ -1,11 +1,11 @@
 import { api } from '../api/client';
 import { useExplorer } from '../stores/explorer';
-import { useEditor } from '../stores/editor';
+import { useEditor, type EditorOpenMode } from '../stores/editor';
 import { useGit } from '../stores/git';
 import { useUi, type ExternalTool } from '../stores/ui';
 import { useToast, toastError } from '../stores/toast';
 import { confirmDialog, promptDialog } from '../stores/dialog';
-import { isMarkdownPath, openMarkdownPreview } from '../features/preview/MarkdownTab';
+import { isMarkdownPath, openMarkdownPreview } from '../features/preview/MarkdownPreview';
 import { joinPath, baseName, formatSize, formatDate, parentPath } from './paths';
 import { saveEnteredChild } from './focusMemory';
 import { loadNewFileExts } from './newFileExts';
@@ -38,7 +38,7 @@ export async function runExternalTool(tool: ExternalTool, paths: string[]): Prom
 /**
  * ダブルクリック / Enter でエントリを開く。ファイルで拡張子に既定ツール (extDefaults) が
  * 設定されていればそのツールで起動し、無ければ従来どおり (フォルダは移動 / ファイルはエディタ)。
- * ただし Markdown は既定でプレビュータブに開く (エディタは右クリック「エディタで開く」から)。
+ * ただし Markdown は既定でエディタタブのプレビュー表示で開く (編集はツールバーか右クリック「エディタで開く」から)。
  */
 export function openWithDefault(entry: FsEntry): void {
   if (entry.type === 'file') {
@@ -57,8 +57,8 @@ export function openWithDefault(entry: FsEntry): void {
   openEntry(entry);
 }
 
-/** エントリを開く: フォルダなら移動、ファイルならエディタ */
-export function openEntry(entry: FsEntry): void {
+/** エントリを開く: フォルダなら移動、ファイルならエディタ (mode: 編集 / プレビューの指定。省略時は既定) */
+export function openEntry(entry: FsEntry, mode?: EditorOpenMode): void {
   if (entry.type === 'dir' || (entry.type === 'symlink' && entry.linkTarget)) {
     rememberEnteredChild(entry);
     if (entry.type === 'symlink') {
@@ -68,14 +68,14 @@ export function openEntry(entry: FsEntry): void {
         .then((st) =>
           st.type === 'dir' || st.type === 'symlink'
             ? useExplorer.getState().navigate(entry.path)
-            : useEditor.getState().open(entry.path),
+            : useEditor.getState().open(entry.path, mode),
         )
         .catch(toastError);
       return;
     }
     void useExplorer.getState().navigate(entry.path);
   } else {
-    void useEditor.getState().open(entry.path);
+    void useEditor.getState().open(entry.path, mode);
   }
 }
 

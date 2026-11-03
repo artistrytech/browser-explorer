@@ -1,5 +1,5 @@
 /**
- * エディタで開いているファイル (タブの並びと表示中のファイル) を sessionStorage に保持する。
+ * エディタで開いているファイル (タブの並び・表示中のファイル・プレビュー表示のファイル) を sessionStorage に保持する。
  * 画面を読み込み直したときにここから開き直す。内容はファイルから読み直すので、未保存の編集は引き継がない。
  * リロード・ブラウザバックでも維持、タブを閉じると破棄。
  */
@@ -12,6 +12,8 @@ const EDITOR_TABS_KEY = 'editor:tabs';
 export interface EditorTabsRecord {
   paths: string[];
   active: string | null;
+  /** Markdown をプレビューで表示していたファイル */
+  previews: string[];
 }
 
 export function saveEditorTabs(rec: EditorTabsRecord): void {
@@ -30,7 +32,10 @@ export function loadEditorTabs(): EditorTabsRecord | null {
     const rec = JSON.parse(raw) as Partial<EditorTabsRecord>;
     const paths = Array.isArray(rec.paths) ? rec.paths.filter((p): p is string => typeof p === 'string') : [];
     if (paths.length === 0) return null;
-    return { paths, active: typeof rec.active === 'string' ? rec.active : null };
+    const previews = Array.isArray(rec.previews)
+      ? rec.previews.filter((p): p is string => typeof p === 'string')
+      : [];
+    return { paths, active: typeof rec.active === 'string' ? rec.active : null, previews };
   } catch {
     return null;
   }
