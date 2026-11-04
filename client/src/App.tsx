@@ -7,6 +7,8 @@ import {
 } from 'react-resizable-panels';
 import { Toolbar } from './app/Toolbar';
 import { Sidebar } from './app/Sidebar';
+import { ActivityBar } from './app/ActivityBar';
+import { SearchPanel } from './app/SearchPanel';
 import { StatusBar } from './app/StatusBar';
 import { SettingsDialog } from './app/SettingsDialog';
 import { RepoGroupsDialog } from './app/RepoGroupsDialog';
@@ -46,11 +48,12 @@ import { loadPanelSize, restoreTerminal, savePanelSize, useTerminal } from './fe
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
 import { ToastHost } from './components/ToastHost';
-import { useExplorer, pathFromUrl, searchFromUrl } from './stores/explorer';
+import { useExplorer, pathFromUrl } from './stores/explorer';
+import { useSideBar } from './stores/sideBar';
 import { useEditor } from './stores/editor';
 import { useGit } from './stores/git';
 import { useReview } from './stores/review';
-import { useSettings } from './stores/settings';
+import { useSettings, isMod } from './stores/settings';
 import {
   useUi,
   reviewFileFromUrl,
@@ -110,6 +113,11 @@ export default function App() {
   const loaded = useSettings((s) => s.loaded);
   const refreshTimer = useRef<ReturnType<typeof setTimeout>>();
   const sidebarPanel = useRef<ImperativePanelHandle>(null);
+  /** 左パネルを表示するか (レーンのアイコン / Ctrl+B で切り替え) と、その内容 */
+  const sideOpen = useSideBar((s) => s.open);
+  const sidePanel = useSideBar((s) => s.panel);
+  /** レビュー詳細で一時的に畳む前の表示状態 (畳んでいなければ null) */
+  const sideBeforeReview = useRef<boolean | null>(null);
 
   // 初期化: 設定ロード → URL のパスを表示 (plan §6.5)
   useEffect(() => {
@@ -129,7 +137,6 @@ export default function App() {
     const initialLogFilter = logFilterFromUrl();
     // コミット指定はパス絞り込みと排他 (両方あればパス絞り込みを優先)
     const initialLogCommit = initialLogFilter ? null : logCommitFromUrl();
-    const initialSearch = searchFromUrl();
     const initialDiff = diffTargetFromUrl();
     const initialReview = reviewIdFromUrl();
     const initialReviewFile = reviewFileFromUrl();
@@ -142,7 +149,6 @@ export default function App() {
       if (initialLogFilter.follow) params.set('follow', '1');
     }
     if (initialLogCommit) params.set('logcommit', initialLogCommit);
-    if (initialSearch) params.set('q', initialSearch);
     if (initialDiff) {
       params.set('drepo', initialDiff.repo);
       params.set('dhash', initialDiff.hash);
@@ -160,16 +166,11 @@ export default function App() {
     // ?ppath= (Markdown のリンクを別タブで開いたとき等) はエディタタブのプレビューで開く (URL には残さない)
     if (initialPreview) void useEditor.getState().open(initialPreview, 'preview');
     if (initialView === 'applog') useAppLog.setState({ opened: true });
-    void navigate(initial, false).then(() => {
-      if (initialSearch) void useExplorer.getState().runSearch(initialSearch, false);
-    });
+    void navigate(initial, false);
 
-    // 戻る/進む: パス・ビュー・ログ絞り込み・検索を URL から復元する
+    // 戻る/進む: パス・ビュー・ログ絞り込みを URL から復元する
     const onPop = () => {
-      void useExplorer.getState().navigate(pathFromUrl(), false).then(() => {
-        const q = searchFromUrl();
-        if (q) void useExplorer.getState().runSearch(q, false);
-      });
+      void useExplorer.getState().navigate(pathFromUrl(), false);
       const nextView = viewFromUrl();
       useUi.getState().setView(nextView);
       // アプリログタブは閉じた後でも履歴で戻れるので、その場合はタブを復活させる
@@ -265,19 +266,47 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Ctrl+B (Mac は ⌘+B): 左パネルの表示 / 非表示 (VSCode と同じ)。
+  // キャプチャで拾い、エディタ (Monaco) やターミナルより先に受け取る
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.shiftKey || e.key.toLowerCase() !== 'b' || !isMod(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      useSideBar.getState().toggle();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+
   // テーマ反映。次回の起動直後 (設定の読み込み前) に使えるよう控えておく
   useEffect(() => {
     document.body.dataset.theme = theme;
     if (loaded) saveCachedTheme(theme);
   }, [theme, loaded]);
 
-  // レビュー詳細は差分をできるだけ広く見せたいので、その間だけサイドバーを畳む
+  // レビュー詳細は差分をできるだけ広く見せたいので、その間だけ左パネルを畳む
+  // (一時的な切り替えなので保存せず、詳細を閉じたら元の表示状態に戻す。その間もレーンから開ける)
+  useEffect(() => {
+    const side = useSideBar.getState();
+    if (view === 'review' && reviewDetailOpen) {
+      if (sideBeforeReview.current === null) {
+        sideBeforeReview.current = side.open;
+        side.setOpen(false, false);
+      }
+    } else if (sideBeforeReview.current !== null) {
+      side.setOpen(sideBeforeReview.current, false);
+      sideBeforeReview.current = null;
+    }
+  }, [view, reviewDetailOpen]);
+
+  // 左パネルの表示状態をパネルの開閉に反映する
   useEffect(() => {
     const panel = sidebarPanel.current;
     if (!panel) return;
-    if (view === 'review' && reviewDetailOpen) panel.collapse();
-    else if (panel.isCollapsed()) panel.expand();
-  }, [view, reviewDetailOpen]);
+    if (!sideOpen && !panel.isCollapsed()) panel.collapse();
+    else if (sideOpen && panel.isCollapsed()) panel.expand();
+  }, [sideOpen]);
 
   // エディタタブが無くなったら files へ (履歴は積まず URL のみ整合させる)。
   // 読み込み直した直後はファイルを開き直し終わるまで待つ
@@ -411,12 +440,32 @@ export default function App() {
           </button>
         )}
       </div>
+      <div className={cx("workspace")}>
+      {/* 左端のレーン (VSCode のアクティビティバー相当)。左パネルを畳んでも残す */}
+      <ActivityBar />
       <PanelGroup direction="horizontal" className={cx("main-split")}>
         {/* AI チャット・ターミナルの右パネルを出し入れするので、各パネルに id / order を付ける */}
-        <Panel id="sidebar" order={1} ref={sidebarPanel} collapsible defaultSize={18} minSize={12} maxSize={40}>
-          <Sidebar />
+        <Panel
+          id="sidebar"
+          order={1}
+          ref={sidebarPanel}
+          collapsible
+          defaultSize={18}
+          minSize={12}
+          maxSize={40}
+          // 境界をドラッグして畳んだ / 開いたときも表示状態に反映する (レビュー詳細の一時的な畳み中は保存しない)
+          onCollapse={() => useSideBar.getState().setOpen(false, sideBeforeReview.current === null)}
+          onExpand={() => useSideBar.getState().setOpen(true, sideBeforeReview.current === null)}
+        >
+          {/* 切り替えても各内容の状態 (展開・スクロール位置・検索結果) を保つよう、両方マウントしたままにする */}
+          <div className={cx(`side-content${sidePanel === 'explorer' ? '' : ' hidden'}`)}>
+            <Sidebar />
+          </div>
+          <div className={cx(`side-content${sidePanel === 'search' ? '' : ' hidden'}`)}>
+            <SearchPanel />
+          </div>
         </Panel>
-        <PanelResizeHandle className={cx("resize-handle")} />
+        <PanelResizeHandle className={cx(`resize-handle${sideOpen ? '' : ' collapsed'}`)} />
         <Panel id="main" order={2}>
           {/* ターミナルの下パネルを出し入れしてもメインの表示を作り直さないよう、縦の分割は常に置く */}
           <PanelGroup direction="vertical">
@@ -507,6 +556,7 @@ export default function App() {
           </>
         )}
       </PanelGroup>
+      </div>
       <StatusBar />
       {/* AI チャット (フローティング時)。モードレスで、モーダルのダイアログ・コンテキストメニューより下に出す */}
       <AiChatDialog />

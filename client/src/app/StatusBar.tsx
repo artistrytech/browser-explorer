@@ -14,14 +14,14 @@ const ENCODINGS = ['UTF-8', 'Shift_JIS', 'EUC-JP', 'UTF-16LE', 'UTF-16BE'];
 const EOLS: Eol[] = ['LF', 'CRLF', 'CR'];
 
 export function StatusBar() {
-  const { entries, selection, searchResults } = useExplorer();
+  const { entries, selection } = useExplorer();
   const showHidden = useSettings((s) => s.settings.showHidden);
   const status = useGit((s) => s.status);
   const view = useUi((s) => s.view);
   const { tabs, activePath, cursor, setEncoding, setEol, setBom } = useEditor();
   const tab = tabs.find((t) => t.path === activePath);
 
-  const visible = (searchResults ?? entries).filter((e) => showHidden || !e.hidden);
+  const visible = entries.filter((e) => showHidden || !e.hidden);
 
   return (
     <div className={cx("statusbar")}>

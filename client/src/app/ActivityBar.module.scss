@@ -1,0 +1,54 @@
+/* 左端のレーン (アイコンの縦並び)。左パネルを畳んでも常に表示する */
+.lane {
+  flex: none;
+  width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding-top: 4px;
+  background: var(--bg-alt);
+  border-right: 1px solid var(--border);
+}
+
+.lane-btn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+
+  svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  &:hover {
+    color: var(--text);
+  }
+
+  &.active {
+    color: var(--text);
+  }
+
+  /* 表示中の内容は左端に縦線を付ける (VSCode と同様) */
+  &.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    background: var(--accent);
+  }
+
+  &:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: -2px;
+  }
+}

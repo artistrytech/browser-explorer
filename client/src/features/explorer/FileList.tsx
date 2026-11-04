@@ -49,8 +49,6 @@ export function FileList() {
     anchor,
     clipboard,
     renaming,
-    searchResults,
-    searchQuery,
     setSelection,
     setRenaming,
   } = useExplorer();
@@ -95,8 +93,8 @@ export function FileList() {
   }, [entries, repoRoot, path]);
 
   const displayed = useMemo(
-    () => sortEntries(searchResults ?? entries, settings.sortKey, settings.sortAsc, settings.showHidden),
-    [entries, searchResults, settings.showHidden, settings.sortKey, settings.sortAsc],
+    () => sortEntries(entries, settings.sortKey, settings.sortAsc, settings.showHidden),
+    [entries, settings.showHidden, settings.sortKey, settings.sortAsc],
   );
 
   const selectedSet = useMemo(() => new Set(selection), [selection]);
@@ -453,11 +451,6 @@ export function FileList() {
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => void onDropTo(e, path)}
     >
-      {searchResults && (
-        <div className={cx("search-banner")}>
-          「{searchQuery}」の検索結果: {displayed.length} 件
-        </div>
-      )}
       {loading && (
         <div className={cx("loading-spinner")} role="status" aria-label="読み込み中">
           <div className={cx("spinner-ring")} />
@@ -501,7 +494,7 @@ export function FileList() {
         </table>
       )}
       {!loading && displayed.length === 0 && (
-        <div className={cx("empty-hint")}>{searchResults ? '該当なし' : 'このフォルダは空です'}</div>
+        <div className={cx("empty-hint")}>このフォルダは空です</div>
       )}
     </div>
   );

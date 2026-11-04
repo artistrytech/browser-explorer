@@ -17,6 +17,7 @@ import { runGitCommands } from '../git/GitCommandDialog';
 import { openRepoGroupsDialog } from '../../app/RepoGroupsDialog';
 import { openAiChat } from '../aichat/aiChatStore';
 import { openTerminal, openTerminalAt } from '../terminal/terminalStore';
+import { useSideBar } from '../../stores/sideBar';
 import { appTabId, isCommandPaletteKey, type AppTabWindow } from '../../lib/appTabs';
 import { backupBranchRegex } from '../../lib/backupBranch';
 import { isDialogOpen } from '../../lib/dialogKeys';
@@ -181,6 +182,13 @@ function buildCommands(inRepo: boolean, currentBranch: string | null): PaletteIt
       },
     },
     { key: 'ai', label: 'AI チャット', detail: 'AI Chat: Codex / Claude', run: openAiChat },
+    {
+      key: 'sidebar.toggle',
+      label: '左パネルの表示 / 非表示',
+      detail: 'View: Toggle Primary Side Bar Visibility',
+      run: () => useSideBar.getState().toggle(),
+    },
+    { key: 'search', label: '名前で検索', detail: 'Search: Find Files by Name', run: () => useSideBar.getState().focusSearch() },
     { key: 'terminal', label: 'ターミナル', detail: 'Terminal', run: () => void openTerminal() },
     {
       // 表示中のフォルダで開く

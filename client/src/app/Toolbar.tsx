@@ -13,23 +13,17 @@ import { createCssModuleClassNames } from '../lib/cssModule';
 const cx = createCssModuleClassNames(styles);
 
 export function Toolbar() {
-  const { path, navigate, runSearch, searchQuery, clearSearch } = useExplorer();
+  const { path, navigate } = useExplorer();
   const setSettingsOpen = useUi((s) => s.setSettingsOpen);
   const aiChatOpen = useAiChat((s) => s.open);
   const terminalOpen = useTerminal((s) => s.open);
   const [editing, setEditing] = useState(false);
   const [addressValue, setAddressValue] = useState(path);
-  const [search, setSearch] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setAddressValue(path);
   }, [path]);
-
-  // 履歴の戻る/進む等で検索状態が変わったら入力欄にも反映する
-  useEffect(() => {
-    setSearch(searchQuery);
-  }, [searchQuery]);
 
   useEffect(() => {
     if (editing) inputRef.current?.select();
@@ -91,34 +85,6 @@ export function Toolbar() {
               </span>
             ))}
           </div>
-        )}
-      </div>
-
-      <div className={cx("search-box")}>
-        <input
-          className={cx("search-input")}
-          placeholder="🔍 名前で検索"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void runSearch(search.trim());
-            if (e.key === 'Escape') {
-              setSearch('');
-              clearSearch();
-            }
-          }}
-        />
-        {searchQuery && (
-          <button
-            className={cx("tool-btn")}
-            title="検索をクリア"
-            onClick={() => {
-              setSearch('');
-              clearSearch();
-            }}
-          >
-            ✕
-          </button>
         )}
       </div>
 

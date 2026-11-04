@@ -86,3 +86,29 @@
   background: var(--bg-selected);
   color: var(--danger);
 }
+
+/* レーン + 左パネル + メイン領域 (左右に並べる) */
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.workspace > .main-split {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 左パネルの内容 (エクスプローラ / 検索)。表示していない方は隠すだけで状態を保つ */
+.side-content {
+  height: 100%;
+}
+
+.side-content.hidden {
+  display: none;
+}
+
+/* 左パネルを畳んでいる間は境界を細くする (ドラッグで開くことはできる) */
+.resize-handle.collapsed {
+  width: 1px;
+}

@@ -1,0 +1,128 @@
+/* 左パネルの検索。結果の一覧だけをスクロールさせる */
+.search-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-alt);
+}
+
+.heading {
+  flex: none;
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.input-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 2px 8px 4px;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text);
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+}
+
+.clear-btn,
+.rerun {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-size: 11px;
+
+  &:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+}
+
+.scope,
+.summary {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 0 12px 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.results {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 6px;
+
+  &:focus {
+    outline: none;
+  }
+}
+
+.result {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 12px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bg-hover);
+  }
+
+  &.selected {
+    background: var(--bg-selected);
+  }
+}
+
+.icon {
+  flex: none;
+  width: 16px;
+  text-align: center;
+}
+
+/* 1 行目にファイル名、2 行目に検索したフォルダからの相対パス */
+.text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.name,
+.rel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rel {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.empty {
+  padding: 6px 12px;
+  color: var(--text-dim);
+}

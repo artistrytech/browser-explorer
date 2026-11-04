@@ -66,7 +66,7 @@ export function openDualPane(opts: { left?: string; right?: string } = {}): void
     open: true,
     left,
     right: opts.right ?? loadRightPath() ?? left,
-    leftSelection: left === ex.path && !ex.searchResults ? ex.selection : [],
+    leftSelection: left === ex.path ? ex.selection : [],
   });
 }
 
