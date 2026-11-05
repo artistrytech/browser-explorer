@@ -1,5 +1,6 @@
 import { api } from '../api/client';
 import { toastError, useToast } from '../stores/toast';
+import { openLocation } from './openLocation';
 
 /**
  * アーカイブ: 対象 (repo 相対パス。空文字ならリポジトリ全体) の HEAD 時点の内容を
@@ -16,6 +17,19 @@ export async function downloadArchive(repoRoot: string, rel: string): Promise<vo
     a.click();
     URL.revokeObjectURL(url);
     useToast.getState().show('success', `${filename} をダウンロードしました`);
+  } catch (e) {
+    toastError(e);
+  }
+}
+
+/** HEAD 時点のリポジトリ全体を一時フォルダへ展開し、展開先をアプリ内で開く */
+export async function extractArchiveToTemp(repoRoot: string): Promise<void> {
+  const { show } = useToast.getState();
+  show('info', '一時フォルダに展開しています…');
+  try {
+    const { path } = await api.gitExtractArchive(repoRoot);
+    openLocation(path);
+    show('success', `${path} に展開しました`);
   } catch (e) {
     toastError(e);
   }

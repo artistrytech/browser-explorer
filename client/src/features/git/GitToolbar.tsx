@@ -13,7 +13,7 @@ import { openStashDialog } from './StashDialog';
 import { openAuthDialog } from './AuthDialog';
 import { openDiscardAllDialog } from './DiscardAllDialog';
 import { backupBranchRegex } from '../../lib/backupBranch';
-import { downloadArchive } from '../../lib/gitArchive';
+import { downloadArchive, extractArchiveToTemp } from '../../lib/gitArchive';
 import type { RebaseBackup } from '../../types';
 import styles from './GitPanel.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -50,7 +50,7 @@ export function GitToolbar({
   if (!repoRoot) return null;
 
   /**
-   * 「ツール」メニュー: アーカイブ (リポジトリ全体) / 変更の一括破棄 / バックアップブランチの削除。
+   * 「ツール」メニュー: アーカイブ / 一時フォルダに展開 (リポジトリ全体) / 変更の一括破棄 / バックアップブランチの削除。
    * バックアップは設定の名前パターンに一致するもの (+ 旧方式の backup/rebase/*)
    */
   const openToolsMenu = (e: React.MouseEvent) => {
@@ -78,6 +78,7 @@ export function GitToolbar({
     const buildMenu = (backupItems: MenuItem[]): MenuItem[] => [
       // ファイル一覧の右クリック「アーカイブ」と同じ。HEAD 時点のリポジトリ全体を zip でダウンロードする
       { label: 'アーカイブ', action: () => void downloadArchive(repoRoot, '') },
+      { label: '一時フォルダに展開', action: () => void extractArchiveToTemp(repoRoot) },
       { separator: true },
       {
         label: '変更をすべて破棄…',

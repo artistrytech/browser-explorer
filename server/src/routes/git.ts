@@ -7,7 +7,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { norm } from '../services/fsService.js';
+import { norm, uniqueDest } from '../services/fsService.js';
 import { broadcastEvent } from '../ws/watcher.js';
 import { launchChecked } from './os.js';
 import {
@@ -414,14 +414,14 @@ const DIFF_MAX_BUFFER = 64 * 1024 * 1024;
 /** 比較対象の指定。commit=コミット前後 / staged=HEAD vs ステージ / worktree=ステージ vs 作業ツリー */
 type DiffToolMode = 'commit' | 'staged' | 'worktree';
 
-/** 古い一時ファイル (24 時間以上前) を掃除する (best effort) */
-async function cleanupDiffTemp(): Promise<void> {
+/** root 直下の古い一時ファイル (更新から maxAgeMs 以上経過) を掃除する (best effort) */
+async function cleanupTempRoot(root: string, maxAgeMs: number): Promise<void> {
   try {
     const now = Date.now();
-    for (const name of await fs.readdir(DIFF_TMP_ROOT)) {
-      const dir = path.join(DIFF_TMP_ROOT, name);
+    for (const name of await fs.readdir(root)) {
+      const dir = path.join(root, name);
       const st = await fs.stat(dir).catch(() => null);
-      if (st && now - st.mtimeMs > 24 * 60 * 60 * 1000) {
+      if (st && now - st.mtimeMs > maxAgeMs) {
         await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
       }
     }
@@ -537,7 +537,7 @@ gitRouter.post('/difftool', async (req, res) => {
   if (/[\\/]/.test(command) && !existsSync(command)) badRequest(`ツールが見つかりません: ${command}`);
 
   const sides = await diffSides(repo, rel, mode, String(hash ?? ''), oldRel);
-  void cleanupDiffTemp();
+  void cleanupTempRoot(DIFF_TMP_ROOT, 24 * 60 * 60 * 1000);
   const dir = path.join(DIFF_TMP_ROOT, randomUUID());
   const leftPath = await writeSide(dir, 'left', oldRel ?? rel, sides.left);
   const rightPath = sides.rightPath ?? (await writeSide(dir, 'right', rel, sides.right));
@@ -1995,6 +1995,11 @@ gitRouter.post('/clone', (req, res) => {
   res.json({ ok: true, id });
 });
 
+/** ファイル名 / フォルダ名に使えない文字を落とす (Windows で保存できなくなるため) */
+function safeArchiveName(s: string): string {
+  return s.replace(/[\/:*?"<>|]/g, '_').trim() || 'archive';
+}
+
 /**
  * アーカイブ (zip ダウンロード)。
  * 対象パス (repo 相対。省略時はリポジトリ全体) の HEAD 時点の内容を git archive で zip 化し、
@@ -2020,10 +2025,8 @@ gitRouter.get('/archive', async (req, res) => {
   const isDir = single !== null && (await run(['cat-file', '-t', `HEAD:${single}`])) === 'tree';
   const shortSha = await run(['rev-parse', '--short', 'HEAD']);
 
-  // ファイル名 / --prefix に使えない文字を落とす (Windows で保存できなくなるため)
-  const safe = (s: string) => s.replace(/[\/:*?"<>|]/g, '_').trim() || 'archive';
-  const prefix = safe(path.basename(isDir && single !== null ? single : repo));
-  const nameBase = safe(
+  const prefix = safeArchiveName(path.basename(isDir && single !== null ? single : repo));
+  const nameBase = safeArchiveName(
     single === null
       ? path.basename(repo)
       : isDir
@@ -2068,4 +2071,46 @@ gitRouter.get('/archive', async (req, res) => {
     if (code === 0) res.status(400).json({ error: 'archive_failed', message: 'アーカイブ対象がありません' });
     else res.status(400).json({ error: 'archive_failed', message: err.trim() || `git archive exited ${code}` });
   });
+});
+
+const ARCHIVE_TMP_ROOT = path.join(os.tmpdir(), 'expolorer-archive');
+/** 展開したフォルダの保持期間。作業中に消えないよう、差分ツールの一時ファイルより長くする */
+const ARCHIVE_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * HEAD 時点のリポジトリ全体を一時フォルダへ展開し、展開先のパスを返す。
+ * git archive + tar は Windows で日本語名の文字化けやシンボリックリンクでの失敗が起きるため、
+ * 一時インデックスに読み込んだ HEAD を git checkout-index で書き出す
+ * (repo の index と作業ツリーには触れない。git archive と違い export-ignore は効かない)。
+ */
+gitRouter.post('/archive/extract', async (req, res) => {
+  const repo = req.body?.repo;
+  const g = git(repo);
+  const shortSha = await g.revparse(['--short', 'HEAD']).catch(() => '');
+  if (!shortSha) badRequest('展開できるコミットがありません');
+
+  void cleanupTempRoot(ARCHIVE_TMP_ROOT, ARCHIVE_KEEP_MS);
+  await fs.mkdir(ARCHIVE_TMP_ROOT, { recursive: true });
+  const dest = await uniqueDest(ARCHIVE_TMP_ROOT, `${safeArchiveName(path.basename(repo))}-${shortSha}`);
+  await fs.mkdir(dest);
+
+  const index = path.join(ARCHIVE_TMP_ROOT, `${randomUUID()}.index`);
+  const run = (args: string[]) =>
+    execFileAsync('git', args, {
+      cwd: repo,
+      windowsHide: true,
+      env: { ...process.env, GIT_INDEX_FILE: index },
+    });
+  try {
+    await run(['read-tree', 'HEAD']);
+    // 一時フォルダの分だけパスが長くなるので、Windows の 260 文字制限を外しておく
+    await run(['-c', 'core.longpaths=true', 'checkout-index', '-a', '-f', `--prefix=${norm(dest)}/`]);
+  } catch (e) {
+    await fs.rm(dest, { recursive: true, force: true }).catch(() => {});
+    const err = e as Error & { stderr?: string };
+    badRequest(err.stderr?.trim() || err.message);
+  } finally {
+    await fs.rm(index, { force: true }).catch(() => {});
+  }
+  res.json({ path: norm(dest) });
 });

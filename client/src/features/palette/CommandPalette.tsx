@@ -22,6 +22,7 @@ import { appTabId, isCommandPaletteKey, type AppTabWindow } from '../../lib/appT
 import { backupBranchRegex } from '../../lib/backupBranch';
 import { isDialogOpen } from '../../lib/dialogKeys';
 import { matchText } from '../../lib/fuzzyMatch';
+import { extractArchiveToTemp } from '../../lib/gitArchive';
 import { openLocation } from '../../lib/openLocation';
 import { baseName } from '../../lib/paths';
 import type { GitBranch } from '../../types';
@@ -146,6 +147,17 @@ function buildCommands(inRepo: boolean, currentBranch: string | null): PaletteIt
       detail: 'Git: Backup Branch',
       disabled: repoOnly,
       run: () => openBackupBranchDialog(currentBranch ?? ''),
+    },
+    {
+      // Git タブの「ツール」メニューと同じ
+      key: 'archive.extract',
+      label: '一時フォルダに展開',
+      detail: 'Git: Extract HEAD to Temp Folder',
+      disabled: repoOnly,
+      run: () => {
+        const repo = useGit.getState().repoRoot;
+        if (repo) void extractArchiveToTemp(repo);
+      },
     },
     { key: 'repo', label: 'リポジトリ', detail: 'Repository: Open', next: { kind: 'repos', newTab: false } },
     {

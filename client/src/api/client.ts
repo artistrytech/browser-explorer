@@ -371,6 +371,8 @@ export const api = {
    */
   gitArchive: (repo: string, paths: string[]) =>
     requestFile(`/api/git/archive?repo=${q(repo)}${paths.map((p) => `&path=${q(p)}`).join('')}`),
+  /** HEAD 時点のリポジトリ全体を一時フォルダへ展開し、展開先のパスを返す */
+  gitExtractArchive: (repo: string) => post<{ path: string }>('/api/git/archive/extract', { repo }),
   gitCommit: (repo: string, message: string, amend = false) =>
     post<{ ok: true; commit: string }>('/api/git/commit', { repo, message, amend }),
   /**
