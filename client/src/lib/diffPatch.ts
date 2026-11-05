@@ -324,7 +324,7 @@ export function usableFileLines(
 
 /* ---------- Hunk・選択行の直接編集 ---------- */
 
-/** 差分の変更後側 (ステージ側はインデックス、変更側は作業ツリー) の行範囲。1 始まり・両端を含む。hi = lo - 1 は lo の前への挿入位置 */
+/** 差分の変更後側 (作業ツリー) の行範囲。1 始まり・両端を含む。hi = lo - 1 は lo の前への挿入位置 */
 export interface EditRange {
   lo: number;
   hi: number;
@@ -384,7 +384,7 @@ const EDIT_CONTEXT = 3;
 
 /**
  * 変更後側のファイル内容 (content) の range を newText で置き換えるパッチを作る。
- * ステージ側は git apply --cached、変更側は作業ツリーへの git apply で当てる。
+ * コミットタブの変更 (未ステージ) 側の Hunk 編集で、作業ツリーへの git apply で当てる。
  * 改行コードは元のファイルに合わせる (CRLF のファイルなら追加行も CRLF)。
  * 内容が変わらなければ null。header はファイルヘッダ (diff --git / --- / +++)
  */

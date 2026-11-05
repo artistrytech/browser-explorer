@@ -29,8 +29,6 @@ export interface LineEditScope {
 export interface LineEditRequest {
   title: string;
   path: string;
-  /** 補足 (ステージ側はインデックスだけを書き換える、など) */
-  note?: string;
   /** 範囲の候補 (1 つならラジオボタンは出さない) */
   scopes: LineEditScope[];
   /** 最初に選ぶ範囲 (scopes の value) */
@@ -137,7 +135,6 @@ export function LineEditDialog() {
             ))}
           </div>
         )}
-        {req.note && <div className={cx('le-note')}>{req.note}</div>}
         <textarea
           ref={textRef}
           className={cx('le-text')}

@@ -201,12 +201,12 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
   /**
    * Hunk 全体 / 選択行の範囲を、ダイアログでテキストとして直接書き換える。
    * 選択行があれば、ダイアログのラジオボタンで Hunk 全体と選択行を切り替えられる (最初は選択行)。
-   * 書き換えるのは差分の変更後側 (変更・未追跡は作業ツリー、ステージ済みはインデックス) で、
-   * 範囲の前後を文脈に付けたパッチを git apply (ステージ側は --cached) で当てる。
+   * 変更 (未ステージ・未追跡) 側だけが対象で、作業ツリーのファイルを書き換える。
+   * 範囲の前後を文脈に付けたパッチを作業ツリーへ git apply で当てる。
    * 削除行は変更後側に行が無いので、その位置への挿入として扱う
    */
   const editLines = async (hunk: Hunk, selected: Set<number>) => {
-    if (!parsed) return;
+    if (!parsed || reverse) return;
     const header = editPatchHeader(parsed.header);
     const hunkRange = hunkEditRange(hunk, hunk.lines.keys());
     const selRange = selected.size > 0 ? hunkEditRange(hunk, selected) : null;
@@ -217,7 +217,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
     setBusy(true);
     let content: string | null;
     try {
-      content = (await api.gitFileContent(repo, reverse ? '' : 'worktree', file.path)).content;
+      content = (await api.gitFileContent(repo, 'worktree', file.path)).content;
     } catch (e) {
       toastError(e);
       return;
@@ -234,17 +234,13 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
       load();
       return;
     }
-    const where = reverse ? 'インデックス' : '作業ツリー';
     const describe = (r: EditRange) =>
-      `${where} ${r.hi < r.lo ? `${r.lo} 行目の前に挿入` : r.hi === r.lo ? `${r.lo} 行目` : `${r.lo}〜${r.hi} 行目`}`;
+      `作業ツリー ${r.hi < r.lo ? `${r.lo} 行目の前に挿入` : r.hi === r.lo ? `${r.lo} 行目` : `${r.lo}〜${r.hi} 行目`}`;
     const scopes = [{ value: 'hunk', label: 'Hunk 全体', range: hunkRange }];
     if (selRange) scopes.push({ value: 'lines', label: `選択した ${selected.size} 行`, range: selRange });
     const result = await openLineEditDialog({
       title: '編集',
       path: file.path,
-      note: reverse
-        ? 'ステージ済みの内容 (インデックス) だけを書き換えます。作業ツリーのファイルは変わりません'
-        : undefined,
       scopes: scopes.map((sc) => ({
         value: sc.value,
         label: sc.label,
@@ -259,10 +255,10 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
     if (!patch) return; // 変更なし
     setBusy(true);
     try {
-      await api.gitApplyPatch(repo, patch, false, reverse);
+      await api.gitApplyPatch(repo, patch, false, false);
       load();
       onApplied();
-      if (!reverse) void useExplorer.getState().refresh();
+      void useExplorer.getState().refresh();
     } catch (e) {
       toastError(e);
     } finally {
@@ -373,18 +369,21 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
                       破棄
                     </button>
                   )}
-                  <button
-                    className={cx("status-btn")}
-                    disabled={busy}
-                    title={
-                      hunkSel.size > 0
-                        ? `この Hunk か選択した ${hunkSel.size} 行の範囲をテキストで編集`
-                        : 'この Hunk の範囲をテキストで編集'
-                    }
-                    onClick={() => void editLines(hunk, hunkSel)}
-                  >
-                    編集
-                  </button>
+                  {!reverse && (
+                    // 変更 (作業ツリー) 側のみ編集可能。ステージ済みの Hunk は編集しない
+                    <button
+                      className={cx("status-btn")}
+                      disabled={busy}
+                      title={
+                        hunkSel.size > 0
+                          ? `この Hunk か選択した ${hunkSel.size} 行の範囲をテキストで編集`
+                          : 'この Hunk の範囲をテキストで編集'
+                      }
+                      onClick={() => void editLines(hunk, hunkSel)}
+                    >
+                      編集
+                    </button>
+                  )}
                 </span>
               </div>
               <pre className={cx("diff-view")}>
