@@ -1,6 +1,7 @@
 import { confirmDialog } from '../stores/dialog';
 import { useEditor } from '../stores/editor';
 import { useGit } from '../stores/git';
+import { useUi } from '../stores/ui';
 import {
   appTabId,
   isTabReloadKey,
@@ -13,7 +14,8 @@ import {
 /**
  * アプリ内タブ (tabs.html のシェルの iframe) として動くときの連携。シェル外では何もしない。
  * - URL・タイトル・テーマ・リポジトリの変化をシェルへ通知する (タブのラベル・復元・シェルの配色・グループの色に使う)
- * - タブ操作のショートカットをシェルへ転送する (フォーカスが iframe 内にあるとシェルにキーが届かないため)
+ * - タブ操作のショートカットをシェルへ転送する (フォーカスが iframe 内にあるとシェルにキーが届かないため)。
+ *   ただしエディタでファイルを開いているときの Ctrl+W (Alt+W) は、アプリ内タブではなくそのファイルだけを閉じる
  * - タブを閉じる前の未保存確認用に、エディタの未保存の有無をシェルから同期で引けるようにする
  * - F5 でシェル全体ではなくこのタブだけを読み込み直す
  */
@@ -58,6 +60,23 @@ export function initTabClient(): void {
     if (s.repoRoot !== prev.repoRoot) notify();
   });
 
+  // エディタ表示中なら開いているファイルを閉じる (未保存なら close 側で確認する)。閉じる対象があれば true
+  let closingFile = false;
+  const closeEditorFile = (): boolean => {
+    const { activePath } = useEditor.getState();
+    if (useUi.getState().view !== 'editor' || !activePath) return false;
+    // 未保存の確認中に繰り返し押されても確認を重ねない
+    if (closingFile) return true;
+    closingFile = true;
+    void useEditor
+      .getState()
+      .close(activePath)
+      .finally(() => {
+        closingFile = false;
+      });
+    return true;
+  };
+
   // ダイアログ等のキー処理より先に拾うため、キャプチャで登録する
   window.addEventListener(
     'keydown',
@@ -66,6 +85,7 @@ export function initTabClient(): void {
       if (!command) return;
       e.preventDefault();
       e.stopPropagation();
+      if (command.kind === 'close' && closeEditorFile()) return;
       postToShell({ type: TAB_MESSAGE_TYPE, kind: 'command', command });
     },
     true,
