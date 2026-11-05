@@ -15,6 +15,9 @@ const cx = createCssModuleClassNames(styles);
 /** 一覧 / ツリーの表示形式 (localStorage)。ログタブとコミット詳細ダイアログで共通 */
 export const COMMIT_FILE_LIST_MODE_KEY = 'git:commitFileListMode';
 
+/** コミットタブ (作業ツリーの変更一覧) の一覧 / ツリーの表示形式 (localStorage) */
+export const CHANGES_FILE_LIST_MODE_KEY = 'git:changesFileListMode';
+
 /** ツリー表示の 1 階層ぶんの字下げ (px) */
 export const COMMIT_TREE_INDENT = 16;
 
@@ -24,7 +27,7 @@ export function treeCellStyle(depth: number): React.CSSProperties {
 }
 
 /** フォルダ行のファイル列: 開閉アイコンとフォルダ名 (まとめたフォルダは `a/b/c`) */
-export function CommitTreeDirName({ dir, open }: { dir: FileTreeDir<CommitFile>; open: boolean }) {
+export function CommitTreeDirName({ dir, open }: { dir: Pick<FileTreeDir<{ path: string }>, 'name'>; open: boolean }) {
   return (
     <span className={cx('ct-dir')}>
       <Chevron open={open} />

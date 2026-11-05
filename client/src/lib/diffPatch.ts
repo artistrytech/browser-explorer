@@ -321,3 +321,127 @@ export function usableFileLines(
   }
   return lines;
 }
+
+/* ---------- Hunk・選択行の直接編集 ---------- */
+
+/** 差分の変更後側 (ステージ側はインデックス、変更側は作業ツリー) の行範囲。1 始まり・両端を含む。hi = lo - 1 は lo の前への挿入位置 */
+export interface EditRange {
+  lo: number;
+  hi: number;
+}
+
+/**
+ * Hunk の指定行 (lines のインデックス) を覆う、変更後側の行範囲を求める。
+ * 追加行・文脈行はその行、削除行は変更後側に行が無いので「次の行の前」の挿入位置として扱う。
+ * 対象の行が無ければ null
+ */
+export function hunkEditRange(hunk: Hunk, indices: Iterable<number>): EditRange | null {
+  const m = hunk.header.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+  const newStart = Number(m?.[1] ?? 1);
+  const newCount = m?.[2] === undefined ? 1 : Number(m[2]);
+  // 変更後側が 0 行の Hunk は、開始行が「直前の行」を指す (unified diff の規則)
+  let next = newCount === 0 ? newStart + 1 : newStart;
+  const pos: EditRange[] = hunk.lines.map((line) => {
+    const tag = line[0];
+    if (tag === '-' || tag === '\\') return { lo: next, hi: next - 1 };
+    const r = { lo: next, hi: next };
+    next++;
+    return r;
+  });
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const i of indices) {
+    const p = pos[i];
+    if (!p || hunk.lines[i][0] === '\\') continue;
+    lo = Math.min(lo, p.lo);
+    hi = Math.max(hi, p.hi);
+  }
+  if (lo === Infinity) return null;
+  return { lo, hi: Math.max(hi, lo - 1) };
+}
+
+/** ファイル内容を行に分ける ('\r' は行末に残す)。最後の行に改行が無いか (= "\ No newline") も返す */
+function contentLines(content: string): { lines: string[]; noEol: boolean } {
+  if (content === '') return { lines: [], noEol: false };
+  const lines = content.split('\n');
+  const noEol = lines[lines.length - 1] !== '';
+  if (!noEol) lines.pop();
+  return { lines, noEol };
+}
+
+/** 編集ダイアログに出す、範囲の現在の内容 (改行は '\n'、行末の '\r' は除く) */
+export function editRangeText(content: string, range: EditRange): string {
+  const { lines } = contentLines(content);
+  return lines
+    .slice(range.lo - 1, range.hi)
+    .map((l) => l.replace(/\r$/, ''))
+    .join('\n');
+}
+
+const NO_EOL = '\\ No newline at end of file';
+/** 置き換える範囲の前後に付ける文脈行の数 (git apply が位置を確かめるのに使う) */
+const EDIT_CONTEXT = 3;
+
+/**
+ * 変更後側のファイル内容 (content) の range を newText で置き換えるパッチを作る。
+ * ステージ側は git apply --cached、変更側は作業ツリーへの git apply で当てる。
+ * 改行コードは元のファイルに合わせる (CRLF のファイルなら追加行も CRLF)。
+ * 内容が変わらなければ null。header はファイルヘッダ (diff --git / --- / +++)
+ */
+export function buildEditPatch(
+  header: string[],
+  content: string,
+  range: EditRange,
+  newText: string,
+): string | null {
+  const { lines, noEol } = contentLines(content);
+  const n = lines.length;
+  const { lo, hi } = range;
+  if (lo < 1 || hi > n || hi < lo - 1) return null;
+  const crlf = /\r\n/.test(content);
+  const oldMid = lines.slice(lo - 1, hi);
+  const newMid = newText === '' ? [] : newText.split('\n').map((l) => (crlf ? `${l}\r` : l));
+  if (oldMid.length === newMid.length && oldMid.every((l, i) => l === newMid[i])) return null;
+
+  let before = lines.slice(Math.max(0, lo - 1 - EDIT_CONTEXT), lo - 1);
+  const after = lines.slice(hi, Math.min(n, hi + EDIT_CONTEXT));
+  let start = lo - before.length;
+  // 改行の無い最終行の直後への挿入は、その最終行も置き換え対象に含める (改行の有無が変わるため)
+  if (noEol && after.length === 0 && oldMid.length === 0 && before.length > 0) {
+    const last = before[before.length - 1];
+    before = before.slice(0, -1);
+    oldMid.unshift(last);
+    newMid.unshift(last);
+  }
+  const touchesEnd = noEol && hi + after.length === n;
+
+  const out: string[] = before.map((l) => ` ${l}`);
+  oldMid.forEach((l, i) => {
+    out.push(`-${l}`);
+    if (touchesEnd && after.length === 0 && i === oldMid.length - 1) out.push(NO_EOL);
+  });
+  newMid.forEach((l, i) => {
+    out.push(`+${l}`);
+    if (touchesEnd && after.length === 0 && i === newMid.length - 1) out.push(NO_EOL);
+  });
+  after.forEach((l, i) => {
+    out.push(` ${l}`);
+    if (touchesEnd && i === after.length - 1) out.push(NO_EOL);
+  });
+  const oldCount = before.length + oldMid.length + after.length;
+  const newCount = before.length + newMid.length + after.length;
+  if (oldCount === 0) start = 0;
+  return [...header, `@@ -${start},${oldCount} +${newCount === 0 ? 0 : Math.max(start, 1)},${newCount} @@`, ...out].join('\n') + '\n';
+}
+
+/**
+ * 編集パッチ用のファイルヘッダ (変更後側のパスの内容変更)。
+ * 差分のヘッダの +++ 行からパス (特殊文字はクォート済み) を取る。新規・名前変更でも「既存ファイルの修正」にする
+ */
+export function editPatchHeader(header: string[]): string[] | null {
+  const plus = header.find((l) => l.startsWith('+++ '));
+  if (!plus || plus === '+++ /dev/null') return null;
+  const bName = plus.slice(4);
+  const aName = bName.replace(/^("?)b\//, '$1a/');
+  return [`diff --git ${aName} ${bName}`, `--- ${aName}`, `+++ ${bName}`];
+}

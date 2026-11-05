@@ -739,3 +739,14 @@
 .branch-sync {
   flex: 0 0 auto;
 }
+
+/* コミットタブ 変更一覧のツリー表示 */
+.git-dir-row .git-file-name {
+  color: var(--text-dim);
+}
+
+.git-file-old {
+  margin-left: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+}

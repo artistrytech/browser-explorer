@@ -25,6 +25,7 @@ import { StashDialog } from './features/git/StashDialog';
 import { CommitDetailDialog } from './features/git/CommitDetailDialog';
 import { AuthDialog } from './features/git/AuthDialog';
 import { CommitMessageDialog } from './features/git/CommitMessageDialog';
+import { LineEditDialog } from './features/git/LineEditDialog';
 import { BranchDialog } from './features/git/BranchDialog';
 import { RebaseDialog, RebaseOverlay } from './features/git/Rebase';
 import { DiscardAllDialog } from './features/git/DiscardAllDialog';
@@ -578,6 +579,7 @@ export default function App() {
       <CommitDetailDialog />
       <AuthDialog />
       <CommitMessageDialog />
+      <LineEditDialog />
       <BranchDialog />
       <RebaseDialog />
       <DiscardAllDialog />

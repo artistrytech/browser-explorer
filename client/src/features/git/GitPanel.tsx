@@ -42,20 +42,26 @@ import { openRebaseDialog } from './Rebase';
 import { openCommitDiff } from './DiffTab';
 import { CommitFileDiff, commitFileLabel } from './CommitFileDiff';
 import {
+  CHANGES_FILE_LIST_MODE_KEY,
   COMMIT_FILE_LIST_MODE_KEY,
   CommitTreeDirName,
   CommitTreeFileName,
+  COMMIT_TREE_INDENT,
   dirChangeTotals,
   treeCellStyle,
 } from './CommitFileTree';
 import {
   buildFileTree,
+  filesInTreeOrder,
+  filesUnder,
   flattenFileTree,
   loadFileListMode,
   saveFileListMode,
   toggleCollapsed,
   type FileListMode,
+  type FileTreeDir,
 } from '../../lib/fileTree';
+import { baseName } from '../../lib/paths';
 import { FileListModeToggle } from '../../components/FileListModeToggle';
 import { useRebase } from '../../stores/rebase';
 import type { CommitFile, CommitFilesResult, GitBranch, GitFileStatus } from '../../types';
@@ -247,6 +253,16 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     setFileListModeState(mode);
     saveFileListMode(COMMIT_FILE_LIST_MODE_KEY, mode);
   };
+  /** コミットタブの変更一覧の表示形式 (一覧 / ツリー。localStorage に保持) */
+  const [changesListMode, setChangesListModeState] = useState<FileListMode>(() =>
+    loadFileListMode(CHANGES_FILE_LIST_MODE_KEY),
+  );
+  const changeChangesListMode = (mode: FileListMode) => {
+    setChangesListModeState(mode);
+    saveFileListMode(CHANGES_FILE_LIST_MODE_KEY, mode);
+  };
+  /** コミットタブのツリー表示で折り畳んだフォルダ。キーは `S:`(ステージ側)/`W:`(作業ツリー側)+フォルダのパス */
+  const [collapsedChangeDirs, setCollapsedChangeDirs] = useState<ReadonlySet<string>>(new Set());
   /** ツリー表示で折り畳んだフォルダ (選択中のコミットの間だけ。sessionStorage に保持) */
   const [collapsedFileDirs, setCollapsedFileDirsState] = useState<ReadonlySet<string>>(new Set());
   const setCollapsedFileDirs = (next: ReadonlySet<string>) => {
@@ -449,10 +465,24 @@ export function GitPanel({ tab }: { tab: GitTab }) {
     (f) => (f.workingDir !== ' ' && f.workingDir !== '') || f.index === '?',
   );
 
+  // ツリー表示の行 (折り畳んだフォルダの中身は含めない)。一覧表示では null
+  const changeTree = (files: GitFileStatus[], side: 'S' | 'W') => {
+    if (changesListMode !== 'tree') return null;
+    const collapsed = new Set(
+      [...collapsedChangeDirs].flatMap((k) => (k.startsWith(`${side}:`) ? [k.slice(2)] : [])),
+    );
+    return flattenFileTree(buildFileTree(files), collapsed);
+  };
+  const stagedTree = changeTree(staged, 'S');
+  const unstagedTree = changeTree(unstaged, 'W');
+  /** 表示の並び (ツリー表示ではフォルダ → ファイルの順。折り畳んだフォルダの中も含め、選択は保つ) */
+  const shownChangeFiles = (files: GitFileStatus[]) =>
+    changesListMode === 'tree' ? filesInTreeOrder(buildFileTree(files)) : files;
+
   // 変更一覧の表示順 (ステージ済み → 変更)。範囲選択・選択操作はこの並びを基準にする
   const orderedRows = [
-    ...staged.map((f) => ({ key: `S:${f.path}`, side: true as const, f })),
-    ...unstaged.map((f) => ({ key: `W:${f.path}`, side: false as const, f })),
+    ...shownChangeFiles(staged).map((f) => ({ key: `S:${f.path}`, side: true as const, f })),
+    ...shownChangeFiles(unstaged).map((f) => ({ key: `W:${f.path}`, side: false as const, f })),
   ];
 
   /** 行クリック: 単一選択 / Ctrl でトグル / Shift で範囲選択 */
@@ -1281,7 +1311,49 @@ export function GitPanel({ tab }: { tab: GitTab }) {
       });
   };
 
-  const fileRow = (f: GitFileStatus, stagedSide: boolean) => {
+  /** ツリー表示の字下げ (ステータスの後ろのファイル名部分) */
+  const changeTreeIndent = (depth: number): React.CSSProperties => ({ paddingLeft: depth * COMMIT_TREE_INDENT });
+
+  /** 変更一覧のフォルダ行。クリックで開閉し、ボタンで配下をまとめてステージ / 解除する */
+  const changeDirRow = (d: FileTreeDir<GitFileStatus>, stagedSide: boolean, depth: number) => {
+    const key = `${stagedSide ? 'S' : 'W'}:${d.path}`;
+    const open = !collapsedChangeDirs.has(key);
+    const paths = filesUnder(d).map((f) => f.path);
+    return (
+      <div
+        key={`dir:${key}`}
+        className={cx('git-file-row git-dir-row')}
+        title={`${d.path}\nクリックで開閉`}
+        onClick={() => setCollapsedChangeDirs(toggleCollapsed(collapsedChangeDirs, key))}
+      >
+        <span className={cx('git-file-name')}>
+          <span className={cx('git-file-status')} />{' '}
+          <span style={changeTreeIndent(depth)}>
+            <CommitTreeDirName dir={d} open={open} />
+          </span>
+        </span>
+        <button
+          className={cx('status-btn')}
+          title={stagedSide ? `${d.path} 配下をステージ解除` : `${d.path} 配下をステージ`}
+          onClick={(e) => {
+            e.stopPropagation();
+            void run(() => (stagedSide ? api.gitUnstage(repoRoot, paths) : api.gitStage(repoRoot, paths)));
+          }}
+        >
+          {stagedSide ? '−' : '＋'}
+        </button>
+      </div>
+    );
+  };
+
+  /** ステージ済み / 変更の一覧本体 (一覧 or ツリー) */
+  const changeRows = (files: GitFileStatus[], tree: ReturnType<typeof changeTree>, stagedSide: boolean) =>
+    tree
+      ? tree.map((r) => (r.kind === 'dir' ? changeDirRow(r.node, stagedSide, r.depth) : fileRow(r.file, stagedSide, r.depth)))
+      : files.map((f) => fileRow(f, stagedSide));
+
+  /** 変更一覧のファイル行。ツリー表示 (depth あり) ではファイル名だけを字下げして出す */
+  const fileRow = (f: GitFileStatus, stagedSide: boolean, depth: number | null = null) => {
     const key = `${stagedSide ? 'S' : 'W'}:${f.path}`;
     const selected = selKeys.has(key);
     return (
@@ -1299,7 +1371,15 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             (defaultTool >= 0 ? `\nダブルクリックで ${diffTools[defaultTool].label}` : '')
           }
         >
-          <span className={cx(`git-file-status ${statusClass(f, stagedSide)}`)}>{statusLabel(f, stagedSide)}</span> {f.path}
+          <span className={cx(`git-file-status ${statusClass(f, stagedSide)}`)}>{statusLabel(f, stagedSide)}</span>{' '}
+          {depth === null ? (
+            f.path
+          ) : (
+            <span style={changeTreeIndent(depth)}>
+              {baseName(f.path)}
+              {f.oldPath && <span className={cx('git-file-old')}>← {f.oldPath}</span>}
+            </span>
+          )}
         </span>
         {stagedSide ? (
           <button
@@ -1601,9 +1681,10 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                           すべて解除
                         </button>
                       )}
+                      <FileListModeToggle mode={changesListMode} onChange={changeChangesListMode} />
                     </span>
                   </div>
-                  {staged.map((f) => fileRow(f, true))}
+                  {changeRows(staged, stagedTree, true)}
                   <div className={cx("git-section-title")}>
                     変更 ({unstaged.length})
                     <span className={cx("git-section-actions")}>
@@ -1626,7 +1707,7 @@ export function GitPanel({ tab }: { tab: GitTab }) {
                       )}
                     </span>
                   </div>
-                  {unstaged.map((f) => fileRow(f, false))}
+                  {changeRows(unstaged, unstagedTree, false)}
                 </div>
 
                 <div
