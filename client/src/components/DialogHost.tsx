@@ -10,12 +10,14 @@ export function DialogHost() {
   const { current, close } = useDialog();
   const [value, setValue] = useState('');
   const [checked, setChecked] = useState(false);
+  const [choice, setChoice] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (current) {
       setValue(current.defaultValue ?? '');
       setChecked(current.checkbox?.checked === true);
+      setChoice(current.choices?.value ?? '');
       setTimeout(() => {
         const el = inputRef.current;
         if (!el) return;
@@ -35,9 +37,9 @@ export function DialogHost() {
     close();
   };
 
-  /** confirm の戻り値。チェックボックス付きなら { ok, checked } を返す */
-  const confirmValue = (ok: boolean): boolean | ConfirmResult =>
-    current?.checkbox ? { ok, checked: ok && checked } : ok;
+  /** confirm の戻り値。チェックボックス付きなら { ok, checked }、選択肢付きなら選んだ value (キャンセルは null) を返す */
+  const confirmValue = (ok: boolean): boolean | ConfirmResult | string | null =>
+    current?.choices ? (ok ? choice : null) : current?.checkbox ? { ok, checked: ok && checked } : ok;
 
   // Enter = OK / Escape = キャンセル (prompt の入力欄からもそのまま決定できる)
   const dialogRef = useDialogKeys({
@@ -71,6 +73,21 @@ export function DialogHost() {
             />
             <span>{current.checkbox.label}</span>
           </label>
+        )}
+        {current.kind === 'confirm' && current.choices && (
+          <div className={cx("dialog-choices")} role="radiogroup">
+            {current.choices.options.map((o) => (
+              <label key={o.value} className={cx("dialog-checkbox")}>
+                <input
+                  type="radio"
+                  name="dialog-choice"
+                  checked={choice === o.value}
+                  onChange={() => setChoice(o.value)}
+                />
+                <span>{o.label}</span>
+              </label>
+            ))}
+          </div>
         )}
         <div className={cx("dialog-buttons")}>
           <button

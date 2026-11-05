@@ -6,6 +6,12 @@ export interface ConfirmResult {
   checked: boolean;
 }
 
+/** choiceDialog のラジオボタンの選択肢 */
+export interface DialogChoice {
+  value: string;
+  label: string;
+}
+
 export interface DialogRequest {
   kind: 'confirm' | 'prompt';
   title: string;
@@ -16,6 +22,8 @@ export interface DialogRequest {
   placeholder?: string; // prompt 時、入力欄が空のときに出す薄字
   /** confirm 時、OK と一緒に返すオプション (force など) のチェックボックス */
   checkbox?: { label: string; checked?: boolean };
+  /** confirm 時、OK と一緒に返す選択肢 (ラジオボタン)。OK で選んだ value を返す */
+  choices?: { options: DialogChoice[]; value: string };
   resolve: (value: string | boolean | null | ConfirmResult) => void;
 }
 
@@ -81,6 +89,28 @@ export function promptDialog(
       defaultValue,
       selectStem: opts.selectStem,
       placeholder: opts.placeholder,
+      resolve: (v) => resolve(typeof v === 'string' ? v : null),
+    });
+  });
+}
+
+/**
+ * ラジオボタンで 1 つ選ぶ確認ダイアログ。OK なら選んだ value、キャンセル / 背景クリックなら null を返す
+ */
+export function choiceDialog(
+  title: string,
+  message: string | undefined,
+  options: DialogChoice[],
+  value: string,
+  danger = false,
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    useDialog.getState().open({
+      kind: 'confirm',
+      title,
+      message,
+      danger,
+      choices: { options, value },
       resolve: (v) => resolve(typeof v === 'string' ? v : null),
     });
   });

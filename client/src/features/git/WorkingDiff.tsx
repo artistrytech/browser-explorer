@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { toastError } from '../../stores/toast';
-import { confirmDialog } from '../../stores/dialog';
+import { choiceDialog, confirmDialog } from '../../stores/dialog';
 import { useExplorer } from '../../stores/explorer';
 import {
   parseFileDiff,
@@ -16,7 +16,9 @@ import {
   buildEditPatch,
   editPatchHeader,
   usableFileLines,
+  type EditRange,
   type FileDiff,
+  type Hunk,
 } from '../../lib/diffPatch';
 import { openLineEditDialog } from './LineEditDialog';
 import { DiffLineText, useDiffHighlight, type DiffSources } from '../../lib/diffHighlight';
@@ -131,38 +133,58 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
     }
   };
 
-  /** Hunk の変更を破棄する (作業ツリーへ reverse 適用)。破棄は取り消せないため確認する */
-  const discardHunk = async (hunk: FileDiff['hunks'][number]) => {
-    if (!parsed) return;
-    const ok = await confirmDialog('変更を破棄', 'この Hunk の変更を破棄しますか?', true);
-    if (!ok) return;
-    setBusy(true);
-    try {
-      await api.gitApplyPatch(repo, buildHunkPatch(patchHeader, [hunk]), true, false);
-      load();
-      onApplied();
-      void useExplorer.getState().refresh();
-    } catch (e) {
-      toastError(e);
-    } finally {
-      setBusy(false);
+  /** Hunk 全体 / 選択行のどちらを対象にするかの選択肢 */
+  const scopeOptions = (count: number) => [
+    { value: 'hunk', label: 'Hunk 全体' },
+    { value: 'lines', label: `選択した ${count} 行` },
+  ];
+
+  /** ステージ / 解除。選択行があれば Hunk 全体と選択行のどちらにするかを選んでもらう */
+  const stageHunk = async (hunk: Hunk, selected: Set<number>) => {
+    let scope = 'hunk';
+    if (selected.size > 0) {
+      const picked = await choiceDialog(
+        actionLabel,
+        `どちらを${actionLabel}しますか?`,
+        scopeOptions(selected.size),
+        'lines',
+      );
+      if (!picked) return;
+      scope = picked;
     }
+    await apply(
+      scope === 'lines' ? buildLinesPatch(patchHeader, hunk, selected, reverse) : buildHunkPatch(patchHeader, [hunk]),
+      '対象の行が選択されていません',
+    );
   };
 
   /**
-   * 選択行の変更だけを破棄する (作業ツリーへ reverse 適用)。
-   * 「解除方向」の形 (未選択の + は文脈化・未選択の - は破棄) で組み立てると
+   * 変更を破棄する (作業ツリーへ reverse 適用)。破棄は取り消せないため確認する。
+   * 選択行があれば、確認のダイアログで Hunk 全体と選択行のどちらを破棄するかを選んでもらう。
+   * 選択行のパッチは「解除方向」の形 (未選択の + は文脈化・未選択の - は破棄) で組み立てると
    * パッチの変更後 = 現在の作業ツリーとなり、--reverse 適用で選択行だけが元に戻る。
    */
-  const discardLines = async (hunk: FileDiff['hunks'][number], selected: Set<number>) => {
+  const discard = async (hunk: Hunk, selected: Set<number>) => {
     if (!parsed) return;
-    const patch = buildLinesPatch(patchHeader, hunk, selected, true);
+    const scope =
+      selected.size > 0
+        ? await choiceDialog(
+            '変更を破棄',
+            'どちらの変更を破棄しますか? (元に戻せません)',
+            scopeOptions(selected.size),
+            'lines',
+            true,
+          )
+        : (await confirmDialog('変更を破棄', 'この Hunk の変更を破棄しますか?', true))
+          ? 'hunk'
+          : null;
+    if (!scope) return;
+    const patch =
+      scope === 'lines' ? buildLinesPatch(patchHeader, hunk, selected, true) : buildHunkPatch(patchHeader, [hunk]);
     if (!patch) {
       toastError(new Error('対象の行が選択されていません'));
       return;
     }
-    const ok = await confirmDialog('変更を破棄', `選択した ${selected.size} 行の変更を破棄しますか?`, true);
-    if (!ok) return;
     setBusy(true);
     try {
       await api.gitApplyPatch(repo, patch, true, false);
@@ -178,15 +200,17 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
 
   /**
    * Hunk 全体 / 選択行の範囲を、ダイアログでテキストとして直接書き換える。
+   * 選択行があれば、ダイアログのラジオボタンで Hunk 全体と選択行を切り替えられる (最初は選択行)。
    * 書き換えるのは差分の変更後側 (変更・未追跡は作業ツリー、ステージ済みはインデックス) で、
    * 範囲の前後を文脈に付けたパッチを git apply (ステージ側は --cached) で当てる。
    * 削除行は変更後側に行が無いので、その位置への挿入として扱う
    */
-  const editLines = async (hunk: FileDiff['hunks'][number], indices: Iterable<number>, title: string) => {
+  const editLines = async (hunk: Hunk, selected: Set<number>) => {
     if (!parsed) return;
     const header = editPatchHeader(parsed.header);
-    const range = hunkEditRange(hunk, indices);
-    if (!header || !range) {
+    const hunkRange = hunkEditRange(hunk, hunk.lines.keys());
+    const selRange = selected.size > 0 ? hunkEditRange(hunk, selected) : null;
+    if (!header || !hunkRange) {
       toastError(new Error('編集できる行がありません'));
       return;
     }
@@ -211,19 +235,27 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
       return;
     }
     const where = reverse ? 'インデックス' : '作業ツリー';
-    const lines =
-      range.hi < range.lo ? `${range.lo} 行目の前に挿入` : range.hi === range.lo ? `${range.lo} 行目` : `${range.lo}〜${range.hi} 行目`;
-    const edited = await openLineEditDialog({
-      title,
+    const describe = (r: EditRange) =>
+      `${where} ${r.hi < r.lo ? `${r.lo} 行目の前に挿入` : r.hi === r.lo ? `${r.lo} 行目` : `${r.lo}〜${r.hi} 行目`}`;
+    const scopes = [{ value: 'hunk', label: 'Hunk 全体', range: hunkRange }];
+    if (selRange) scopes.push({ value: 'lines', label: `選択した ${selected.size} 行`, range: selRange });
+    const result = await openLineEditDialog({
+      title: '編集',
       path: file.path,
-      target: `${where} ${lines}`,
       note: reverse
         ? 'ステージ済みの内容 (インデックス) だけを書き換えます。作業ツリーのファイルは変わりません'
         : undefined,
-      text: editRangeText(content, range),
+      scopes: scopes.map((sc) => ({
+        value: sc.value,
+        label: sc.label,
+        target: describe(sc.range),
+        text: editRangeText(content, sc.range),
+      })),
+      scope: selRange ? 'lines' : 'hunk',
     });
-    if (edited === null) return;
-    const patch = buildEditPatch(header, content, range, edited);
+    if (!result) return;
+    const range = (scopes.find((sc) => sc.value === result.scope) ?? scopes[0]).range;
+    const patch = buildEditPatch(header, content, range, result.text);
     if (!patch) return; // 変更なし
     setBusy(true);
     try {
@@ -313,71 +345,45 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
                 <span className={cx("wd-hunk-info")}>{hunk.header}</span>
                 <span className={cx("wd-hunk-actions")}>
                   {partialAvailable && (
-                  <>
-                    {hunkSel.size > 0 && (
-                      <button
-                        className={cx("status-btn")}
-                        disabled={busy}
-                        title={`選択した ${hunkSel.size} 行を${actionLabel}`}
-                        onClick={() =>
-                          void apply(
-                            buildLinesPatch(patchHeader, hunk, hunkSel, reverse),
-                            '対象の行が選択されていません',
-                          )
-                        }
-                      >
-                        選択行を{actionLabel}
-                      </button>
-                    )}
-                    {hunkSel.size > 0 && !reverse && (
-                      // 変更 (作業ツリー) 側のみ破棄可能。ステージ側は「解除」で戻す
-                      <button
-                        className={cx("status-btn danger")}
-                        disabled={busy}
-                        title={`選択した ${hunkSel.size} 行の変更を破棄`}
-                        onClick={() => void discardLines(hunk, hunkSel)}
-                      >
-                        選択行を破棄
-                      </button>
-                    )}
                     <button
                       className={cx("status-btn")}
                       disabled={busy}
-                      title={`この Hunk を${actionLabel}`}
-                      onClick={() => void apply(buildHunkPatch(patchHeader, [hunk]), '')}
+                      title={
+                        hunkSel.size > 0
+                          ? `この Hunk か選択した ${hunkSel.size} 行を${actionLabel}`
+                          : `この Hunk を${actionLabel}`
+                      }
+                      onClick={() => void stageHunk(hunk, hunkSel)}
                     >
-                      Hunk を{actionLabel}
+                      {actionLabel}
                     </button>
-                    {hunkSel.size > 0 && (
-                      <button
-                        className={cx("status-btn")}
-                        disabled={busy}
-                        title={`選択した ${hunkSel.size} 行の範囲をテキストで編集`}
-                        onClick={() => void editLines(hunk, hunkSel, '選択行を編集')}
-                      >
-                        選択行を編集
-                      </button>
-                    )}
-                    {!reverse && (
-                      // 変更 (作業ツリー) 側のみ破棄可能。ステージ側は「解除」で戻す
-                      <button
-                        className={cx("status-btn danger")}
-                        disabled={busy}
-                        title="この Hunk の変更を破棄"
-                        onClick={() => void discardHunk(hunk)}
-                      >
-                        Hunk を破棄
-                      </button>
-                    )}
-                  </>
+                  )}
+                  {partialAvailable && !reverse && (
+                    // 変更 (作業ツリー) 側のみ破棄可能。ステージ側は「解除」で戻す
+                    <button
+                      className={cx("status-btn danger")}
+                      disabled={busy}
+                      title={
+                        hunkSel.size > 0
+                          ? `この Hunk か選択した ${hunkSel.size} 行の変更を破棄`
+                          : 'この Hunk の変更を破棄'
+                      }
+                      onClick={() => void discard(hunk, hunkSel)}
+                    >
+                      破棄
+                    </button>
                   )}
                   <button
                     className={cx("status-btn")}
                     disabled={busy}
-                    title="この Hunk の範囲をテキストで編集"
-                    onClick={() => void editLines(hunk, hunk.lines.keys(), 'Hunk を編集')}
+                    title={
+                      hunkSel.size > 0
+                        ? `この Hunk か選択した ${hunkSel.size} 行の範囲をテキストで編集`
+                        : 'この Hunk の範囲をテキストで編集'
+                    }
+                    onClick={() => void editLines(hunk, hunkSel)}
                   >
-                    Hunk を編集
+                    編集
                   </button>
                 </span>
               </div>
