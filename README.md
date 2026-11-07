@@ -32,6 +32,10 @@ npm install
 npm run dev     # server (127.0.0.1:5175) + client (127.0.0.1:5173) を並列起動
 ```
 
+`npm run serve` は `npm run dev` と同じく両方を起動するが、server のファイル監視による自動再起動をしない
+(ソースを変えたら手動で起動し直す)。予期しないエラーで server が終了したときも起動し直さないので、
+そのときはもう一度起動する。
+
 ブラウザで <http://127.0.0.1:5173/> を開く。カレントパスは URL の `?path=` に反映される。
 
 ### PWA としてインストールする (アプリ内タブ)
@@ -339,4 +343,6 @@ client/          # React + Vite + Zustand + Monaco Editor + xterm.js + React Flo
 - 設計書は macOS 前提だが、実装はクロスプラットフォーム (Windows ではドライブレターを
   ボリュームとして列挙、ゴミ箱はごみ箱に対応)。
 - この環境では `tsx watch` が動作しないため、server の dev スクリプトは
-  `node --watch --import tsx` を使用している。
+  `node --watch-path=src --import tsx` を使用している。監視を `server/src` に限るのは、
+  `--watch` だけだと読み込んだ node_modules (初回のターミナル起動時に読む node-pty など) まで監視され、
+  Windows ではファイルを読んだだけで (最終アクセス日時の更新で) 変更とみなされてサーバが再起動するため。
