@@ -335,4 +335,6 @@ client/          # React + Vite + Zustand + Monaco Editor + xterm.js + React Flo
 - 設計書は macOS 前提だが、実装はクロスプラットフォーム (Windows ではドライブレターを
   ボリュームとして列挙、ゴミ箱はごみ箱に対応)。
 - この環境では `tsx watch` が動作しないため、server の dev スクリプトは
-  `node --watch --import tsx` を使用している。
+  `node --watch-path=src --import tsx` を使用している。監視を `server/src` に限るのは、
+  `--watch` だけだと読み込んだ node_modules (初回のターミナル起動時に読む node-pty など) まで監視され、
+  Windows ではファイルを読んだだけで (最終アクセス日時の更新で) 変更とみなされてサーバが再起動するため。

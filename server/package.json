@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "node --watch --import tsx src/index.ts",
+    "dev": "node --watch-path=src --import tsx src/index.ts",
     "start": "tsx src/index.ts"
   },
   "dependencies": {
