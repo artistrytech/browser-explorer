@@ -119,6 +119,12 @@ export default function App() {
   const sidePanel = useSideBar((s) => s.panel);
   /** レビュー詳細で一時的に畳む前の表示状態 (畳んでいなければ null) */
   const sideBeforeReview = useRef<boolean | null>(null);
+  /**
+   * 左パネルを開いているときの幅 (%)。右パネル (AI チャット・ターミナル) を出し入れすると
+   * パネルの組み直しでレイアウトが defaultSize から計算し直されるため、現在の表示状態と幅を
+   * defaultSize に渡して、左パネルが勝手に開閉したり幅が戻ったりしないようにする
+   */
+  const sideSize = useRef(18);
 
   // 初期化: 設定ロード → URL のパスを表示 (plan §6.5)
   useEffect(() => {
@@ -451,12 +457,15 @@ export default function App() {
           order={1}
           ref={sidebarPanel}
           collapsible
-          defaultSize={18}
+          defaultSize={sideOpen ? sideSize.current : 0}
           minSize={12}
           maxSize={40}
           // 境界をドラッグして畳んだ / 開いたときも表示状態に反映する (レビュー詳細の一時的な畳み中は保存しない)
           onCollapse={() => useSideBar.getState().setOpen(false, sideBeforeReview.current === null)}
           onExpand={() => useSideBar.getState().setOpen(true, sideBeforeReview.current === null)}
+          onResize={(size) => {
+            if (size > 0) sideSize.current = size;
+          }}
         >
           {/* 切り替えても各内容の状態 (展開・スクロール位置・検索結果) を保つよう、両方マウントしたままにする */}
           <div className={cx(`side-content${sidePanel === 'explorer' ? '' : ' hidden'}`)}>
