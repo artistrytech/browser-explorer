@@ -12,6 +12,7 @@ import { openSyncDialog } from './SyncDialog';
 import { openStashDialog } from './StashDialog';
 import { openAuthDialog } from './AuthDialog';
 import { openDiscardAllDialog } from './DiscardAllDialog';
+import { openUndoCommitDialog } from './UndoCommitDialog';
 import { backupBranchRegex } from '../../lib/backupBranch';
 import { downloadArchive, extractArchiveToTemp } from '../../lib/gitArchive';
 import type { RebaseBackup } from '../../types';
@@ -50,7 +51,8 @@ export function GitToolbar({
   if (!repoRoot) return null;
 
   /**
-   * 「ツール」メニュー: アーカイブ / 一時フォルダに展開 (リポジトリ全体) / 変更の一括破棄 / バックアップブランチの削除。
+   * 「ツール」メニュー: アーカイブ / 一時フォルダに展開 (リポジトリ全体) / 直前のコミットの取り消し /
+   * 変更の一括破棄 / バックアップブランチの削除。
    * バックアップは設定の名前パターンに一致するもの (+ 旧方式の backup/rebase/*)
    */
   const openToolsMenu = (e: React.MouseEvent) => {
@@ -80,6 +82,8 @@ export function GitToolbar({
       { label: 'アーカイブ', action: () => void downloadArchive(repoRoot, '') },
       { label: '一時フォルダに展開', action: () => void extractArchiveToTemp(repoRoot) },
       { separator: true },
+      // 現在のブランチを 1 コミット前へ戻す (reset HEAD~1。変更を残すか破棄するかはダイアログで選ぶ)
+      { label: '直前のコミットを取り消す…', action: () => openUndoCommitDialog() },
       {
         label: '変更をすべて破棄…',
         danger: true,

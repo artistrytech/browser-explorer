@@ -507,6 +507,22 @@ export const api = {
     post<{ ok: true }>('/api/git/checkout-commit', { repo, hash }),
   gitReset: (repo: string, hash: string, mode: 'soft' | 'mixed' | 'hard') =>
     post<{ ok: true }>('/api/git/reset', { repo, hash, mode }),
+  /** 「直前のコミットを取り消す」用: HEAD のコミット・戻り先・HEAD を含むリモート追跡ブランチ */
+  gitUndoCommitInfo: (repo: string) =>
+    get<{
+      branch: string | null;
+      head: {
+        hash: string;
+        shortHash: string;
+        subject: string;
+        message: string;
+        author: string;
+        date: string;
+        parentCount: number;
+      } | null;
+      parent: { hash: string; shortHash: string; subject: string } | null;
+      remotes: string[];
+    }>(`/api/git/undo-commit-info?repo=${q(repo)}`),
   gitCherryPick: (repo: string, hash: string) => post<{ ok: true }>('/api/git/cherry-pick', { repo, hash }),
   gitTag: (repo: string, name: string, hash: string) =>
     post<{ ok: true }>('/api/git/tag', { repo, name, hash }),

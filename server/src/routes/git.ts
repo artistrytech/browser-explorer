@@ -1824,6 +1824,56 @@ gitRouter.post('/reset', async (req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * 「直前のコミットを取り消す」ダイアログ用: 現在のブランチと HEAD のコミット、戻り先 (第 1 親)、
+ * HEAD を含むリモート追跡ブランチ (push 済みかの判定) を返す。
+ * コミットが無ければ head:null、detached HEAD なら branch:null
+ */
+gitRouter.get('/undo-commit-info', async (req, res) => {
+  const repo = req.query.repo;
+  if (typeof repo !== 'string' || repo.length === 0) badRequest('repo is required');
+  const sym = await runGitCapture(repo, ['symbolic-ref', '-q', '--short', 'HEAD']);
+  const branch = sym.ok && sym.output ? sym.output : null;
+  const head = await runGitCapture(repo, [
+    'log', '-1', '--date=iso', '--format=%H%x1f%h%x1f%P%x1f%an%x1f%ad%x1f%B', 'HEAD',
+  ]);
+  if (!head.ok || !head.output) {
+    res.json({ branch, head: null, parent: null, remotes: [] });
+    return;
+  }
+  const [hash, shortHash, parents, author, date, ...rest] = head.output.split('\x1f');
+  const message = rest.join('\x1f').trim();
+  const parentList = parents.split(' ').filter(Boolean);
+  let parent: { hash: string; shortHash: string; subject: string } | null = null;
+  if (parentList.length > 0) {
+    const p = await runGitCapture(repo, ['log', '-1', '--format=%H%x1f%h%x1f%s', `${hash}^1`]);
+    if (p.ok && p.output) {
+      const [ph, psh, ...ps] = p.output.split('\x1f');
+      parent = { hash: ph, shortHash: psh, subject: ps.join('\x1f') };
+    }
+  }
+  const contains = await runGitCapture(repo, [
+    'for-each-ref', '--contains', hash, '--format=%(refname:short)', 'refs/remotes',
+  ]);
+  const remotes = contains.ok
+    ? contains.output.split(/\r?\n/).filter((r) => r && !r.endsWith('/HEAD'))
+    : [];
+  res.json({
+    branch,
+    head: {
+      hash,
+      shortHash,
+      subject: message.split(/\r?\n/)[0] ?? '',
+      message,
+      author,
+      date,
+      parentCount: parentList.length,
+    },
+    parent,
+    remotes,
+  });
+});
+
 gitRouter.post('/cherry-pick', async (req, res) => {
   const g = git(req.body.repo);
   await g.raw(['cherry-pick', req.body.hash as string]);

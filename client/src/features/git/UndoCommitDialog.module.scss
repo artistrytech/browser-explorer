@@ -1,0 +1,133 @@
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px;
+  min-width: 440px;
+  max-width: 580px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.dialog-title {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+
+.undo-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.undo-desc {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.undo-commit {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  background: var(--bg-alt);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.undo-commit-label {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.undo-meta {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.undo-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.undo-mode,
+.undo-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  line-height: 1.4;
+}
+
+.undo-mode input,
+.undo-check input {
+  margin-top: 3px;
+}
+
+.undo-mode-desc {
+  display: block;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.undo-warn {
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger);
+  line-height: 1.5;
+}
+
+.undo-note {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.8;
+  line-height: 1.5;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn.primary.danger,
+.btn.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}

@@ -14,6 +14,7 @@ import { openSyncDialog, openSyncDialogTab, type SyncTab } from '../git/SyncDial
 import { useRebaseDialog } from '../git/Rebase';
 import { openBackupBranchDialog, openCreateBranchDialog, openRenameBranchDialog } from '../git/BranchDialog';
 import { runGitCommands } from '../git/GitCommandDialog';
+import { openUndoCommitDialog } from '../git/UndoCommitDialog';
 import { openRepoGroupsDialog } from '../../app/RepoGroupsDialog';
 import { openAiChat } from '../aichat/aiChatStore';
 import { openTerminal, openTerminalAt } from '../terminal/terminalStore';
@@ -158,6 +159,14 @@ function buildCommands(inRepo: boolean, currentBranch: string | null): PaletteIt
         const repo = useGit.getState().repoRoot;
         if (repo) void extractArchiveToTemp(repo);
       },
+    },
+    {
+      // Git タブの「ツール」メニューと同じ
+      key: 'commit.undo',
+      label: '直前のコミットを取り消す',
+      detail: 'Git: Undo Last Commit',
+      disabled: repoOnly ?? (currentBranch ? undefined : 'ブランチをチェックアウトしていません (detached HEAD)'),
+      run: openUndoCommitDialog,
     },
     { key: 'repo', label: 'リポジトリ', detail: 'Repository: Open', next: { kind: 'repos', newTab: false } },
     {

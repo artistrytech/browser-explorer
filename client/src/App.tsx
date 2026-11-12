@@ -29,6 +29,7 @@ import { LineEditDialog } from './features/git/LineEditDialog';
 import { BranchDialog } from './features/git/BranchDialog';
 import { RebaseDialog, RebaseOverlay } from './features/git/Rebase';
 import { DiscardAllDialog } from './features/git/DiscardAllDialog';
+import { UndoCommitDialog } from './features/git/UndoCommitDialog';
 import { CherryPickDialog } from './features/git/CherryPickDialog';
 import { RevertDialog } from './features/git/RevertDialog';
 import { DiffTab, useDiffTab, closeDiffTab, diffTargetFromUrl } from './features/git/DiffTab';
@@ -617,6 +618,7 @@ export default function App() {
       <BranchDialog />
       <RebaseDialog />
       <DiscardAllDialog />
+      <UndoCommitDialog />
       <CherryPickDialog />
       <RevertDialog />
       <ReviewCreateDialog />
