@@ -5,10 +5,15 @@ import { norm } from '../services/fsService.js';
 import { config } from '../config.js';
 import { errorDetail, logger, sanitizeId } from '../services/logger.js';
 import { handleTerminalUpgrade } from './terminal.js';
+import { resolveGitDirs, watchGitDir, type GitDirWatch } from './gitWatcher.js';
 
 interface ClientState {
   watcher: FSWatcher | null;
   watchedPath: string | null;
+  /** 表示中フォルダが属するリポジトリの .git の監視 (リポジトリ外なら null) */
+  gitWatch: GitDirWatch | null;
+  /** watch 要求の世代番号 (.git の解決を待つ間に次の watch が来たら古い結果を捨てる) */
+  watchSeq: number;
   /** クライアント (ブラウザのタブ) のセッション ID (?session=)。ログの紐づけ用 */
   sessionId: string | null;
 }
@@ -26,6 +31,8 @@ export function broadcastEvent(event: string, data: unknown): void {
 /**
  * WS 監視: クライアントは { type: 'watch', path } を送って表示中フォルダを購読する。
  * 変更があれば { event: 'fs:change', data: { type, path } } をプッシュする。
+ * フォルダがリポジトリ配下なら .git も監視し、変化があれば { event: 'git:change', data: { root } } をプッシュする
+ * (AI・ターミナルによる git add / commit 等を Git ステータスへすぐ反映するため)。
  */
 export function attachWatcher(server: Server): void {
   const wss = new WebSocketServer({ noServer: true });
@@ -51,7 +58,7 @@ export function attachWatcher(server: Server): void {
 
   wss.on('connection', (ws, req) => {
     const sessionId = sanitizeId(new URL(req.url ?? '/', 'http://localhost').searchParams.get('session'));
-    clients.set(ws, { watcher: null, watchedPath: null, sessionId });
+    clients.set(ws, { watcher: null, watchedPath: null, gitWatch: null, watchSeq: 0, sessionId });
     sockets.add(ws);
     logger.debug('ws connected', { event: 'ws', sessionId });
     // クライアントが切断すると 'error' が飛ぶことがある。リスナが無いと例外になるため受けておく
@@ -93,9 +100,13 @@ export function attachWatcher(server: Server): void {
           });
         });
         state.watcher = watcher;
+        void updateGitWatch(ws, state, msg.path);
       } else if (msg.type === 'unwatch') {
+        state.watchSeq++;
         await state.watcher?.close().catch(() => {});
+        await state.gitWatch?.close();
         state.watcher = null;
+        state.gitWatch = null;
         state.watchedPath = null;
       }
     });
@@ -104,8 +115,36 @@ export function attachWatcher(server: Server): void {
       sockets.delete(ws);
       const state = clients.get(ws);
       logger.debug(`ws closed (${code})`, { event: 'ws', sessionId: state?.sessionId ?? sessionId });
+      if (state) state.watchSeq++;
       await state?.watcher?.close().catch(() => {});
+      await state?.gitWatch?.close();
       clients.delete(ws);
     });
   });
+}
+
+/** 表示中フォルダが属するリポジトリの .git の監視を張り替える (同じ .git なら張ったまま) */
+async function updateGitWatch(ws: WebSocket, state: ClientState, dirPath: string): Promise<void> {
+  const seq = ++state.watchSeq;
+  const dirs = await resolveGitDirs(dirPath);
+  // 待っている間に次の watch / unwatch / 切断があった
+  if (seq !== state.watchSeq) return;
+  // 同じリポジトリ内の移動なら既存の監視をそのまま使う
+  if (dirs && state.gitWatch?.gitDir === dirs.gitDir) return;
+  await state.gitWatch?.close();
+  state.gitWatch = null;
+  if (!dirs) return;
+  state.gitWatch = watchGitDir(
+    dirs,
+    (root) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ event: 'git:change', data: { root } }));
+    },
+    (err) => {
+      logger.warn(`git dir watcher error (${dirs.gitDir}): ${err instanceof Error ? err.message : String(err)}`, {
+        event: 'watcher',
+        sessionId: state.sessionId,
+        detail: { path: dirs.gitDir, ...errorDetail(err) },
+      });
+    },
+  );
 }

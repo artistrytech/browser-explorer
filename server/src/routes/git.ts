@@ -49,6 +49,14 @@ function git(repo: unknown): SimpleGit {
 }
 
 /**
+ * 参照専用の status 用。git status は既定で index の stat 情報を書き戻すことがあり、
+ * .git の監視 (ws/gitWatcher.ts) が自分の status 取得を変更として拾い続けないよう、任意のロック (=書き戻し) を止める
+ */
+function readOnlyStatus(g: SimpleGit) {
+  return g.env({ ...process.env, GIT_OPTIONAL_LOCKS: '0' }).status();
+}
+
+/**
  * git が出力するパスのクォート解除。
  * core.quotepath=false でも、パスに " や \ や制御文字を含む場合は
  * ダブルクォートで囲まれた C 言語形式でエスケープされるため、その場合だけ復元する。
@@ -102,7 +110,7 @@ async function getMergeState(g: SimpleGit): Promise<{ inProgress: ProgressState;
       : has('CHERRY_PICK_HEAD')
         ? 'cherry-pick'
         : null;
-  const st = await g.status();
+  const st = await readOnlyStatus(g);
   return { inProgress, conflicted: st.conflicted.map(norm) };
 }
 
@@ -140,7 +148,7 @@ gitRouter.get('/is-repo', async (req, res) => {
 
 gitRouter.get('/status', async (req, res) => {
   const g = git(req.query.repo);
-  const st = await g.status();
+  const st = await readOnlyStatus(g);
   res.json({
     branch: st.current,
     tracking: st.tracking,
@@ -659,7 +667,7 @@ gitRouter.post('/discard', async (req, res) => {
   // 先に index を HEAD へ戻すと、ステージ済みの変更も未ステージ扱いになり以降の処理で破棄される。
   const full = req.body.full === true;
   if (full && paths.length > 0) await g.raw(['reset', '-q', '--', ...paths]).catch(() => {});
-  const st = await g.status();
+  const st = await readOnlyStatus(g);
   const untracked = new Set(st.not_added);
   const tracked = paths.filter((p) => !untracked.has(p));
   const toClean = paths.filter((p) => untracked.has(p));
@@ -1625,7 +1633,7 @@ gitRouter.post('/rebase/start', async (req, res) => {
   const g = git(repo);
   const { inProgress } = await getMergeState(g);
   if (inProgress) badRequest(`${inProgress} が進行中のためリベースを開始できません`);
-  const st = await g.status();
+  const st = await readOnlyStatus(g);
   if (!st.current) badRequest('現在のブランチを特定できません (detached HEAD)');
   // 追跡ファイルの変更/ステージがあると git rebase が拒否するため事前に案内する
   // (未追跡ファイル '??' はリベースを妨げないので除外する)

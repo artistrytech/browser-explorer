@@ -223,6 +223,31 @@ export default function App() {
     });
   }, []);
 
+  // WS: .git の変化 (AI・ターミナルによる git add / commit / checkout 等) → Git ステータス・リベース状態を更新
+  // AI のターン進行 (ツール実行ごとに届く) → サブフォルダ内の編集も含めて Git ステータスを更新
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = (delay: number) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        // リベース状態の更新は Git ステータスの更新も含む
+        const repo = useGit.getState().repoRoot;
+        if (repo) void useRebase.getState().refresh(repo);
+        else void useGit.getState().refreshStatus();
+      }, delay);
+    };
+    const offGit = onWsEvent('git:change', (data) => {
+      const { root } = (data ?? {}) as { root?: string };
+      if (root && root === useGit.getState().repoRoot) schedule(100);
+    });
+    const offAi = onWsEvent('ai:turn', () => schedule(500));
+    return () => {
+      clearTimeout(timer);
+      offGit();
+      offAi();
+    };
+  }, []);
+
   // ブラウザのタブにフォーカスが戻ったら変更一覧 (Git status)・一覧・リベース状態を最新化する
   useEffect(() => {
     const refresh = () => {
