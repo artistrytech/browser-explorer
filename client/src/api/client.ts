@@ -237,6 +237,8 @@ export const api = {
     body: {
       agent: AiAgent;
       mode: 'new' | 'continue';
+      /** 続ける会話の番号 (mode=continue のとき。省くとその AI の最後の会話) */
+      thread?: number;
       model: string;
       effort: string;
       /** 空 = 設定の既定値 */

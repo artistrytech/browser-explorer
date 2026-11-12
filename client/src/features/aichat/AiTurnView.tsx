@@ -5,7 +5,7 @@ import { copyText } from '../../lib/clipboard';
 import { useContextMenu } from '../../components/ContextMenu';
 import { useToast, toastError } from '../../stores/toast';
 import type { AiItem, AiTurn } from '../../types';
-import { AI_LABELS, deleteTurn } from './aiChatStore';
+import { AI_LABELS, continuableThreads, deleteTurn, useAiChat } from './aiChatStore';
 import { permissionLabel } from './aiPermissions';
 import styles from './AiChat.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -116,12 +116,22 @@ export const AiTurnView = memo(function AiTurnView({
     }
   };
 
-  /** 削除のメニュー (⋯ ボタン・依頼や出力の見出しの右クリック) */
+  /** 会話の継続・削除のメニュー (⋯ ボタン・依頼や出力の見出しの右クリック) */
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const running = turn.status === 'running';
+    const { boxes, turns } = useAiChat.getState();
+    const box = boxes.find((b) => b.id === turn.boxId);
+    const canContinue =
+      !!box && continuableThreads(box, turns[turn.boxId], turn.agent).includes(turn.thread);
     useContextMenu.getState().open(e.clientX, e.clientY, [
+      {
+        label: `この会話を継続 (#${turn.thread})`,
+        disabled: !canContinue,
+        action: () => useAiChat.getState().requestContinue(turn),
+      },
+      { separator: true },
       {
         label: 'このメッセージを削除',
         danger: true,
@@ -149,7 +159,7 @@ export const AiTurnView = memo(function AiTurnView({
           <span>effort: {turn.effort || '既定'}</span>
           {turn.permission && <span title={permissionLabel(turn.agent, turn.permission)}>権限: {turn.permission}</span>}
           <span className={cx('turn-time')}>{formatTime(turn.createdAt)}</span>
-          <button className={cx('ai-icon-btn')} title="削除…" onClick={openMenu}>
+          <button className={cx('ai-icon-btn')} title="継続・削除…" onClick={openMenu}>
             ⋯
           </button>
         </div>

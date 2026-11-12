@@ -198,6 +198,28 @@ export function isTurnCollapsed(
   return collapsed[turnId] ?? turnId !== turns[turns.length - 1]?.id;
 }
 
+/**
+ * 送信欄の「会話」で続けられる会話番号 (新しい順)。
+ * 読み込み済みの会話のうち、agent の会話で、今のベースフォルダで実行しセッション ID を受け取ったものと、
+ * その AI の「続ける」対象 (最後の会話)。最終的に続けられるかはサーバで確かめる
+ */
+export function continuableThreads(box: AiBox, turns: AiTurn[] | undefined, agent: AiAgent): number[] {
+  const set = new Set<number>();
+  const s = box.sessions[agent];
+  if (s?.sessionId) set.add(s.thread);
+  for (const t of turns ?? []) {
+    if (t.agent === agent && t.cwd === box.cwd && t.sessionId) set.add(t.thread);
+  }
+  return [...set].sort((a, b) => b - a);
+}
+
+/** 「この会話を継続」で送信欄に選ばせる会話 (nonce は同じ会話を続けて選んだときも反映するため) */
+export interface ContinueRequest {
+  boxId: number;
+  thread: number;
+  nonce: number;
+}
+
 interface AiChatStore {
   open: boolean;
   /** 右パネルに固定して表示するか (false はフローティングウィンドウ) */
@@ -220,6 +242,11 @@ interface AiChatStore {
   prefs: ComposerPrefs;
   /** 送信欄の高さ (px。会話との境界のドラッグで変える)。null = 既定の高さ */
   composerHeight: number | null;
+  /** 「この会話を継続」で選んだ会話 (送信欄が受け取ったら null に戻す) */
+  continueRequest: ContinueRequest | null;
+  /** 会話 (turn の会話番号) を続けるよう送信欄に選ばせる (AI が違えば AI も切り替える) */
+  requestContinue: (turn: AiTurn) => void;
+  clearContinueRequest: () => void;
   setOpen: (open: boolean) => void;
   setDocked: (docked: boolean) => void;
   setCreating: (creating: boolean) => void;
@@ -264,6 +291,18 @@ export const useAiChat = create<AiChatStore>((set, get) => ({
   drafts: {},
   prefs: loadPrefs(),
   composerHeight: loadComposerHeight(),
+  continueRequest: null,
+
+  requestContinue: (turn) => {
+    const box = get().boxes.find((b) => b.id === turn.boxId);
+    if (!box) return;
+    if ((box.prefs ?? get().prefs).agent !== turn.agent) get().setBoxPrefs(box, { agent: turn.agent });
+    set((s) => ({
+      continueRequest: { boxId: turn.boxId, thread: turn.thread, nonce: (s.continueRequest?.nonce ?? 0) + 1 },
+    }));
+  },
+
+  clearContinueRequest: () => set({ continueRequest: null }),
 
   setOpen: (open) => {
     set({ open });

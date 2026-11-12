@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { FloatingWindow } from '../../components/FloatingWindow';
 import { DockRightIcon, FloatIcon } from '../../components/DockIcons';
@@ -12,6 +12,7 @@ import { AiTurnView } from './AiTurnView';
 import {
   AI_LABELS,
   closeAiChat,
+  continuableThreads,
   defaultBoxName,
   isTurnCollapsed,
   timestampName,
@@ -723,20 +724,37 @@ function Composer({ box }: { box: AiBox }) {
   const agent = prefs.agent;
   const session = box.sessions[agent];
   const canContinue = !!session?.sessionId;
-  const [mode, setMode] = useState<'continue' | 'new'>(() => (canContinue && !firstComposer ? 'continue' : 'new'));
+  const loadedTurns = useAiChat((s) => s.turns[box.id]);
+  // 続けられる会話 (新しい順)。「会話」で選ぶ
+  const threads = useMemo(() => continuableThreads(box, loadedTurns, agent), [box, loadedTurns, agent]);
+  // 「会話」の選択: 新規 or 続ける会話の番号
+  const [choice, setChoice] = useState<'new' | number>(() =>
+    canContinue && !firstComposer ? session!.thread : 'new',
+  );
+  const thread = choice !== 'new' && threads.includes(choice) ? choice : null;
+  const mode = thread !== null ? 'continue' : 'new';
   const [sending, setSending] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   // 続けられる会話が無くなったら (AI の切替・ベースフォルダの変更) 新しい会話に、
-  // 新しい会話を始めた直後は次から続けるのを既定にする (表示した直後は初期値のまま)
+  // 新しい会話を始めた・別の会話を続けた直後は次もその会話を続けるのを既定にする (表示した直後は初期値のまま)
   const modeKey = `${canContinue}:${agent}:${session?.thread ?? ''}`;
   const prevModeKey = useRef(modeKey);
   useEffect(() => {
     firstComposer = false;
     if (prevModeKey.current === modeKey) return;
     prevModeKey.current = modeKey;
-    setMode(canContinue ? 'continue' : 'new');
-  }, [modeKey, canContinue]);
+    setChoice(canContinue ? session!.thread : 'new');
+  }, [modeKey, canContinue, session]);
+
+  // 会話のメニューの「この会話を継続」で選んだ会話を選ぶ (AI の切替による既定の選び直しより後に反映する)
+  const continueRequest = useAiChat((s) => s.continueRequest);
+  useEffect(() => {
+    if (!continueRequest || continueRequest.boxId !== box.id) return;
+    setChoice(continueRequest.thread);
+    useAiChat.getState().clearContinueRequest();
+    textRef.current?.focus();
+  }, [continueRequest, box.id]);
 
   const info = agents?.agents[agent];
   const models = agents?.models[agent] ?? [];
@@ -755,7 +773,15 @@ function Composer({ box }: { box: AiBox }) {
     if (!canSend) return;
     setSending(true);
     try {
-      const turn = await api.aiSend(box.id, { agent, mode, model, effort, permission, prompt: draft });
+      const turn = await api.aiSend(box.id, {
+        agent,
+        mode,
+        ...(thread !== null ? { thread } : {}),
+        model,
+        effort,
+        permission,
+        prompt: draft,
+      });
       // 選択をまだ保存していない Box は、送ったときの選択を覚える
       if (!box.prefs) setPrefs({});
       // 新しい依頼を送ったら、それまでの出力は (開いていたものも) 折り畳む。
@@ -844,18 +870,30 @@ function Composer({ box }: { box: AiBox }) {
         <label
           className={cx('opt')}
           title={
-            canContinue
-              ? `継続: ${AI_LABELS[agent]} の会話 #${session!.thread} の続き / 新規: 新しい会話を始める`
+            threads.length > 0
+              ? `継続 #N: ${AI_LABELS[agent]} の会話 #N の続き / 新規: 新しい会話を始める\n` +
+                '会話のメニューの「この会話を継続」でも選べます'
               : otherSession
                 ? `${AI_LABELS[agent]} の会話がありません (${AI_LABELS[otherSession]} の会話は引き継げません)`
                 : `${AI_LABELS[agent]} の会話がありません`
           }
         >
           会話
-          <select value={mode} onChange={(e) => setMode(e.target.value as 'continue' | 'new')}>
-            <option value="continue" disabled={!canContinue}>
-              継続{canContinue ? ` (#${session!.thread})` : ''}
-            </option>
+          <select
+            value={thread !== null ? String(thread) : 'new'}
+            onChange={(e) => setChoice(e.target.value === 'new' ? 'new' : Number(e.target.value))}
+          >
+            {threads.length === 0 && (
+              <option value="" disabled>
+                継続
+              </option>
+            )}
+            {threads.map((n) => (
+              <option key={n} value={String(n)}>
+                継続 #{n}
+                {n === session?.thread ? ' (最後)' : ''}
+              </option>
+            ))}
             <option value="new">新規</option>
           </select>
         </label>
@@ -923,8 +961,8 @@ function Composer({ box }: { box: AiBox }) {
       <div className={cx('composer-row')}>
         <SkillPicker box={box} agent={agent} onPick={insertSkill} />
         <span className={cx('hint')}>
-          {mode === 'continue' && canContinue
-            ? `${AI_LABELS[agent]} の会話 #${session!.thread} の続きとして送ります`
+          {thread !== null
+            ? `${AI_LABELS[agent]} の会話 #${thread} の続きとして送ります`
             : `${AI_LABELS[agent]} と新しい会話を始めます`}
         </span>
         <span className={cx('ai-spacer')} />

@@ -6,7 +6,8 @@ import { db } from './stateStore.js';
  *   送信欄の選択 (prefs: AI・AI ごとのモデル / effort / 権限。Box を開いたときに復元する) を持つ
  * - ai_turns: 依頼 1 回分 (人間の依頼 + AI の出力)。出力は表示用に整えた項目 (AiItem) の配列で持つ
  *
- * 会話 (thread) は Box 内の通し番号。「新しい会話」で採番し、「続ける」は同じ AI の最後の会話を引き継ぐ。
+ * 会話 (thread) は Box 内の通し番号。「新しい会話」で採番し、「続ける」は同じ AI の最後の会話を引き継ぐ
+ * (会話番号を指定すれば、それより前の会話も続けられる。続けた会話がその AI の「続ける」対象になる)。
  * ベースフォルダを変えたら sessions を空にして、以降はすべて新しい会話にする
  * (CLI の会話の再開はフォルダ単位のため)。
  */
@@ -312,9 +313,29 @@ export function getTurn(id: number): AiTurn | null {
 }
 
 /**
+ * 会話 (thread) を続けるときに引き継ぐ CLI のセッション ID。
+ * その会話の最新のターンのセッション ID (今のベースフォルダで実行したもの) を使う。
+ * ターンを削除していても「続ける」対象 (sessions) の会話なら、そこに記録したセッション ID を使う。
+ * 続けられなければ null
+ */
+export function threadSessionId(box: AiBox, agent: AiAgent, thread: number): string | null {
+  const row = db
+    .prepare(
+      `SELECT session_id FROM ai_turns
+       WHERE box_id = ? AND thread = ? AND agent = ? AND cwd = ? AND session_id IS NOT NULL
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(box.id, thread, agent, box.cwd) as { session_id: string } | undefined;
+  if (row) return row.session_id;
+  const s = box.sessions[agent];
+  return s && s.thread === thread ? s.sessionId : null;
+}
+
+/**
  * ターンを開始する (実行中の行を作る)。
  * 新しい会話なら会話番号を採番し、その AI の「続ける」対象をこの会話に差し替える。
- * 続ける場合は引き継ぐセッション ID を返す。
+ * 続ける場合は continueFrom (会話番号と引き継ぐセッション ID) を渡す。
+ * 続けた会話をその AI の「続ける」対象にし、引き継ぐセッション ID を返す。
  */
 export function startTurn(input: {
   box: AiBox;
@@ -324,6 +345,7 @@ export function startTurn(input: {
   effort: string;
   permission: string;
   prompt: string;
+  continueFrom?: { thread: number; sessionId: string };
 }): { turn: AiTurn; resumeId: string | null } {
   const { box, agent, mode } = input;
   const now = new Date().toISOString();
@@ -331,9 +353,18 @@ export function startTurn(input: {
   let resumeId: string | null = null;
   const tx = db.transaction(() => {
     if (mode === 'continue') {
-      const s = box.sessions[agent]!;
-      thread = s.thread;
-      resumeId = s.sessionId;
+      const from = input.continueFrom!;
+      thread = from.thread;
+      resumeId = from.sessionId;
+      const cur = box.sessions[agent];
+      if (cur?.thread !== thread || cur.sessionId !== resumeId) {
+        const sessions = { ...box.sessions, [agent]: { thread, sessionId: resumeId } };
+        db.prepare('UPDATE ai_boxes SET sessions = ?, updated_at = ? WHERE id = ?').run(
+          JSON.stringify(sessions),
+          now,
+          box.id,
+        );
+      }
     } else {
       const row = db.prepare('SELECT next_thread FROM ai_boxes WHERE id = ?').get(box.id) as { next_thread: number };
       thread = row.next_thread;

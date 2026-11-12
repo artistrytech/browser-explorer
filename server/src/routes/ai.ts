@@ -13,6 +13,7 @@ import {
   listBoxes,
   listTurns,
   startTurn,
+  threadSessionId,
   updateBox,
   AI_AGENTS,
   type AiBox,
@@ -191,7 +192,8 @@ aiRouter.delete('/boxes/:id', (req, res) => {
 });
 
 /**
- * 依頼を送る。mode=continue はその AI の最後の会話を続ける (別の AI の会話は引き継げない)。
+ * 依頼を送る。mode=continue は thread (会話番号) の会話を続ける。thread を省くとその AI の最後の会話を続ける
+ * (別の AI の会話・ベースフォルダを変える前の会話は引き継げない)。
  * 実行は待たずにターン (実行中) を返し、出力は WS の ai:turn で届く
  */
 aiRouter.post('/boxes/:id/send', async (req, res) => {
@@ -211,13 +213,19 @@ aiRouter.post('/boxes/:id/send', async (req, res) => {
   if (!prompt.trim()) badRequest('依頼内容を入力してください');
   if (isBoxRunning(box.id)) badRequest('この Box は実行中です。完了を待つか停止してください');
   if (!(await detectAgents())[agent].available) badRequest(`${agent} が PATH に見つかりません`);
-  if (mode === 'continue' && !box.sessions[agent]?.sessionId) {
-    badRequest('続ける会話がありません。新しい会話で依頼してください');
+  let continueFrom: { thread: number; sessionId: string } | undefined;
+  if (mode === 'continue') {
+    const thread = body.thread === undefined || body.thread === null ? box.sessions[agent]?.thread : Number(body.thread);
+    if (thread === undefined) badRequest('続ける会話がありません。新しい会話で依頼してください');
+    if (!Number.isInteger(thread) || thread <= 0) badRequest('会話番号が不正です');
+    const sessionId = threadSessionId(box, agent, thread);
+    if (!sessionId) badRequest(`${agent} の会話 #${thread} は続けられません。新しい会話で依頼してください`);
+    continueFrom = { thread, sessionId };
   }
   // ベースフォルダが消えていたら実行できない (spawn の cwd エラーより分かりやすく返す)
   await resolveDir(box.cwd);
 
-  const { turn, resumeId } = startTurn({ box, agent, mode, model, effort, permission, prompt });
+  const { turn, resumeId } = startTurn({ box, agent, mode, model, effort, permission, prompt, continueFrom });
   await runTurn(turn, resumeId);
   // 「続ける」の対象が変わったことを知らせる (実行中の扱いになった後に送る)
   broadcastEvent('ai:boxes', { boxId: box.id });
