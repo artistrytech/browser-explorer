@@ -45,6 +45,8 @@ export interface Settings {
   sidebarWidth: number;
   /** Markdown プレビューの拡大率 (%)。PREVIEW_ZOOM_MIN〜MAX */
   previewZoom: number;
+  /** Markdown プレビューの左に見出し一覧 (目次) を表示するか */
+  previewOutline: boolean;
   /** 左パネルのリポジトリ表示名 (パス → 名前)。未設定ならフォルダ名を表示する */
   repoLabels: Record<string, string>;
   /** バックアップブランチの名前パターン (正規表現。yyyy / mm / dd は日付)。lib/backupBranch.ts */
@@ -76,6 +78,7 @@ const DEFAULT_SETTINGS: Settings = {
   defaultEol: 'LF',
   sidebarWidth: 18,
   previewZoom: 100,
+  previewOutline: true,
   repoLabels: {},
   backupBranchPattern: DEFAULT_BACKUP_BRANCH_PATTERN,
 };

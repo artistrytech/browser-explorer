@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -73,6 +73,12 @@ export function openMarkdownPreview(path: string, newTab = false): void {
   void useEditor.getState().open(path, 'preview');
 }
 
+/** 見出し一覧 (目次) の表示を切り替える (設定として永続化) */
+export function togglePreviewOutline(): void {
+  const s = useSettings.getState();
+  s.update({ previewOutline: !s.settings.previewOutline });
+}
+
 /** プレビューの拡大率を指定値に (設定として永続化) */
 export function setPreviewZoom(next: number): void {
   const z = clampPreviewZoom(next);
@@ -95,6 +101,22 @@ function slugify(text: string): string {
 
 const HEADING_ID_PREFIX = 'md-';
 
+/** 1 回の描画内で出現した見出しスラッグの数。同名の見出しは GitHub と同じく -1, -2 … を付けて ID を一意にする */
+let slugCounts = new Map<string, number>();
+
+function uniqueSlug(text: string): string {
+  const base = slugify(text);
+  const n = slugCounts.get(base) ?? 0;
+  slugCounts.set(base, n + 1);
+  return n === 0 ? base : `${base}-${n}`;
+}
+
+/** 見出し一覧 (目次) の 1 項目 */
+interface OutlineItem {
+  level: number;
+  text: string;
+}
+
 /** mermaid 記法のコードブロックに付けるクラス (描画後処理の目印。CSS Modules を通さない素のクラス名) */
 const MERMAID_CLASS = 'md-mermaid';
 
@@ -110,7 +132,7 @@ const md = new Marked({
     heading({ tokens, depth }) {
       const inner = this.parser.parseInline(tokens);
       const plain = tokens.map((t) => ('text' in t ? String(t.text) : '')).join('');
-      return `<h${depth} id="${HEADING_ID_PREFIX}${slugify(plain)}">${inner}</h${depth}>\n`;
+      return `<h${depth} id="${HEADING_ID_PREFIX}${uniqueSlug(plain)}">${inner}</h${depth}>\n`;
     },
     // ```mermaid ブロックは描画後処理で SVG に置き換える (それ以外は false を返して既定のコードブロック描画へ)
     code({ text, lang }) {
@@ -173,6 +195,7 @@ export function MarkdownPreview({ path: current, content }: { path: string; cont
   const setFullscreen = useMarkdownPreview((s) => s.setFullscreen);
   const theme = useSettings((s) => s.settings.theme);
   const zoom = useSettings((s) => s.settings.previewZoom);
+  const showOutline = useSettings((s) => s.settings.previewOutline);
   const bodyRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   /** 画像用に生成した object URL (差し替え/アンマウント時に解放する) */
@@ -183,8 +206,15 @@ export function MarkdownPreview({ path: current, content }: { path: string; cont
    */
   const pendingScroll = useRef<{ target: number; applied: number | null } | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  /** 見出し一覧と、それに対応する本文中の見出し要素 (同じ並び) */
+  const [outline, setOutline] = useState<OutlineItem[]>([]);
+  const headingEls = useRef<HTMLElement[]>([]);
+  /** 本文のスクロール位置にある見出しの番号 (一覧で強調する)。見出しより上なら -1 */
+  const [activeHeading, setActiveHeading] = useState(-1);
+  const outlineRef = useRef<HTMLElement>(null);
 
   const html = useMemo(() => {
+    slugCounts = new Map();
     const raw = md.parse(content, { async: false });
     return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
   }, [content]);
@@ -220,9 +250,58 @@ export function MarkdownPreview({ path: current, content }: { path: string; cont
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [html]);
 
+  /** 本文の表示位置にある見出し (表示領域の上端付近より上にある最後の見出し) を求めて一覧で強調する */
+  const updateActiveHeading = () => {
+    const el = scrollRef.current;
+    const els = headingEls.current;
+    if (!el || els.length === 0) {
+      setActiveHeading(-1);
+      return;
+    }
+    // 末尾までスクロールしきったら、上端に届かない最後の方の見出しも選べるよう最後の見出しにする
+    if (el.scrollTop > 0 && el.scrollTop + el.clientHeight >= el.scrollHeight - 2) {
+      setActiveHeading(els.length - 1);
+      return;
+    }
+    // 表示領域の上部 (高さの 15%、最低 40px) に入った見出しを「今の見出し」とみなす。
+    // 固定 px だと拡大率に応じて本文上端の余白が広がり、先頭の見出しが選ばれなくなる
+    const top = el.getBoundingClientRect().top + Math.max(40, el.clientHeight * 0.15);
+    let idx = -1;
+    for (let i = 0; i < els.length; i++) {
+      if (els[i].getBoundingClientRect().top <= top) idx = i;
+      else break;
+    }
+    setActiveHeading(idx);
+  };
+
+  // 描画のたびに見出し一覧を作り直す (本文の DOM から拾うので、表示される見出しと必ず一致する)
+  useEffect(() => {
+    const host = bodyRef.current;
+    const els = host ? Array.from(host.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')) : [];
+    headingEls.current = els;
+    setOutline(els.map((h) => ({ level: Number(h.tagName[1]), text: (h.textContent ?? '').trim() })));
+    updateActiveHeading();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html]);
+
+  // 強調中の項目が一覧の表示範囲外に出たら見える位置までスクロール
+  useEffect(() => {
+    if (activeHeading < 0) return;
+    outlineRef.current
+      ?.querySelector<HTMLElement>(`[data-idx="${activeHeading}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [activeHeading, showOutline]);
+
+  const jumpToHeading = (i: number) => {
+    headingEls.current[i]?.scrollIntoView({ block: 'start' });
+    // ユーザー操作による移動なので、保存位置の復元は以後行わない
+    pendingScroll.current = null;
+  };
+
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
+    updateActiveHeading();
     const top = el.scrollTop;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => savePreviewScroll(current, top), 150);
@@ -413,19 +492,50 @@ export function MarkdownPreview({ path: current, content }: { path: string; cont
           ✕ 全画面を終了
         </button>
       )}
-      <div className={cx('md-tab-scroll')} ref={scrollRef} onScroll={onScroll}>
-        <div
-          ref={bodyRef}
-          className={cx('md-body')}
-          style={{ zoom: zoom / 100 }}
-          onClick={onClick}
-          // リンクの中クリックはブラウザの既定 (ブラウザの別タブで開く) にせず、クリックと同じ処理に渡す
-          onAuxClick={(e) => {
-            if (e.button === 1) onClick(e);
-          }}
-          // marked → DOMPurify でサニタイズ済みの HTML
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+      {fullscreen && (
+        <button
+          className={cx(`md-fs-outline${showOutline ? ' on' : ''}`)}
+          title={showOutline ? '見出し一覧を隠す' : '見出し一覧を表示する'}
+          onClick={togglePreviewOutline}
+        >
+          ☰ 見出し
+        </button>
+      )}
+      <div className={cx('md-tab-main')}>
+        {showOutline && (
+          <nav className={cx('md-outline')} ref={outlineRef} aria-label="見出し一覧">
+            {outline.length === 0 ? (
+              <div className={cx('md-outline-empty')}>見出しがありません</div>
+            ) : (
+              outline.map((h, i) => (
+                <button
+                  key={i}
+                  data-idx={i}
+                  className={cx(`md-outline-item${i === activeHeading ? ' active' : ''}`)}
+                  style={{ paddingLeft: 10 + (h.level - 1) * 12 }}
+                  title={h.text}
+                  onClick={() => jumpToHeading(i)}
+                >
+                  {h.text || '(空の見出し)'}
+                </button>
+              ))
+            )}
+          </nav>
+        )}
+        <div className={cx('md-tab-scroll')} ref={scrollRef} onScroll={onScroll}>
+          <div
+            ref={bodyRef}
+            className={cx('md-body')}
+            style={{ zoom: zoom / 100 }}
+            onClick={onClick}
+            // リンクの中クリックはブラウザの既定 (ブラウザの別タブで開く) にせず、クリックと同じ処理に渡す
+            onAuxClick={(e) => {
+              if (e.button === 1) onClick(e);
+            }}
+            // marked → DOMPurify でサニタイズ済みの HTML
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        </div>
       </div>
     </div>
   );

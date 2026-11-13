@@ -16,6 +16,11 @@
     max-width: 1100px;
     padding-top: 40px;
   }
+
+  /* 左上の切り替えボタンと重ならないよう、見出し一覧はボタンの下から始める */
+  .md-outline {
+    padding-top: 44px;
+  }
 }
 
 .md-fs-exit {
@@ -39,11 +44,89 @@
   }
 }
 
+.md-tab-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 .md-tab-scroll {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   background: var(--bg);
+}
+
+/* --- 見出し一覧 (目次) --- */
+
+.md-outline {
+  flex: 0 0 240px;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 0;
+  background: var(--bg-alt);
+  border-right: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.md-outline-item {
+  display: block;
+  width: 100%;
+  border: none;
+  border-left: 2px solid transparent;
+  background: none;
+  color: var(--text-dim);
+  text-align: left;
+  padding: 3px 10px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+
+  &.active {
+    border-left-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+}
+
+.md-outline-empty {
+  padding: 4px 12px;
+  color: var(--text-dim);
+}
+
+/* 全画面モードで見出し一覧を切り替えるボタン (左上) */
+.md-fs-outline {
+  position: fixed;
+  top: 10px;
+  left: 18px;
+  z-index: 1;
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  color: var(--text-dim);
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+
+  &:hover {
+    opacity: 1;
+    color: var(--text);
+  }
+
+  &.on {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
 }
 
 /* --- 本文 (GitHub 風) --- */

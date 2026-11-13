@@ -15,6 +15,7 @@ import {
   useMarkdownPreview,
   setPreviewZoom,
   zoomPreviewBy,
+  togglePreviewOutline,
 } from '../preview/MarkdownPreview';
 import styles from './EditorPane.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -294,12 +295,20 @@ export function EditorPane() {
   );
 }
 
-/** プレビュー表示中のツールバー: 拡大率 (−/+ で STEP ずつ、% 表示クリックで 100%) と全画面 */
+/** プレビュー表示中のツールバー: 見出し一覧の表示切替、拡大率 (−/+ で STEP ずつ、% 表示クリックで 100%) と全画面 */
 function PreviewControls() {
   const zoom = useSettings((s) => s.settings.previewZoom);
+  const showOutline = useSettings((s) => s.settings.previewOutline);
   const setFullscreen = useMarkdownPreview((s) => s.setFullscreen);
   return (
     <>
+      <button
+        className={cx(`status-btn${showOutline ? ' on' : ''}`)}
+        title={showOutline ? '見出し一覧を隠す' : '見出し一覧を表示する'}
+        onClick={togglePreviewOutline}
+      >
+        ☰ 見出し
+      </button>
       <span className={cx('btn-group')}>
         <button
           className={cx('status-btn')}
