@@ -8,6 +8,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { norm, uniqueDest } from '../services/fsService.js';
+import { READ_ONLY_GIT_ENV } from '../services/gitEnv.js';
 import { broadcastEvent } from '../ws/watcher.js';
 import { launchChecked } from './os.js';
 import {
@@ -53,7 +54,7 @@ function git(repo: unknown): SimpleGit {
  * .git の監視 (ws/gitWatcher.ts) が自分の status 取得を変更として拾い続けないよう、任意のロック (=書き戻し) を止める
  */
 function readOnlyStatus(g: SimpleGit) {
-  return g.env({ ...process.env, GIT_OPTIONAL_LOCKS: '0' }).status();
+  return g.env(READ_ONLY_GIT_ENV()).status();
 }
 
 /**

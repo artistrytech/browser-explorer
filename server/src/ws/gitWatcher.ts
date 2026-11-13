@@ -2,6 +2,7 @@ import path from 'node:path';
 import chokidar, { FSWatcher } from 'chokidar';
 import { simpleGit } from 'simple-git';
 import { norm } from '../services/fsService.js';
+import { READ_ONLY_GIT_ENV } from '../services/gitEnv.js';
 
 /**
  * Git 管理情報 (.git) の監視。
@@ -57,7 +58,7 @@ export async function resolveGitDirs(dirPath: string): Promise<GitDirs | null> {
 async function statusSignature(root: string): Promise<string | null> {
   try {
     return await simpleGit(root)
-      .env({ ...process.env, GIT_OPTIONAL_LOCKS: '0' })
+      .env(READ_ONLY_GIT_ENV())
       .raw(['status', '--porcelain=v2', '-z', '--untracked-files=no']);
   } catch {
     return null;
