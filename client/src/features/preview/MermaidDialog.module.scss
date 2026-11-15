@@ -1,0 +1,102 @@
+/* mermaid 図の拡大表示ダイアログ (全画面プレビュー z-index: 500 より手前) */
+.mm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mm-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 92vw;
+  height: 90vh;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.mm-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+}
+
+.mm-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.mm-hint {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mm-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mm-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bg-hover);
+  }
+}
+
+.mm-zoom {
+  min-width: 56px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mm-close {
+  margin-left: 6px;
+}
+
+.mm-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+  /* ドラッグで移動するので、テキスト選択・タッチのスクロールは無効にする */
+  user-select: none;
+  touch-action: none;
+
+  &.dragging {
+    cursor: grabbing;
+  }
+}
+
+.mm-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+
+  svg {
+    display: block;
+    max-width: none;
+  }
+}

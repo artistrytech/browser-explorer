@@ -263,10 +263,42 @@
     white-space: normal;
     text-align: center;
     overflow-x: auto;
+    position: relative;
+    cursor: zoom-in;
 
     svg {
       max-width: 100%;
       height: auto;
+    }
+
+    /* 拡大表示ボタン (右上。図にカーソルを乗せたときだけ出す) */
+    > :global(.md-mermaid-zoom) {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text-dim);
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 12px;
+      line-height: 1.5;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s;
+
+      &:hover {
+        color: var(--text);
+        background: var(--bg-hover);
+      }
+
+      &:focus-visible {
+        opacity: 1;
+      }
+    }
+
+    &:hover > :global(.md-mermaid-zoom) {
+      opacity: 0.85;
     }
   }
 

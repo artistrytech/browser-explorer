@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -9,6 +9,7 @@ import { useSettings, clampPreviewZoom, PREVIEW_ZOOM_STEP } from '../../stores/s
 import { parentPath, joinPath } from '../../lib/paths';
 import { savePreviewScroll, loadPreviewScroll } from '../../lib/previewViewMemory';
 import { renderMermaid } from './mermaid';
+import { MermaidDialog } from './MermaidDialog';
 import { openInNewTab, wantsNewTab } from '../../lib/appTabs';
 import styles from './MarkdownPreview.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
@@ -119,6 +120,48 @@ interface OutlineItem {
 
 /** mermaid 記法のコードブロックに付けるクラス (描画後処理の目印。CSS Modules を通さない素のクラス名) */
 const MERMAID_CLASS = 'md-mermaid';
+/** 描画済みの mermaid 図に重ねる「拡大表示」ボタンのクラス */
+const MERMAID_ZOOM_CLASS = 'md-mermaid-zoom';
+
+/**
+ * 拡大率の変更で表示位置を保つための目印: 変更前に表示領域の上端にあった本文の要素と、その中の位置。
+ * 上端が要素の中にあれば要素の高さに対する割合 (ratio)、要素の間の余白なら要素上端からの距離
+ * (拡大率 100% 換算の px) で持つ。上端までスクロールしていない (scrollTop 0) なら top
+ */
+type ZoomAnchor = { kind: 'top' } | { kind: 'el'; el: Element; ratio: number | null; px: number };
+
+/** 上端の要素を探すときに中へ降りていく入れ子の要素 (リスト・引用・表など) */
+const ANCHOR_CONTAINER_TAGS = new Set(['UL', 'OL', 'LI', 'BLOCKQUOTE', 'TABLE', 'THEAD', 'TBODY', 'TR', 'DL', 'DETAILS', 'DIV', 'SECTION']);
+/** 目印にするブロック要素 (インライン要素は行をまたぐと矩形が当てにならないので対象外) */
+const ANCHOR_BLOCK_TAGS = new Set([
+  ...ANCHOR_CONTAINER_TAGS,
+  'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'PRE', 'HR', 'DT', 'DD', 'TD', 'TH', 'SUMMARY', 'FIGURE', 'IMG',
+]);
+
+/** 表示領域の上端 (top) にある本文の要素を探して目印にする。zoom は現在の拡大率 (%) */
+function captureZoomAnchor(scroll: HTMLElement, body: HTMLElement, zoom: number): ZoomAnchor | null {
+  if (scroll.scrollTop <= 0) return { kind: 'top' };
+  const top = scroll.getBoundingClientRect().top;
+  let el: Element = body;
+  for (let depth = 0; depth < 10; depth++) {
+    let hit: Element | null = null;
+    for (const child of Array.from(el.children)) {
+      if (el !== body && !ANCHOR_BLOCK_TAGS.has(child.tagName)) continue;
+      if (child.getBoundingClientRect().bottom > top) {
+        hit = child;
+        break;
+      }
+    }
+    if (!hit) break;
+    el = hit;
+    // 上端が要素の中にある入れ子の要素なら、さらに中の要素を探して精度を上げる
+    if (!ANCHOR_CONTAINER_TAGS.has(hit.tagName) || hit.getBoundingClientRect().top >= top) break;
+  }
+  if (el === body) return null;
+  const r = el.getBoundingClientRect();
+  const inside = r.top <= top && top < r.bottom && r.height > 0;
+  return { kind: 'el', el, ratio: inside ? (top - r.top) / r.height : null, px: ((top - r.top) * 100) / zoom };
+}
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -212,6 +255,22 @@ export function MarkdownPreview({ path: current, content }: { path: string; cont
   /** 本文のスクロール位置にある見出しの番号 (一覧で強調する)。見出しより上なら -1 */
   const [activeHeading, setActiveHeading] = useState(-1);
   const outlineRef = useRef<HTMLElement>(null);
+  /** 拡大表示ダイアログで表示中の mermaid 図 (本文中の SVG) */
+  const [zoomedDiagram, setZoomedDiagram] = useState<SVGSVGElement | null>(null);
+
+  /**
+   * 拡大率の変更時に表示領域の上端の位置を保つ (CSS zoom は scrollTop を変えないため、
+   * そのままだと上端に見えていた箇所が拡大率に比例してずれていく)。
+   * 変更前の DOM で目印を取る必要があるので、拡大率が変わったレンダー中に記録し、DOM 反映後に戻す
+   */
+  const lastZoom = useRef(zoom);
+  const zoomAnchor = useRef<ZoomAnchor | null>(null);
+  if (lastZoom.current !== zoom) {
+    const scroll = scrollRef.current;
+    const body = bodyRef.current;
+    zoomAnchor.current = scroll && body ? captureZoomAnchor(scroll, body, lastZoom.current) : null;
+    lastZoom.current = zoom;
+  }
 
   const html = useMemo(() => {
     slugCounts = new Map();
@@ -306,6 +365,23 @@ export function MarkdownPreview({ path: current, content }: { path: string; cont
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => savePreviewScroll(current, top), 150);
   };
+
+  useLayoutEffect(() => {
+    const anchor = zoomAnchor.current;
+    zoomAnchor.current = null;
+    const scroll = scrollRef.current;
+    if (!anchor || !scroll) return;
+    // ユーザー操作で位置を変えたので、保存位置の復元は以後行わない
+    pendingScroll.current = null;
+    if (anchor.kind === 'top') {
+      scroll.scrollTop = 0;
+      return;
+    }
+    if (!anchor.el.isConnected) return;
+    const r = anchor.el.getBoundingClientRect();
+    const pos = anchor.ratio !== null ? r.top + anchor.ratio * r.height : r.top + (anchor.px * zoom) / 100;
+    scroll.scrollTop += pos - scroll.getBoundingClientRect().top;
+  }, [zoom]);
 
   // Ctrl+ホイールで拡大縮小 (ブラウザ自体のズームは抑止)。passive にできないので addEventListener で登録
   useEffect(() => {
@@ -407,6 +483,12 @@ export function MarkdownPreview({ path: current, content }: { path: string; cont
           // mermaid (securityLevel: strict) がラベルをサニタイズ済みの SVG
           block.innerHTML = svg;
           bindFunctions?.(block);
+          const zoomBtn = document.createElement('button');
+          zoomBtn.type = 'button';
+          zoomBtn.className = MERMAID_ZOOM_CLASS;
+          zoomBtn.title = '拡大表示 (図のクリックでも開けます)';
+          zoomBtn.textContent = '⤢ 拡大';
+          block.append(zoomBtn);
           block.classList.add(`${MERMAID_CLASS}-rendered`);
           block.classList.remove(`${MERMAID_CLASS}-error`);
           // 図の高さ分だけ本文が伸びるので、復元位置がずれないよう描画後に再適用
@@ -458,10 +540,18 @@ export function MarkdownPreview({ path: current, content }: { path: string; cont
   /**
    * リンククリック: ページ内アンカーはスクロール、相対パスの Markdown はエディタタブのプレビューで開く、
    * 外部 URL は別タブで開く (アプリ自体が遷移してしまうのを防ぐ)。
-   * Markdown へのリンクは Ctrl+クリック (mac は ⌘) / 中クリックで別タブのプレビューに開く
+   * Markdown へのリンクは Ctrl+クリック (mac は ⌘) / 中クリックで別タブのプレビューに開く。
+   * 描画済みの mermaid 図 (図中のリンク以外) のクリックは拡大表示ダイアログを開く
    */
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const a = (e.target as HTMLElement).closest('a');
+    const target = e.target as Element;
+    const diagram = target.closest(`pre.${MERMAID_CLASS}-rendered`);
+    if (diagram && !target.closest('a')) {
+      // 図のラベルをドラッグで選択した (コピーしたい) 場合は開かない
+      if (e.button === 0 && !window.getSelection()?.toString()) openDiagram(diagram);
+      return;
+    }
+    const a = target.closest('a');
     if (!a) return;
     const href = a.getAttribute('href') ?? '';
     if (!href) return;
@@ -479,6 +569,12 @@ export function MarkdownPreview({ path: current, content }: { path: string; cont
     const abs = resolveRef(current, href);
     if (isMarkdownPath(abs)) openMarkdownPreview(abs, wantsNewTab(e));
     else void useEditor.getState().open(abs);
+  };
+
+  /** 描画済みの mermaid 図 (pre) を拡大表示ダイアログで開く */
+  const openDiagram = (block: Element | null) => {
+    const svg = block?.querySelector(':scope > svg');
+    if (svg instanceof SVGSVGElement) setZoomedDiagram(svg);
   };
 
   return (
@@ -537,6 +633,7 @@ export function MarkdownPreview({ path: current, content }: { path: string; cont
           />
         </div>
       </div>
+      {zoomedDiagram && <MermaidDialog svg={zoomedDiagram} onClose={() => setZoomedDiagram(null)} />}
     </div>
   );
 }
