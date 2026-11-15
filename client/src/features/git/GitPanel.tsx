@@ -14,6 +14,7 @@ import { loadBranchKeep, saveBranchKeep } from '../../lib/branchKeepMemory';
 import { saveEnteredChild } from '../../lib/focusMemory';
 import { excludeUntracked } from '../../lib/gitExclude';
 import { copyText } from '../../lib/clipboard';
+import { copyPathItems } from '../../lib/copyPath';
 import { fileOpenMenuItems, pruneMenuItems } from '../../lib/openMenu';
 import { useContextMenu, MenuItem } from '../../components/ContextMenu';
 import { SyncBadge } from '../../components/SyncBadge';
@@ -1185,6 +1186,21 @@ export function GitPanel({ tab }: { tab: GitTab }) {
             );
         }),
     });
+    // 「パスをコピー」はファイルタブと同じ内容 (リポジトリの相対パス → 絶対パス)。対象は現在の選択
+    const copyPathMenu = pruneMenuItems(
+      [
+        {
+          id: 'groupCopyPath',
+          label: 'パスをコピー',
+          submenu: [
+            ...copyPathItems('リポジトリの相対パスをコピー', allPaths),
+            ...copyPathItems('パスをコピー', allPaths.map((p) => `${repoRoot}/${p}`)),
+          ],
+        },
+      ],
+      menuConfig,
+    );
+    if (copyPathMenu.length > 0) items.push({ separator: true }, ...copyPathMenu);
     // 未追跡ファイルを .git/info/exclude へ (このリポジトリのローカル設定。共有はされない)
     items.push(
       { separator: true },
