@@ -458,7 +458,8 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
         <button
           className={cx('tab-add')}
           title="新しいタブ (Ctrl+T)"
-          onClick={() => runCommand({ kind: 'new' }, activeId)}
+          // ＋ ボタンは常に右端にルート (/) で開く
+          onClick={() => addTab(DEFAULT_URL, null)}
         >
           ＋
         </button>
