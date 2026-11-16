@@ -619,3 +619,70 @@ export interface CodeMapAiPrepareResult {
   item: CodeItem;
   links: Record<'callers' | 'callees', CodeLink[]>;
 }
+
+/** 検索インデックスの設定 (リポジトリごと。server/src/services/searchIndex.ts) */
+export interface IndexSettings {
+  /** 除外するフォルダ / ファイル (glob。/ を含まなければどの階層の名前にも一致) */
+  excludes: string[];
+  /** .gitignore 等で無視されるファイルを除く */
+  useGitignore: boolean;
+  /** 内容を入れるファイルサイズの上限 (KB) */
+  maxFileKB: number;
+}
+
+export interface IndexStatus {
+  repo: string;
+  enabled: boolean;
+  state: 'off' | 'building' | 'ready' | 'error';
+  files: number;
+  contentFiles: number;
+  progress: { done: number; total: number } | null;
+  updatedAt: number | null;
+  error: string | null;
+  settings: IndexSettings;
+  dbBytes: number;
+}
+
+export interface ContentSearchParams {
+  query: string;
+  matchCase: boolean;
+  wholeWord: boolean;
+  regex: boolean;
+  include: string;
+  exclude: string;
+}
+
+export interface ContentMatchLine {
+  /** 1 始まりの行番号 */
+  line: number;
+  /** 最初の一致の桁 (1 始まり) と終わり */
+  column: number;
+  endColumn: number;
+  /** 表示用の行 (先頭の空白を除き、長い行は切り詰めたもの) */
+  text: string;
+  /** text の中の一致の範囲 [start, end) */
+  ranges: [number, number][];
+}
+
+export interface ContentFileResult {
+  /** リポジトリルートからの相対パス */
+  path: string;
+  matches: ContentMatchLine[];
+}
+
+export interface ContentSearchResult {
+  files: ContentFileResult[];
+  matchCount: number;
+  truncated: boolean;
+  searchedFiles: number;
+  elapsedMs: number;
+  building: boolean;
+}
+
+export interface FileSearchItem {
+  /** リポジトリルートからの相対パス */
+  path: string;
+  score: number;
+  /** 一致した文字の位置 (path の中) */
+  indices: number[];
+}

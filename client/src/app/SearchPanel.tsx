@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useExplorer } from '../stores/explorer';
 import { useSearch, relativeTo, SEARCH_LIMIT } from '../stores/search';
 import { useSideBar } from '../stores/sideBar';
@@ -29,8 +29,9 @@ async function reveal(entry: FsEntry): Promise<void> {
 /**
  * 左パネルの検索: 表示中のフォルダ以下を名前で検索し、結果をファイル名 + 相対パスで一覧にする。
  * クリックで一覧 (ファイルタブ) のその場所を表示、ダブルクリック / Enter で開く。
+ * header は見出しの下に出す内容 (リポジトリ内ではインデックスの状態と有効化の切り替え)。
  */
-export function SearchPanel() {
+export function SearchPanel({ header }: { header?: ReactNode }) {
   const path = useExplorer((s) => s.path);
   const { input, query, root, results, loading, setInput, run, clear } = useSearch();
   const showHidden = useSettings((s) => s.settings.showHidden);
@@ -89,6 +90,7 @@ export function SearchPanel() {
   return (
     <div className={cx('search-panel')}>
       <div className={cx('heading')}>検索</div>
+      {header}
       <div className={cx('input-row')}>
         <input
           ref={inputRef}

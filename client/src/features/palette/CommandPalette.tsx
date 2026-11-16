@@ -18,6 +18,7 @@ import { openUndoCommitDialog } from '../git/UndoCommitDialog';
 import { openRepoGroupsDialog } from '../../app/RepoGroupsDialog';
 import { openAiChat } from '../aichat/aiChatStore';
 import { openTerminal, openTerminalAt } from '../terminal/terminalStore';
+import { openQuickOpen } from '../search/QuickOpen';
 import { useSideBar } from '../../stores/sideBar';
 import { appTabId, isCommandPaletteKey, type AppTabWindow } from '../../lib/appTabs';
 import { backupBranchRegex } from '../../lib/backupBranch';
@@ -87,6 +88,11 @@ function isBusy(): boolean {
     useConflictResolver.getState().open ||
     (repoRoot !== null && session?.repo === repoRoot)
   );
+}
+
+/** パレットを閉じる (クイックオープンを開くときに重ならないよう閉じる) */
+export function closeCommandPalette(): void {
+  if (usePalette.getState().open) usePalette.getState().close();
 }
 
 export function openCommandPalette(): void {
@@ -209,7 +215,21 @@ function buildCommands(inRepo: boolean, currentBranch: string | null): PaletteIt
       detail: 'View: Toggle Primary Side Bar Visibility',
       run: () => useSideBar.getState().toggle(),
     },
-    { key: 'search', label: '名前で検索', detail: 'Search: Find Files by Name', run: () => useSideBar.getState().focusSearch() },
+    {
+      // インデックスを有効にしたリポジトリでは内容の検索、それ以外は名前での検索
+      key: 'search',
+      label: '検索',
+      detail: 'Search: Find in Files / Find Files by Name',
+      run: () => useSideBar.getState().focusSearch(),
+    },
+    {
+      // Ctrl+P / Ctrl+Shift+R と同じ (インデックスを有効にしたリポジトリのファイルを名前で開く)
+      key: 'quickopen',
+      label: 'ファイルに移動',
+      detail: 'Go to File (Quick Open)',
+      disabled: repoOnly,
+      run: openQuickOpen,
+    },
     { key: 'terminal', label: 'ターミナル', detail: 'Terminal', run: () => void openTerminal() },
     {
       // 表示中のフォルダで開く

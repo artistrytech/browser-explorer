@@ -185,8 +185,19 @@ export function EditorPane() {
     if (editor.getModel() !== modelsRef.current.get(reveal.path)) return;
     if (activeTab?.preview) setPreview(reveal.path, false);
     const pos = { lineNumber: reveal.line, column: reveal.column };
-    editor.setPosition(pos);
-    editor.revealPositionInCenter(pos);
+    if (reveal.endColumn && reveal.endColumn > reveal.column) {
+      const range = {
+        startLineNumber: reveal.line,
+        startColumn: reveal.column,
+        endLineNumber: reveal.line,
+        endColumn: reveal.endColumn,
+      };
+      editor.setSelection(range);
+      editor.revealRangeInCenter(range);
+    } else {
+      editor.setPosition(pos);
+      editor.revealPositionInCenter(pos);
+    }
     editor.focus();
     useEditor.getState().clearReveal();
   }, [reveal, activeTab?.path]);

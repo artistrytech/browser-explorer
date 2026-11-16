@@ -7,6 +7,7 @@ import {
   clearTabSession,
   frameNameOf,
   isCommandPaletteKey,
+  isQuickOpenKey,
   isTabReloadKey,
   newTabId,
   tabCommandFromKey,
@@ -342,6 +343,14 @@ export function TabsShell(props: { primary: boolean; initialOpen: string | null 
         const win = frames.current.get(stateRef.current.activeId)?.contentWindow as AppTabWindow | null | undefined;
         win?.focus();
         win?.ebOpenCommandPalette?.();
+        return;
+      }
+      // クイックオープン (Ctrl+P / Ctrl+Shift+R) も表示中のタブ側で開く
+      if (isQuickOpenKey(e)) {
+        e.preventDefault();
+        const win = frames.current.get(stateRef.current.activeId)?.contentWindow as AppTabWindow | null | undefined;
+        win?.focus();
+        win?.ebOpenQuickOpen?.();
         return;
       }
       // F5 はシェルごとではなく表示中のタブだけを読み込み直す

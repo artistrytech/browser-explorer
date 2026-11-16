@@ -29,8 +29,11 @@ interface EditorStore {
   tabs: EditorTab[];
   activePath: string | null;
   cursor: { line: number; col: number };
-  /** 開いた後にカーソルを移す位置 (1 始まり)。EditorPane が反映して消す */
-  reveal: { path: string; line: number; column: number } | null;
+  /**
+   * 開いた後にカーソルを移す位置 (1 始まり)。EditorPane が反映して消す。
+   * endColumn があれば column から endColumn までを選択する (検索の一致箇所など)
+   */
+  reveal: { path: string; line: number; column: number; endColumn?: number } | null;
   /** 読み込み直す前に開いていたファイルを開き直している途中か (その間は view=editor のままにする) */
   restoring: boolean;
 
@@ -38,7 +41,7 @@ interface EditorStore {
   /** 読み込み直す前に開いていたファイル (sessionStorage) を開き直す。起動時に 1 回呼ぶ */
   restore: () => Promise<void>;
   /** ファイルを開いて指定の位置 (1 始まり) を表示する */
-  openAt: (path: string, line: number, column: number) => Promise<void>;
+  openAt: (path: string, line: number, column: number, endColumn?: number) => Promise<void>;
   clearReveal: () => void;
   close: (path: string) => Promise<void>;
   activate: (path: string) => void;
@@ -138,11 +141,11 @@ export const useEditor = create<EditorStore>((set, get) => ({
     });
   },
 
-  openAt: async (path, line, column) => {
+  openAt: async (path, line, column, endColumn) => {
     await get().open(path);
     const activePath = get().activePath;
     // 開けなかった (エラーは open がトーストで出す) ときは何もしない
-    if (activePath && activePath.toLowerCase() === path.toLowerCase()) set({ reveal: { path: activePath, line, column } });
+    if (activePath && activePath.toLowerCase() === path.toLowerCase()) set({ reveal: { path: activePath, line, column, endColumn } });
   },
 
   clearReveal: () => set({ reveal: null }),

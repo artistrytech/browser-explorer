@@ -8,7 +8,9 @@ import {
 import { Toolbar } from './app/Toolbar';
 import { Sidebar } from './app/Sidebar';
 import { ActivityBar } from './app/ActivityBar';
-import { SearchPanel } from './app/SearchPanel';
+import { SearchSide } from './features/search/SearchSide';
+import { IndexSettingsDialog } from './features/search/IndexControls';
+import { QuickOpen } from './features/search/QuickOpen';
 import { StatusBar } from './app/StatusBar';
 import { SettingsDialog } from './app/SettingsDialog';
 import { RepoGroupsDialog } from './app/RepoGroupsDialog';
@@ -502,7 +504,7 @@ export default function App() {
             <Sidebar />
           </div>
           <div className={cx(`side-content${sidePanel === 'search' ? '' : ' hidden'}`)}>
-            <SearchPanel />
+            <SearchSide />
           </div>
         </Panel>
         <PanelResizeHandle className={cx(`resize-handle${sideOpen ? '' : ' collapsed'}`)} />
@@ -603,6 +605,7 @@ export default function App() {
       {/* ターミナル (フローティング時)。AI チャットと同じくモードレス */}
       <TerminalWindow />
       <ContextMenuHost />
+      <IndexSettingsDialog />
       <DialogHost />
       <ToastHost />
       <SelectionCopyPopup />
@@ -635,6 +638,8 @@ export default function App() {
       <GitCommandDialog />
       {/* Ctrl+Shift+P のコマンドパレット */}
       <CommandPalette />
+      {/* Ctrl+P / Ctrl+Shift+R のクイックオープン (インデックスしたリポジトリのファイル名で開く) */}
+      <QuickOpen />
     </div>
   );
 }

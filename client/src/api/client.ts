@@ -19,14 +19,19 @@ import type {
   ConflictLog,
   ConflictSides,
   ConflictVersions,
+  ContentSearchParams,
+  ContentSearchResult,
   Eol,
   Favorite,
+  FileSearchItem,
   FsEntry,
   GitBranch,
   GitCommit,
   GitGraphCommit,
   GitRemote,
   GitStatus,
+  IndexSettings,
+  IndexStatus,
   LogEntry,
   LogLevel,
   LogQueryParams,
@@ -192,6 +197,26 @@ export const api = {
     del<{ ok: true }>('/api/fs/delete', { paths, permanent }),
   search: (dir: string, query: string) =>
     get<{ results: FsEntry[] }>(`/api/fs/search?dir=${q(dir)}&query=${q(query)}`),
+
+  // --- 検索インデックス (Git リポジトリ単位) ---
+  searchIndexStatus: (repo: string) => get<IndexStatus>(`/api/search-index/status?repo=${q(repo)}`),
+  searchIndexEnable: (repo: string, settings: IndexSettings) =>
+    post<IndexStatus>('/api/search-index/enable', { repo, settings }),
+  searchIndexDisable: (repo: string) => post<IndexStatus>('/api/search-index/disable', { repo }),
+  searchIndexSettings: (repo: string, settings: IndexSettings) =>
+    put<IndexStatus>('/api/search-index/settings', { repo, settings }),
+  /** 全体を照合し直す (rebuild は中身を捨てて作り直す) */
+  searchIndexRescan: (repo: string, rebuild: boolean) =>
+    post<IndexStatus>('/api/search-index/rescan', { repo, rebuild }),
+  /** ファイル名のあいまい検索 (クイックオープン) */
+  searchIndexFiles: (repo: string, query: string, limit = 50, signal?: AbortSignal) =>
+    request<{ items: FileSearchItem[] }>(
+      `/api/search-index/files?repo=${q(repo)}&q=${q(query)}&limit=${limit}`,
+      { signal },
+    ),
+  /** 内容の検索 (入力のたびに前の要求は signal で取り消す) */
+  searchIndexContent: (repo: string, params: ContentSearchParams, maxResults: number, signal?: AbortSignal) =>
+    postAbortable<ContentSearchResult>('/api/search-index/search', { repo, ...params, maxResults }, signal),
 
   // --- config ---
   uiConfig: () =>

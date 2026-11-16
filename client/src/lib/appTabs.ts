@@ -135,6 +135,8 @@ export interface AppTabWindow extends Window {
   ebTabHasUnsaved?: () => boolean;
   /** コマンドパレットを開く (シェルのタブバーにフォーカスがあるときの Ctrl+Shift+P を転送する) */
   ebOpenCommandPalette?: () => void;
+  /** クイックオープンを開く (シェルのタブバーにフォーカスがあるときの Ctrl+P / Ctrl+Shift+R を転送する) */
+  ebOpenQuickOpen?: () => void;
   /** タブを読み込み直す (未保存の変更があれば確認する。シェルのタブバーにフォーカスがあるときの F5 を転送する) */
   ebTabReload?: () => void;
 }
@@ -207,6 +209,17 @@ export function isCommandPaletteKey(e: KeyboardEvent): boolean {
     !e.altKey &&
     (e.key.toLowerCase() === 'p' || e.code === 'KeyP')
   );
+}
+
+/**
+ * クイックオープン (ファイル名で開く) のキー: Ctrl+P / Ctrl+Shift+R (mac は ⌘)。
+ * Ctrl+P は VSCode と同じ。IME の状態や配列で key が変わっても判定できるよう code も見る
+ */
+export function isQuickOpenKey(e: KeyboardEvent): boolean {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return false;
+  const p = e.key.toLowerCase() === 'p' || e.code === 'KeyP';
+  const r = e.key.toLowerCase() === 'r' || e.code === 'KeyR';
+  return (p && !e.shiftKey) || (r && e.shiftKey);
 }
 
 /**

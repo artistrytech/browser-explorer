@@ -11,7 +11,9 @@ import { logRouter } from './routes/log.js';
 import { aiRouter } from './routes/ai.js';
 import { terminalRouter } from './routes/terminal.js';
 import { codeMapRouter } from './routes/codemap.js';
+import { searchIndexRouter } from './routes/searchIndex.js';
 import { attachWatcher } from './ws/watcher.js';
+import { initSearchIndexes } from './services/searchIndex.js';
 import {
   getAppConfig,
   getLogRetentionDays,
@@ -106,6 +108,7 @@ app.use('/api/log', logRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/terminal', terminalRouter);
 app.use('/api/codemap', codeMapRouter);
+app.use('/api/search-index', searchIndexRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, platform: process.platform });
@@ -230,6 +233,8 @@ server.listen(config.port, config.host, () => {
     event: 'lifecycle',
     detail: { pid: process.pid, node: process.version, platform: process.platform },
   });
+  // 有効にしたリポジトリの検索インデックスを開き、停止中の変更を照合してから監視を始める
+  initSearchIndexes();
 });
 // listen 失敗 (ポート使用中等) は続行できないので記録して終了する
 server.on('error', (err) => {

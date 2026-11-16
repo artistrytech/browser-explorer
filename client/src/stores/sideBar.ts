@@ -3,7 +3,7 @@ import { create } from 'zustand';
 /**
  * 左パネル (サイドバー) の表示状態と、その中に出す内容 (VSCode のアクティビティバーと同様)。
  * - explorer: クイックアクセス・リポジトリ・場所 (従来の左パネル)
- * - search: 名前での検索と、その結果の一覧
+ * - search: 検索と、その結果の一覧 (インデックスを有効にしたリポジトリでは内容の検索、それ以外は名前での検索)
  * 表示 / 非表示と内容は localStorage に控え、読み込み直しても保つ。
  */
 export type SidePanel = 'explorer' | 'search';

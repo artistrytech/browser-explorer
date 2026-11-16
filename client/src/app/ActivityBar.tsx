@@ -55,7 +55,7 @@ export function ActivityBar() {
   return (
     <nav className={cx('lane')} aria-label="左パネルの切り替え">
       {item('explorer', `エクスプローラ (左パネルの表示 / 非表示: ${mod}+B)`, <ExplorerIcon />)}
-      {item('search', '名前で検索', <SearchIcon />)}
+      {item('search', `検索 (インデックスを有効にしたリポジトリでは内容を検索。ファイル名は ${mod}+P)`, <SearchIcon />)}
     </nav>
   );
 }
