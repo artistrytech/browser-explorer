@@ -6,6 +6,7 @@ import { useSettings } from '../../stores/settings';
 import { switchView, replaceView, useUi } from '../../stores/ui';
 import { toastError } from '../../stores/toast';
 import { openInNewTab } from '../../lib/appTabs';
+import { attachMonacoSelectionCopy } from '../../lib/selectionCopy';
 import styles from './DiffTab.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
@@ -132,7 +133,17 @@ export function DiffTab() {
     editor.setModel({ original, modified });
     editorRef.current = editor;
     modelsRef.current = [original, modified];
+    // 範囲選択のコピー (パスはリポジトリ相対。左は変更前のファイルの行番号なのでその旨を添える)
+    const target = current;
+    const detachCopy = [
+      attachMonacoSelectionCopy(editor.getOriginalEditor(), 'diff-original', () => ({
+        path: target.oldPath || target.path,
+        note: '(変更前)',
+      })),
+      attachMonacoSelectionCopy(editor.getModifiedEditor(), 'diff-modified', () => ({ path: target.path })),
+    ];
     return () => {
+      detachCopy.forEach((d) => d());
       editor.dispose();
       modelsRef.current.forEach((m) => m.dispose());
       modelsRef.current = [];

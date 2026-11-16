@@ -309,7 +309,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
   const title = file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
 
   return (
-    <div className={cx("work-diff-file")}>
+    <div className={cx("work-diff-file")} data-sc-file={file.path} data-sc-old-path={file.oldPath ?? undefined}>
       <div className={cx("work-diff-head")}>
         <span className={cx(`wd-side wd-side-${file.side}`)}>{sideLabel}</span>
         <span className={cx("wd-path")} title={title}>
@@ -337,7 +337,7 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
           const lineNos = hunkLineNumbers(hunk);
           return (
             <div key={hIdx} className={cx("wd-hunk")}>
-              <div className={cx("wd-hunk-head")}>
+              <div className={cx("wd-hunk-head")} data-sc-hunk={hunk.header}>
                 <span className={cx("wd-hunk-info")}>{hunk.header}</span>
                 <span className={cx("wd-hunk-actions")}>
                   {partialAvailable && (
@@ -400,6 +400,9 @@ function FileDiffBlock({ repo, file, onApplied }: { repo: string; file: FocusFil
                       className={cx(`diff-line ${cls}${selectable ? ' wd-selectable' : ''}${isSel ? ' wd-line-sel' : ''}`)}
                       onMouseDown={selectable ? mouseDownLine : undefined}
                       onClick={selectable ? (e) => clickLine(e, hIdx, lIdx) : undefined}
+                      data-sc-line=""
+                      data-sc-old={no.old ?? undefined}
+                      data-sc-new={no.new ?? undefined}
                     >
                       <span className={cx("wd-lineno")} aria-hidden="true">{no.old ?? ''}</span>
                       <span className={cx("wd-lineno")} aria-hidden="true">{no.new ?? ''}</span>

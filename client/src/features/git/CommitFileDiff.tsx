@@ -70,7 +70,7 @@ export function CommitFileDiff({
 
   return (
     <div className={cx("work-diff")}>
-      <div className={cx("work-diff-file")}>
+      <div className={cx("work-diff-file")} data-sc-file={path} data-sc-old-path={oldPath ?? undefined}>
         <div className={cx("work-diff-head")}>
           <span className={cx("wd-side wd-side-staged")}>{label ?? hash.slice(0, 7)}</span>
           <span className={cx("wd-path")} title={title}>
@@ -93,7 +93,7 @@ export function CommitFileDiff({
             const lineNos = hunkLineNumbers(hunk);
             return (
               <div key={hIdx} className={cx("wd-hunk")}>
-                <div className={cx("wd-hunk-head")}>
+                <div className={cx("wd-hunk-head")} data-sc-hunk={hunk.header}>
                   <span className={cx("wd-hunk-info")}>{hunk.header}</span>
                 </div>
                 <pre className={cx("diff-view")}>
@@ -103,7 +103,13 @@ export function CommitFileDiff({
                       tag === '+' ? 'diff-add' : tag === '-' ? 'diff-del' : tag === '\\' ? 'diff-meta' : '';
                     const no = lineNos[lIdx];
                     return (
-                      <div key={lIdx} className={cx(`diff-line ${cls}`)}>
+                      <div
+                        key={lIdx}
+                        className={cx(`diff-line ${cls}`)}
+                        data-sc-line=""
+                        data-sc-old={no.old ?? undefined}
+                        data-sc-new={no.new ?? undefined}
+                      >
                         <span className={cx("wd-lineno")} aria-hidden="true">{no.old ?? ''}</span>
                         <span className={cx("wd-lineno")} aria-hidden="true">{no.new ?? ''}</span>
                         <DiffLineText

@@ -50,6 +50,8 @@ import { loadPanelSize, restoreTerminal, savePanelSize, useTerminal } from './fe
 import { ContextMenuHost } from './components/ContextMenu';
 import { DialogHost } from './components/DialogHost';
 import { ToastHost } from './components/ToastHost';
+import { SelectionCopyPopup } from './components/SelectionCopyPopup';
+import { watchDomSelectionCopy } from './lib/selectionCopy';
 import { useExplorer, pathFromUrl } from './stores/explorer';
 import { useSideBar } from './stores/sideBar';
 import { useEditor } from './stores/editor';
@@ -139,6 +141,8 @@ export default function App() {
     // 読み込み直す前に開いていたターミナル・エディタのファイル・AI チャットを開き直す
     void restoreTerminal();
     restoreAiChat();
+    // 差分表示の範囲選択でコピーボタンを出す
+    watchDomSelectionCopy();
     void useEditor.getState().restore();
     const initial = pathFromUrl();
     const initialView = viewFromUrl();
@@ -601,6 +605,7 @@ export default function App() {
       <ContextMenuHost />
       <DialogHost />
       <ToastHost />
+      <SelectionCopyPopup />
       <SettingsDialog />
       <RepoGroupsDialog />
       <CloneDialog />

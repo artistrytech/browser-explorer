@@ -21,6 +21,13 @@ export function baseName(p: string): string {
   return idx < 0 ? trimmed : trimmed.slice(idx + 1) || trimmed;
 }
 
+/** root 配下の p を root からの相対パスにする (配下でなければ null)。Windows のドライブパスは大文字小文字を区別しない */
+export function relativeTo(p: string, root: string): string | null {
+  const fold = (v: string) => (/^[A-Za-z]:/.test(v) ? v.toLowerCase() : v);
+  const prefix = root.endsWith('/') ? root : `${root}/`;
+  return fold(p).startsWith(fold(prefix)) ? p.slice(prefix.length) : null;
+}
+
 export function isRootPath(p: string): boolean {
   return p === '/' || /^[A-Za-z]:\/$/.test(p);
 }

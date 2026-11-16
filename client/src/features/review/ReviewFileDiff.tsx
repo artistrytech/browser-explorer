@@ -445,11 +445,11 @@ export function ReviewFileDiff({
               : '表示できる差分はありません'}
         </div>
       ) : (
-        <div className={cx('rv-diff-body')}>
+        <div className={cx('rv-diff-body')} data-sc-file={file.path} data-sc-old-path={file.oldPath ?? undefined}>
           {rows.map((row, i) => {
             if (row.kind === 'hunk') {
               return (
-                <div key={i} className={cx('rv-hunk-head')}>
+                <div key={i} className={cx('rv-hunk-head')} data-sc-hunk={row.header}>
                   {row.header}
                 </div>
               );
@@ -464,6 +464,9 @@ export function ReviewFileDiff({
                     `rv-line ${lineClass(row.text)}${inSelection ? ' rv-selected' : ''}`,
                   )}
                   onMouseEnter={() => extendSelect(i)}
+                  data-sc-line=""
+                  data-sc-old={row.oldNo ?? undefined}
+                  data-sc-new={row.newNo ?? undefined}
                 >
                   <span
                     className={cx(`rv-gutter${readOnly || row.side === null ? '' : ' rv-gutter-active'}`)}

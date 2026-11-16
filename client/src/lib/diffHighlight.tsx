@@ -252,7 +252,7 @@ export function DiffLineText({
   const tag = line[0] ?? ' ';
   if (render.html) {
     return (
-      <span className={className}>
+      <span className={className} data-sc-text="">
         {tag}
         <span dangerouslySetInnerHTML={{ __html: render.html }} />
       </span>
@@ -263,7 +263,7 @@ export function DiffLineText({
     const body = line.slice(1);
     const [start, end] = render.range;
     return (
-      <span className={className}>
+      <span className={className} data-sc-text="">
         {tag}
         {body.slice(0, start)}
         <span className={wordClass(tag)}>{body.slice(start, end)}</span>
@@ -271,5 +271,9 @@ export function DiffLineText({
       </span>
     );
   }
-  return <span className={className}>{line || ' '}</span>;
+  return (
+    <span className={className} data-sc-text="">
+      {line || ' '}
+    </span>
+  );
 }

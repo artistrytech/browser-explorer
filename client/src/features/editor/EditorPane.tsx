@@ -8,7 +8,8 @@ import { useContextMenu, type MenuItem } from '../../components/ContextMenu';
 import { api } from '../../api/client';
 import { copyPathItems } from '../../lib/copyPath';
 import { openCodeMap } from '../codemap/codeMapStore';
-import { parentPath, joinPath } from '../../lib/paths';
+import { parentPath, joinPath, relativeTo } from '../../lib/paths';
+import { attachMonacoSelectionCopy, repoRelativePath } from '../../lib/selectionCopy';
 import {
   MarkdownPreview,
   isMarkdownPath,
@@ -21,13 +22,6 @@ import styles from './EditorPane.module.scss';
 import { createCssModuleClassNames } from '../../lib/cssModule';
 
 const cx = createCssModuleClassNames(styles);
-
-/** root 配下の p を root からの相対パスにする (配下でなければ null)。Windows のドライブパスは大文字小文字を区別しない */
-function relativeTo(p: string, root: string): string | null {
-  const fold = (v: string) => (/^[A-Za-z]:/.test(v) ? v.toLowerCase() : v);
-  const prefix = root.endsWith('/') ? root : `${root}/`;
-  return fold(p).startsWith(fold(prefix)) ? p.slice(prefix.length) : null;
-}
 
 /** タブ名の右クリックメニュー。リポジトリ内のファイルなら相対パスのコピーも (先に) 出す */
 async function openTabMenu(e: React.MouseEvent, path: string): Promise<void> {
@@ -107,7 +101,14 @@ export function EditorPane() {
       },
     });
 
+    // 範囲選択すると、少し待ってから「パス:行範囲＋コードブロック」のコピーボタンを出す
+    const detachCopy = attachMonacoSelectionCopy(editor, 'editor', async () => {
+      const path = useEditor.getState().activePath;
+      return path ? { path: await repoRelativePath(path) } : null;
+    });
+
     return () => {
+      detachCopy();
       editor.dispose();
       editorRef.current = null;
       for (const m of modelsRef.current.values()) m.dispose();
